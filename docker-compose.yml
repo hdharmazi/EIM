@@ -1,0 +1,28 @@
+services:
+  dashboard-api:
+    image: arm-integration-dashboard-api
+    build:
+      context: .
+      dockerfile: ARM.Integration.Dashboard.API/Dockerfile
+    ports:
+      - "5060:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_HTTP_PORTS=8080
+      - ConnectionStrings__EIMDB=${EIMDB_CONNECTION_STRING}
+      - ApiKey=${DASHBOARD_API_KEY}
+
+  dashboard-web:
+    image: arm-integration-dashboard-web
+    build:
+      context: .
+      dockerfile: ARM.Integration.Dashboard.Web/Dockerfile
+    ports:
+      - "5059:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_HTTP_PORTS=8080
+      - DashboardApi__BaseUrl=http://dashboard-api:8080
+      - DashboardApi__ApiKey=${DASHBOARD_API_KEY}
+    depends_on:
+      - dashboard-api

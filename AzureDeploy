@@ -1,0 +1,61 @@
+# Login
+az login
+
+# Variables — change these to match your subscription
+$RESOURCE_GROUP = "d365fsc-integration-nonprod"
+$LOCATION       = "centralus"
+$ACR_NAME       = "wtcintegrationacr"          # must be globally unique, lowercase
+$ACA_ENV        = "aca-env-arm-integration"
+
+
+# 1. Resource Group
+az group create --name $RESOURCE_GROUP --location $LOCATION
+
+# 2. Azure Container Registry
+az acr create --name $ACR_NAME --resource-group $RESOURCE_GROUP --sku Basic --admin-enabled true
+
+# 3. Container Apps Environment
+az containerapp env create --name $ACA_ENV --resource-group $RESOURCE_GROUP --location $LOCATION
+
+# 4. Deploy API container app
+az containerapp create `
+  --name dashboard-api `
+  --resource-group $RESOURCE_GROUP `
+  --environment $ACA_ENV `
+  --image "$ACR_NAME.azurecr.io/arm-integration-dashboard-api:latest" `
+  --registry-server "$ACR_NAME.azurecr.io" `
+  --target-port 8080 `
+  --ingress internal `
+  --min-replicas 1 `
+  --env-vars `
+    "ASPNETCORE_ENVIRONMENT=Production" `
+    "ASPNETCORE_HTTP_PORTS=8080" `
+    "ConnectionStrings__EIMDB=secretref:eimdb-connstring" `
+    "ApiKey=secretref:api-key" `
+  --secrets `
+    "eimdb-connstring=<YOUR_CONNECTION_STRING>" `
+    "api-key=<YOUR_API_KEY>"
+
+# 5. Get the internal API URL for the web app
+$API_FQDN = az containerapp show `
+  --name dashboard-api `
+  --resource-group $RESOURCE_GROUP `
+  --query "properties.configuration.ingress.fqdn" -o tsv
+
+# 6. Deploy Web container app
+az containerapp create `
+  --name dashboard-web `
+  --resource-group $RESOURCE_GROUP `
+  --environment $ACA_ENV `
+  --image "$ACR_NAME.azurecr.io/arm-integration-dashboard-web:latest" `
+  --registry-server "$ACR_NAME.azurecr.io" `
+  --target-port 8080 `
+  --ingress external `
+  --min-replicas 1 `
+  --env-vars `
+    "ASPNETCORE_ENVIRONMENT=Production" `
+    "ASPNETCORE_HTTP_PORTS=8080" `
+    "DashboardApi__BaseUrl=https://$API_FQDN" `
+    "DashboardApi__ApiKey=secretref:api-key" `
+  --secrets `
+    "api-key=<YOUR_API_KEY>"

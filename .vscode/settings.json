@@ -1,0 +1,8 @@
+{
+    "azureFunctions.projectSubpath": "ARM.Integration.EIM.Customer",
+    "azureFunctions.deploySubpath": "ARM.Integration.EIM.Customer/bin/Release/net10.0/publish",
+    "azureFunctions.projectLanguage": "C#",
+    "azureFunctions.projectRuntime": "~4",
+    "debug.internalConsoleOptions": "neverOpen",
+    "azureFunctions.preDeployTask": "publish (functions)"
+}

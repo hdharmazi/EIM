@@ -1,0 +1,156 @@
+@model List<ARM.Integration.Dashboard.Web.Models.EnvironmentRecord>
+@{
+    ViewData["Title"] = "Environment Settings";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">⚙️ Environment Settings</h4>
+    <a asp-action="Create" class="btn btn-success btn-sm">+ New Entry</a>
+</div>
+
+<!-- Filter bar -->
+<form method="get" asp-action="Index" class="row g-2 mb-4">
+    <div class="col-auto">
+        <input name="system" type="text" class="form-control form-control-sm"
+               placeholder="Filter by System…" value="@Context.Request.Query["system"]" />
+    </div>
+    <div class="col-auto">
+        <input name="environment" type="text" class="form-control form-control-sm"
+               placeholder="Filter by Environment…" value="@Context.Request.Query["environment"]" />
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+        <a asp-action="Index" class="btn btn-outline-secondary btn-sm ms-1">Clear</a>
+    </div>
+</form>
+
+<!-- Grid -->
+<div class="table-responsive">
+    <table class="table table-hover table-sm align-middle">
+        <thead class="table-dark">
+            <tr>
+                <th>System</th>
+                <th>Environment</th>
+                <th>Value</th>
+                <th style="width:130px"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr>
+                    <td colspan="4" class="text-center text-muted py-4">No environment records found.</td>
+                </tr>
+            }
+            @foreach (var rec in Model)
+            {
+                <tr>
+                    <td><span class="badge bg-secondary">@rec.System</span></td>
+                    <td>@rec.Environment</td>
+                    <td>
+                        <div class="env-value-cell">
+                            <div class="d-flex align-items-start gap-1">
+                                <pre class="env-value-pre mb-0 flex-grow-1"><code class="env-value-masked">••••••••••••••••</code><code class="env-value-raw d-none">@rec.Value</code></pre>
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1 env-reveal-btn" title="Show/Hide value">👁</button>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="text-end">
+                        <a asp-action="Edit"
+                           asp-route-system="@rec.System"
+                           asp-route-environment="@rec.Environment"
+                           class="btn btn-sm btn-outline-primary">Edit</a>
+                        <form asp-action="Delete" method="post" class="d-inline"
+                              onsubmit="return confirm('Delete @rec.System / @rec.Environment?');">
+                            <input type="hidden" name="system" value="@rec.System" />
+                            <input type="hidden" name="environment" value="@rec.Environment" />
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+<small class="text-muted">@Model.Count record(s)</small>
+
+<style>
+    .env-value-cell {
+        position: relative;
+        max-height: 120px;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+    }
+    .env-value-cell.expanded {
+        max-height: none;
+    }
+    .env-value-pre {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 0.4rem 0.6rem;
+        font-size: 0.78rem;
+        white-space: pre-wrap;
+        word-break: break-all;
+        margin: 0;
+    }
+    .env-value-toggle {
+        font-size: 0.72rem;
+        cursor: pointer;
+        color: #0d6efd;
+        margin-top: 2px;
+        display: none;
+    }
+    .env-value-toggle:hover {
+        text-decoration: underline;
+    }
+</style>
+
+@section Scripts {
+<script>
+(function () {
+    document.querySelectorAll('.env-value-cell').forEach(function (cell) {
+        var rawCode = cell.querySelector('.env-value-raw');
+        var maskedCode = cell.querySelector('.env-value-masked');
+        var btn = cell.querySelector('.env-reveal-btn');
+        var raw = rawCode.textContent.trim();
+
+        // Pretty-print JSON in the raw code element
+        try {
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                rawCode.textContent = JSON.stringify(parsed, null, 2);
+            }
+        } catch (_) {}
+
+        // Toggle reveal
+        btn.addEventListener('click', function () {
+            var isHidden = rawCode.classList.contains('d-none');
+            rawCode.classList.toggle('d-none', !isHidden);
+            maskedCode.classList.toggle('d-none', isHidden);
+            btn.textContent = isHidden ? '🙈' : '👁';
+            btn.title = isHidden ? 'Hide value' : 'Show value';
+
+            // Re-check overflow toggle after reveal
+            requestAnimationFrame(function () {
+                var toggle = cell.parentElement.querySelector('.env-value-toggle');
+                if (toggle) {
+                    toggle.style.display = cell.scrollHeight > cell.clientHeight + 4 ? 'block' : 'none';
+                }
+            });
+        });
+
+        // Add expand/collapse toggle if content overflows
+        var toggle = document.createElement('div');
+        toggle.className = 'env-value-toggle';
+        toggle.textContent = '▼ Show more';
+        cell.parentElement.appendChild(toggle);
+
+        toggle.addEventListener('click', function () {
+            var expanded = cell.classList.toggle('expanded');
+            toggle.textContent = expanded ? '▲ Show less' : '▼ Show more';
+        });
+    });
+})();
+</script>
+}

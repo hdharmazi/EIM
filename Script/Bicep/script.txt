@@ -1,0 +1,14 @@
+az login az account set --subscription <your-subscription-id>
+
+-- Add quewue 
+az deployment group create  --resource-group d365fsc-integration-nonprod --template-file ARM.Integration.EIM\bicep\main-addqueue.bicep
+ 
+-- Add 
+
+az deployment group create --resource-group d365fsc-integration-nonprod --template-file Script\Bicep\main-keyvault.bicep --parameters asbConnectionString="Endpoint=sb://asb-eim-wtc-nonprod.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=4gzdDB8HYmPSui549y8z+o+zHtFySmtM9+ASbLQswiw="
+
+# Get your Azure AD Object ID
+az ad signed-in-user show --query id -o tsv
+
+# Grant yourself Key Vault Administrator role
+az role assignment create --role "Key Vault Administrator" --assignee 0a65cc45-489b-479a-acb4-2a5487a27016 --scope /subscriptions/84abae0f-07f1-4df8-aacd-197d2e7f1cac/resourceGroups/d365fsc-integration-nonprod/providers/Microsoft.KeyVault/vaults/kv-d365fsc-wtc-nonprod2

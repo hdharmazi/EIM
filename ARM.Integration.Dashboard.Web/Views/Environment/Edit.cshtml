@@ -1,0 +1,257 @@
+@model ARM.Integration.Dashboard.Web.Models.EnvironmentRecord
+@{
+    ViewData["Title"] = "Edit Environment Setting";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">✏️ Edit Environment Setting</h4>
+    <a asp-action="Index" class="btn btn-outline-secondary btn-sm">← Back to list</a>
+</div>
+
+<div class="card" style="max-width: 640px;">
+    <div class="card-header fw-semibold">@Model.System / @Model.Environment</div>
+    <div class="card-body">
+        <form asp-action="Edit"
+              asp-route-system="@Model.System"
+              asp-route-environment="@Model.Environment"
+              method="post">
+            <div asp-validation-summary="ModelOnly" class="alert alert-danger d-none"></div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">System</label>
+                <input asp-for="System" class="form-control" readonly />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Environment</label>
+                <input asp-for="Environment" class="form-control" readonly />
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-semibold">Value</label>
+
+                <!-- Hidden field that gets submitted -->
+                <input type="hidden" asp-for="Value" id="hiddenValue" />
+
+                <!-- JSON dynamic editor (shown when value is valid JSON) -->
+                <div id="jsonEditor" class="d-none">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <small class="text-muted">JSON fields detected — edit individual values below</small>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnSwitchRaw">Switch to raw</button>
+                    </div>
+                    <div style="position:relative;">
+                        <div id="resizer-name" class="col-resizer-handle"></div>
+                        <div id="resizer-value" class="col-resizer-handle"></div>
+                        <table class="table table-bordered table-sm align-middle mb-2" id="jsonTable" style="table-layout:fixed;width:100%;">
+                            <colgroup>
+                                <col id="col-name" style="width:35%" />
+                                <col id="col-value" />
+                                <col style="width:2rem" />
+                            </colgroup>
+                            <thead class="table-dark">
+                                <tr>
+                                    <th id="th-name">Name</th>
+                                    <th id="th-value">Value</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="jsonRows"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="btnAddRow">+ Add field</button>
+                </div>
+
+                <!-- Raw textarea (shown when value is plain text or user switches) -->
+                <div id="rawEditor">
+                    <div class="d-flex justify-content-end mb-1" id="switchJsonWrap" style="display:none!important">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnSwitchJson">Switch to JSON editor</button>
+                    </div>
+                    <textarea id="rawValue" class="form-control font-monospace" rows="4">@Model.Value</textarea>
+                </div>
+
+                <span asp-validation-for="Value" class="text-danger small"></span>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary" id="btnSave">Save Changes</button>
+                <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .col-resizer-handle {
+        position: absolute;
+        top: 0;
+        width: 8px;
+        height: 37px; /* matches thead row height */
+        cursor: col-resize;
+        z-index: 10;
+        background: transparent;
+        border-right: 2px solid rgba(255,255,255,0.5);
+        box-sizing: border-box;
+    }
+    .col-resizer-handle:hover,
+    .col-resizer-handle.resizing {
+        background: rgba(255,255,255,0.25);
+        border-right-color: #fff;
+    }
+</style>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+    (function () {
+        const hiddenValue   = document.getElementById('hiddenValue');
+        const jsonEditor    = document.getElementById('jsonEditor');
+        const rawEditor     = document.getElementById('rawEditor');
+        const jsonRows      = document.getElementById('jsonRows');
+        const rawTextarea   = document.getElementById('rawValue');
+        const btnSwitchRaw  = document.getElementById('btnSwitchRaw');
+        const btnSwitchJson = document.getElementById('btnSwitchJson');
+        const btnAddRow     = document.getElementById('btnAddRow');
+        const switchJsonWrap = document.getElementById('switchJsonWrap');
+        const form          = document.querySelector('form');
+
+        let isJsonMode = false;
+
+        function tryParseJson(val) {
+            try {
+                const parsed = JSON.parse(val);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+            } catch (_) {}
+            return null;
+        }
+
+        function buildRow(key, val) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><input type="text" class="form-control form-control-sm json-key" value="${escHtml(key)}" /></td>
+                <td><input type="text" class="form-control form-control-sm json-val" value="${escHtml(val)}" /></td>
+                <td><button type="button" class="btn btn-outline-danger btn-sm py-0 px-1 btn-remove-row" title="Remove">✕</button></td>`;
+            tr.querySelector('.btn-remove-row').addEventListener('click', () => tr.remove());
+            return tr;
+        }
+
+        function escHtml(str) {
+            return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        let resizersInited = false;
+        function showJsonEditor(obj) {
+            isJsonMode = true;
+            jsonRows.innerHTML = '';
+            Object.entries(obj).forEach(([k, v]) => jsonRows.appendChild(buildRow(k, v)));
+            jsonEditor.classList.remove('d-none');
+            rawEditor.classList.add('d-none');
+            switchJsonWrap.style.removeProperty('display');
+            if (!resizersInited) { initResizers(); resizersInited = true; }
+        }
+
+        function showRawEditor() {
+            isJsonMode = false;
+            jsonEditor.classList.add('d-none');
+            rawEditor.classList.remove('d-none');
+            // show "switch to json" button only if current raw text is valid JSON
+            if (tryParseJson(rawTextarea.value)) {
+                switchJsonWrap.style.removeProperty('display');
+                switchJsonWrap.style.display = '';
+            }
+        }
+
+        function collectJson() {
+            const result = {};
+            jsonRows.querySelectorAll('tr').forEach(tr => {
+                const k = tr.querySelector('.json-key').value.trim();
+                const v = tr.querySelector('.json-val').value;
+                if (k) result[k] = v;
+            });
+            return JSON.stringify(result);
+        }
+
+        // Init: try to parse existing value
+        const initial = tryParseJson(rawTextarea.value.trim());
+        if (initial) {
+            showJsonEditor(initial);
+        } else {
+            showRawEditor();
+        }
+
+        // Switch to raw
+        btnSwitchRaw.addEventListener('click', function () {
+            rawTextarea.value = collectJson();
+            showRawEditor();
+        });
+
+        // Switch to JSON editor
+        btnSwitchJson.addEventListener('click', function () {
+            const obj = tryParseJson(rawTextarea.value.trim());
+            if (obj) showJsonEditor(obj);
+        });
+
+        // Add row
+        btnAddRow.addEventListener('click', function () {
+            jsonRows.appendChild(buildRow('', ''));
+        });
+
+        // Before submit: sync hidden field
+        form.addEventListener('submit', function () {
+            hiddenValue.value = isJsonMode ? collectJson() : rawTextarea.value;
+        });
+
+        // Resizable columns — runs after the table becomes visible
+        function initResizers() {
+            const table     = document.getElementById('jsonTable');
+            const colName   = document.getElementById('col-name');
+            const colValue  = document.getElementById('col-value');
+            const thName    = document.getElementById('th-name');
+            const rName     = document.getElementById('resizer-name');
+            const rValue    = document.getElementById('resizer-value');
+
+            function positionHandles() {
+                const nameW = thName.offsetWidth;
+                // place name-resizer at right edge of Name column
+                rName.style.left  = (nameW - 4) + 'px';
+                // place value-resizer at right edge of Value column (nameW + valueW - 4)
+                const valueW = document.getElementById('th-value').offsetWidth;
+                rValue.style.left = (nameW + valueW - 4) + 'px';
+            }
+
+            function makeResizable(handle, col, getOtherCol) {
+                let startX, startW;
+                handle.addEventListener('mousedown', function (e) {
+                    startX = e.pageX;
+                    startW = col.offsetWidth;          // <col> offsetWidth not reliable; use th
+                    startW = handle === rName
+                        ? document.getElementById('th-name').offsetWidth
+                        : document.getElementById('th-value').offsetWidth;
+                    handle.classList.add('resizing');
+                    document.body.style.cursor = 'col-resize';
+                    document.body.style.userSelect = 'none';
+
+                    function onMove(e) {
+                        const newW = Math.max(60, startW + e.pageX - startX);
+                        col.style.width = newW + 'px';
+                        positionHandles();
+                    }
+                    function onUp() {
+                        handle.classList.remove('resizing');
+                        document.body.style.cursor = '';
+                        document.body.style.userSelect = '';
+                        document.removeEventListener('mousemove', onMove);
+                        document.removeEventListener('mouseup', onUp);
+                    }
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                    e.preventDefault();
+                });
+            }
+
+            makeResizable(rName, colName);
+            makeResizable(rValue, colValue);
+            positionHandles();
+        }
+    })();
+    </script>
+}

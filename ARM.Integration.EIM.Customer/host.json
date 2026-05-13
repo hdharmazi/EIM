@@ -1,0 +1,20 @@
+{
+  "version": "2.0",
+  "functionTimeout": "00:10:00",
+  "extensions": {
+    "serviceBus": {
+      "prefetchCount": 0,
+      "maxConcurrentCalls": 1,
+      "autoCompleteMessages": false
+    }
+  },
+  "logging": {
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "excludedTypes": "Request"
+      },
+      "enableLiveMetricsFilters": true
+    }
+  }
+}

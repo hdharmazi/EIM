@@ -1,0 +1,1621 @@
+{
+  "version": "1.0.0",
+  "producer": ".NET AppCAT CLI",
+  "metadata": {
+    "analysisStartTime": "2026-04-13T19:55:20.973073Z",
+    "analysisEndTime": "2026-04-13T19:55:39.491305Z",
+    "privacyMode": "Protected",
+    "privacyModeHelpUrl": "https://go.microsoft.com/fwlink/?linkid=2271074",
+    "targetIds": [
+      "AppService.Windows",
+      "AppService.Linux",
+      "AKS.Linux",
+      "AKS.Windows",
+      "ACA",
+      "AppServiceContainer.Linux",
+      "AppServiceContainer.Windows",
+      "AppServiceManagedInstance.Windows"
+    ],
+    "targetDisplayNames": [
+      "Azure App Service",
+      "Azure Kubernetes Service",
+      "Azure Container Apps",
+      "Azure App Service Container",
+      "Azure App Service Managed Instance"
+    ],
+    "os": [
+      "windows",
+      "linux"
+    ]
+  },
+  "summary": {
+    "totalProjects": 6,
+    "totalIssues": 5,
+    "totalIncidents": 31,
+    "totalEffort": 51,
+    "charts": {
+      "severity": {
+        "mandatory": 0,
+        "optional": 25,
+        "potential": 6,
+        "information": 0
+      },
+      "category": {
+        "HTTP": 5,
+        "Perf": 21,
+        "Security": 3,
+        "Scale": 1,
+        "Connection": 1
+      }
+    }
+  },
+  "projects": [
+    {
+      "path": "ARM.Integration.Core\\ARM.Integration.Core.csproj",
+      "issues": 3,
+      "storyPoints": 43,
+      "properties": {
+        "appName": "ARM.Integration.Core",
+        "frameworks": [
+          "net10.0"
+        ],
+        "languages": [
+          "C#"
+        ],
+        "tools": [
+          "MSBuild"
+        ]
+      },
+      "incidents": [
+        {
+          "ruleId": "HTTP.0001",
+          "incidentId": "a723a9b5-5496-45e9-9db6-2467e3f4f71c",
+          "location": "ARM.Integration.Core\\Helpers\\APIHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Net.Http.HttpClient",
+          "line": 12,
+          "column": 32,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppService.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AKS.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AKS.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "ACA": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "potential",
+              "effort": 3
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "HTTP.0001",
+          "incidentId": "29f41c74-523a-4f19-a6b8-7d05b9209190",
+          "location": "ARM.Integration.Core\\Helpers\\APIHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Net.Http.HttpClient",
+          "line": 12,
+          "column": 61,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppService.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AKS.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AKS.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "ACA": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "potential",
+              "effort": 3
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "a99813e8-303e-4147-91a0-4f9c46f88425",
+          "location": "ARM.Integration.Core\\Helpers\\APIHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter\u00601.GetResult",
+          "line": 58,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "55c2b091-aac1-4c28-ac88-04062c16416e",
+          "location": "ARM.Integration.Core\\Helpers\\APIHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter\u00601.GetResult",
+          "line": 82,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "c1625268-465f-4b10-bb4a-90d902a412f8",
+          "location": "ARM.Integration.Core\\Helpers\\APIHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter\u00601.GetResult",
+          "line": 35,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "HTTP.0001",
+          "incidentId": "333b96fd-e0fb-4d13-b3ab-45c7207d4c32",
+          "location": "ARM.Integration.Core\\Helpers\\D365FSCHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Net.Http.HttpClient",
+          "line": 60,
+          "column": 26,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppService.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AKS.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AKS.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "ACA": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "potential",
+              "effort": 3
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "HTTP.0001",
+          "incidentId": "e217e17a-8fa9-4874-989e-aae88df4fec2",
+          "location": "ARM.Integration.Core\\Helpers\\D365FSCHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Net.Http.HttpClient",
+          "line": 21,
+          "column": 25,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppService.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AKS.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AKS.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "ACA": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "potential",
+              "effort": 3
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "HTTP.0001",
+          "incidentId": "c24ff912-c4f2-4587-bc5b-02ed4ddb7118",
+          "location": "ARM.Integration.Core\\Helpers\\D365FSCHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Net.Http.HttpClient",
+          "line": 41,
+          "column": 29,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppService.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AKS.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AKS.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "ACA": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "potential",
+              "effort": 3
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "22ae016f-6f4e-4abf-bd02-5bd127453bdf",
+          "location": "ARM.Integration.Core\\Helpers\\D365FSCHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter\u00601.GetResult",
+          "line": 191,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "d1e80e60-c165-4214-aa3d-f889a03630d7",
+          "location": "ARM.Integration.Core\\Helpers\\D365FSCHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter\u00601.GetResult",
+          "line": 121,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "fcf4a095-7628-4683-82d8-5eded53f0f0a",
+          "location": "ARM.Integration.Core\\Helpers\\D365FSCHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter\u00601.GetResult",
+          "line": 389,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "4c473975-ce3a-4aa9-8383-c9379d2b1759",
+          "location": "ARM.Integration.Core\\Helpers\\D365FSCHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter\u00601.GetResult",
+          "line": 299,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "950dc638-3d70-494c-b2a9-60a50b24c115",
+          "location": "ARM.Integration.Core\\Helpers\\D365FSCHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter\u00601.GetResult",
+          "line": 347,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "1342a98b-a191-48ae-bac5-4cfbccfeef3d",
+          "location": "ARM.Integration.Core\\Helpers\\D365FSCHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter\u00601.GetResult",
+          "line": 265,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "d1d11dc7-4a8c-4a35-9a34-f847b3bb6ad8",
+          "location": "ARM.Integration.Core\\Helpers\\D365FSCHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter\u00601.GetResult",
+          "line": 152,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "f0b60273-6af8-4357-96d1-a264a133a619",
+          "location": "ARM.Integration.Core\\Helpers\\D365FSCHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter\u00601.GetResult",
+          "line": 231,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Security.0003",
+          "incidentId": "e1e8aeb4-2cd9-47e3-9cdf-9d9dc4332795",
+          "location": "ARM.Integration.Core\\Helpers\\D365FSCHelper.cs",
+          "locationKind": "File",
+          "snippet": "secret",
+          "line": 73,
+          "column": 57,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "mandatory",
+              "effort": 3
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Security.0003",
+          "incidentId": "29ccd8eb-f094-40fb-b09b-76711be2ed4f",
+          "location": "ARM.Integration.Core\\Helpers\\IronCladHelper.cs",
+          "locationKind": "File",
+          "snippet": "secret",
+          "line": 22,
+          "column": 50,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "mandatory",
+              "effort": 3
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "a3ccc60b-9397-409a-9a0a-9d8797bd4c90",
+          "location": "ARM.Integration.Core\\Helpers\\OAuthHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter\u00601.GetResult",
+          "line": 50,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "82f412a4-7d3d-4ead-87e4-d590ff8fca2d",
+          "location": "ARM.Integration.Core\\Helpers\\OAuthHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter\u00601.GetResult",
+          "line": 57,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Security.0003",
+          "incidentId": "3a81f198-8114-429c-a10b-34bbc7385d99",
+          "location": "ARM.Integration.Core\\Helpers\\OAuthHelper.cs",
+          "locationKind": "File",
+          "snippet": "secret",
+          "line": 20,
+          "column": 65,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "mandatory",
+              "effort": 3
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "96370a1e-c680-4ff3-8a84-aee825742acb",
+          "location": "ARM.Integration.Core\\Helpers\\PostgresHelper.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter.GetResult",
+          "line": 64,
+          "column": 15,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "1dcf7dbb-e2ff-4b7c-ab80-6ea6e6ab4121",
+          "location": "ARM.Integration.Core\\Helpers\\SQLHelper.cs",
+          "locationKind": "File",
+          "snippet": "Microsoft.Data.SqlClient.SqlCommand.ExecuteNonQuery",
+          "line": 20,
+          "column": 27,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "65f01c0a-a67f-4a5d-9cb8-e4aa95569acd",
+          "location": "ARM.Integration.Core\\Helpers\\SQLHelper.cs",
+          "locationKind": "File",
+          "snippet": "Microsoft.Data.SqlClient.SqlCommand.ExecuteScalar",
+          "line": 37,
+          "column": 27,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "528bea55-4812-4ecd-9eb3-abcda0fc4ad3",
+          "location": "ARM.Integration.Core\\Helpers\\SQLHelper.cs",
+          "locationKind": "File",
+          "snippet": "Microsoft.Data.SqlClient.SqlCommand.ExecuteReader",
+          "line": 57,
+          "column": 39,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "9d8a322f-20a1-414a-8f62-541089bddf31",
+          "location": "ARM.Integration.Core\\Helpers\\SQLServerHelper.cs",
+          "locationKind": "File",
+          "snippet": "Microsoft.Data.SqlClient.SqlCommand.ExecuteNonQuery",
+          "line": 62,
+          "column": 23,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "4131fc27-f368-443e-af57-895d005242c3",
+          "location": "ARM.Integration.Core\\Helpers\\SQLServerHelper.cs",
+          "locationKind": "File",
+          "snippet": "Microsoft.Data.SqlClient.SqlCommand.ExecuteReader",
+          "line": 32,
+          "column": 35,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        }
+      ]
+    },
+    {
+      "path": "ARM.Integration.Dashboard.Web\\ARM.Integration.Dashboard.Web.csproj",
+      "issues": 2,
+      "storyPoints": 6,
+      "properties": {
+        "appName": "ARM.Integration.Dashboard.Web",
+        "frameworks": [
+          "net10.0"
+        ],
+        "languages": [
+          "C#"
+        ],
+        "tools": [
+          "MSBuild"
+        ]
+      },
+      "incidents": [
+        {
+          "ruleId": "Scale.0001",
+          "incidentId": "d41fe6aa-f1f2-4e44-a0c2-24ef101e1586",
+          "location": "ARM.Integration.Dashboard.Web\\ARM.Integration.Dashboard.Web.csproj",
+          "locationKind": "File",
+          "snippet": "Found 35 files matching the rule:\r\n\r\nwwwroot\\css\\site.css\r\nwwwroot\\favicon.ico\r\nwwwroot\\js\\site.js\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap-grid.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap-grid.min.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap-grid.rtl.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap-grid.rtl.min.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap-reboot.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap-reboot.min.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap-reboot.rtl.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap-reboot.rtl.min.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap-utilities.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap-utilities.min.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap-utilities.rtl.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap-utilities.rtl.min.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap.min.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap.rtl.css\r\nwwwroot\\lib\\bootstrap\\dist\\css\\bootstrap.rtl.min.css\r\nwwwroot\\lib\\bootstrap\\dist\\js\\bootstrap.bundle.js\r\nwwwroot\\lib\\bootstrap\\dist\\js\\bootstrap.bundle.min.js\r\nwwwroot\\lib\\bootstrap\\dist\\js\\bootstrap.esm.js\r\nwwwroot\\lib\\bootstrap\\dist\\js\\bootstrap.esm.min.js\r\nwwwroot\\lib\\bootstrap\\dist\\js\\bootstrap.js\r\nwwwroot\\lib\\bootstrap\\dist\\js\\bootstrap.min.js\r\nwwwroot\\lib\\jquery-validation-unobtrusive\\dist\\jquery.validate.unobtrusive.js\r\nwwwroot\\lib\\jquery-validation-unobtrusive\\dist\\jquery.validate.unobtrusive.min.js\r\nwwwroot\\lib\\jquery-validation\\dist\\additional-methods.js\r\nwwwroot\\lib\\jquery-validation\\dist\\additional-methods.min.js\r\nwwwroot\\lib\\jquery-validation\\dist\\jquery.validate.js\r\nwwwroot\\lib\\jquery-validation\\dist\\jquery.validate.min.js\r\nwwwroot\\lib\\jquery\\dist\\jquery.js\r\nwwwroot\\lib\\jquery\\dist\\jquery.min.js\r\nwwwroot\\lib\\jquery\\dist\\jquery.slim.js\r\nwwwroot\\lib\\jquery\\dist\\jquery.slim.min.js\r\n",
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 3
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 3
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Connection.0001",
+          "incidentId": "605c3168-cc80-4f3f-9894-00d5cbd6c28c",
+          "location": "ARM.Integration.Dashboard.Web\\appsettings.json",
+          "locationKind": "File",
+          "snippet": "EIMDB",
+          "targets": {
+            "AppService.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppService.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AKS.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AKS.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "ACA": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "potential",
+              "effort": 3
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "potential",
+              "effort": 3
+            }
+          },
+          "labels": []
+        }
+      ]
+    },
+    {
+      "path": "ARM.Integration.EIM.API\\ARM.Integration.EIM.API.csproj",
+      "issues": 0,
+      "storyPoints": 0,
+      "properties": {
+        "appName": "ARM.Integration.EIM.API",
+        "frameworks": [
+          "net10.0"
+        ],
+        "languages": [
+          "C#"
+        ],
+        "tools": [
+          "MSBuild"
+        ]
+      },
+      "incidents": []
+    },
+    {
+      "path": "ARM.Integration.EIM\\ARM.Integration.EIM.csproj",
+      "issues": 0,
+      "storyPoints": 0,
+      "properties": {
+        "appName": "ARM.Integration.EIM",
+        "frameworks": [
+          "net10.0"
+        ],
+        "languages": [
+          "C#"
+        ],
+        "tools": [
+          "MSBuild"
+        ]
+      },
+      "incidents": []
+    },
+    {
+      "path": "ARM.Integration.EIM.Customer\\ARM.Integration.EIM.Customer.csproj",
+      "issues": 0,
+      "storyPoints": 0,
+      "properties": {
+        "appName": "ARM.Integration.EIM.Customer",
+        "frameworks": [
+          "net10.0"
+        ],
+        "languages": [
+          "C#"
+        ],
+        "tools": [
+          "MSBuild"
+        ]
+      },
+      "incidents": []
+    },
+    {
+      "path": "ARM.Integration.Test\\ARM.Integration.Test.csproj",
+      "issues": 1,
+      "storyPoints": 2,
+      "properties": {
+        "appName": "ARM.Integration.Test",
+        "frameworks": [
+          "net10.0"
+        ],
+        "languages": [
+          "C#"
+        ],
+        "tools": [
+          "MSBuild"
+        ]
+      },
+      "incidents": [
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "1249c716-aef9-46e1-9a74-1aa0e1b79956",
+          "location": "ARM.Integration.Test\\Program.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter.GetResult",
+          "line": 34,
+          "column": 12,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        },
+        {
+          "ruleId": "Perf.0001",
+          "incidentId": "28bd349d-d963-4fa3-9941-480a629caeaa",
+          "location": "ARM.Integration.Test\\Program.cs",
+          "locationKind": "File",
+          "snippet": "System.Runtime.CompilerServices.TaskAwaiter.GetResult",
+          "line": 58,
+          "column": 12,
+          "targets": {
+            "AppService.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppService.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AKS.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "ACA": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Linux": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceContainer.Windows": {
+              "severity": "optional",
+              "effort": 1
+            },
+            "AppServiceManagedInstance.Windows": {
+              "severity": "optional",
+              "effort": 1
+            }
+          },
+          "labels": []
+        }
+      ]
+    }
+  ],
+  "rules": {
+    "HTTP.0001": {
+      "id": "HTTP.0001",
+      "description": "Your application is trying to reach external resources via HTTP protocol.\n\nFor Managed Instance on App Service, secure connectivity to internal/on-prem HTTP services is managed via plan-level VNet integration and private endpoints. Keep inbound traffic restricted to 80/443; capture any required HTTP config in install scripts. Use Bastion JIT RDP only for diagnostics\u2014persist all changes via install scripts. Outbound traffic does not impose similar restrictions.\n\nWhile if targeting other Azure compute services, ensure the resources it is trying to reach are accessible from the Azure environment. If those HTTP requests are sent to internal services or services hosted on-prem, you probably will need to migrate those services to Azure as well.\n\nAlso, keep in mind that Azure App Service supports port 80 for HTTP and port 443 for HTTPS traffic. If you are using any other ports, you need to update them before moving to Azure.",
+      "title": "Access to external resources via HTTP is detected",
+      "severity": "potential",
+      "effort": 3,
+      "links": [
+        {
+          "title": "[Managed Instance] Bastion JIT RDP",
+          "url": "https://go.microsoft.com/fwlink/?linkid=2346953"
+        },
+        {
+          "title": "[Managed Instance] Install scripts",
+          "url": "https://go.microsoft.com/fwlink/?linkid=2347059"
+        },
+        {
+          "title": "Azure App Service networking features",
+          "url": "https://go.microsoft.com/fwlink/?LinkID=2243264"
+        }
+      ],
+      "labels": []
+    },
+    "Perf.0001": {
+      "id": "Perf.0001",
+      "description": "Synchronous API usage detected.\n\nUsing synchronous APIs can lead to more performance issues in Azure compared to on-premises environments due to different latency profiles. Consider adopting asynchronous code patterns.\n\nIn heavily loaded systems, especially where the I/O is substantial, using asynchronous patterns can improve overall throughput and performance. Asynchronous APIs enable a small pool of threads to manage thousands of concurrent requests without waiting on blocking calls. Instead of waiting for a long-running synchronous task to finish, the thread can handle another request. Conversely, numerous synchronous blocking calls can cause thread pool starvation and degrade response times.\n\nRefer to the links below to learn more about asynchronous programming.",
+      "title": "Synchronous API usage detected",
+      "severity": "optional",
+      "effort": 1,
+      "links": [
+        {
+          "title": "Asynchronous programming",
+          "url": "https://go.microsoft.com/fwlink/?linkid=2294824"
+        },
+        {
+          "title": "ASP.NET Core Best Practices: avoid blocking calls",
+          "url": "https://go.microsoft.com/fwlink/?linkid=2294727"
+        }
+      ],
+      "labels": []
+    },
+    "Security.0003": {
+      "id": "Security.0003",
+      "description": "Hardcoded sensitive data detected.\n\nIf you are targeting Managed Instance on Azure App Service, externalize secrets to Key Vault/App Configuration; use managed identity instead of passwords or embedded connection strings.\n\nWhile if targeting other Azure compute services:\n\nAvoid placing sensitive data such as passwords, ids, tokens etc., directly in config files and code since it compromises the security of your application.\n\nUse Azure App Configuration or Azure KeyVault to store secrets.",
+      "title": "Hardcoded sensitive data detected",
+      "severity": "optional",
+      "effort": 3,
+      "links": [
+        {
+          "title": "Centralized app configuration and security",
+          "url": "https://go.microsoft.com/fwlink/?LinkID=2250733"
+        }
+      ],
+      "labels": []
+    },
+    "Scale.0001": {
+      "id": "Scale.0001",
+      "description": "Static content detected.\n\nYour current approach of serving static content directly might lead to increased costs, performance issues, maintenance challenges (requiring application redeployment for content changes), and security risks.\n\nConsider moving static content to Azure Blob Storage and adding Azure CDN.",
+      "title": "Static content detected",
+      "severity": "optional",
+      "effort": 3,
+      "links": [
+        {
+          "title": "Azure Blob Storage",
+          "url": "https://go.microsoft.com/fwlink/?linkid=2250574"
+        },
+        {
+          "title": "Azure CDN",
+          "url": "https://go.microsoft.com/fwlink/?linkid=2250392"
+        }
+      ],
+      "labels": []
+    },
+    "Connection.0001": {
+      "id": "Connection.0001",
+      "description": "Connection string detected. It may not be available when your app is migrated to Azure.\n\nReview and ensure it works from Azure. If you are connecting to a database, you might need to migrate the database to Azure. There are multiple ways to do it:\n    1. Migrate to Azure SQL Database for additional benefits (see the link below).\n    2. Consider Azure SQL Managed Instance if you need features that are not available in Azure SQL Database and you don\u2019t want to use a VM.\n    3. Migrate your database servers directly to SQL Server on Azure VMs.\n\nTo assess database migration effort, you can use Azure Migrate tool, see the link below.",
+      "title": "Connection string is detected",
+      "severity": "potential",
+      "effort": 3,
+      "links": [
+        {
+          "title": "Migrate SQL Server database to Azure",
+          "url": "https://go.microsoft.com/fwlink/?LinkID=2251731"
+        },
+        {
+          "title": "Azure SQL Managed Instance",
+          "url": "https://go.microsoft.com/fwlink/?LinkID=2251613"
+        },
+        {
+          "title": "Azure Migrate",
+          "url": "https://go.microsoft.com/fwlink/?linkid=2252410"
+        }
+      ],
+      "labels": []
+    }
+  }
+}

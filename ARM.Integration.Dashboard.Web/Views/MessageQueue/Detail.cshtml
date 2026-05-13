@@ -1,0 +1,228 @@
+@model ARM.Integration.Dashboard.Web.Models.MessageDetailViewModel
+@{
+    ViewData["Title"] = $"Message #{Model.Message.Id}";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">
+        Message #@Model.Message.Id &nbsp;
+        <span class="@Model.Message.StatusBadgeClass fs-6">@Model.Message.StatusLabel</span>
+    </h4>
+    <div class="d-flex gap-2">
+        <form asp-action="Reprocess" method="post" class="d-inline"
+              onsubmit="return confirm('Reprocess message #@Model.Message.Id?');">
+            <input type="hidden" name="id" value="@Model.Message.Id" />
+            <button type="submit" class="btn btn-warning btn-sm">🔄 Reprocess</button>
+        </form>
+        <a asp-action="Index" class="btn btn-outline-secondary btn-sm">← Back to list</a>
+    </div>
+</div>
+
+@if (TempData["ReprocessMessage"] is string reprocessMsg)
+{
+    var success = TempData["ReprocessSuccess"] is true;
+    <div class="alert @(success ? "alert-success" : "alert-danger") alert-dismissible fade show" role="alert">
+        <strong>@(success ? "✅ Reprocess succeeded" : "❌ Reprocess failed"):</strong> @reprocessMsg
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+}
+
+<!-- Metadata -->
+<div class="card mb-4">
+    <div class="card-header fw-semibold">Message Details</div>
+    <div class="card-body">
+        <dl class="row mb-0">
+            <dt class="col-sm-3">Type</dt>
+            <dd class="col-sm-9">@Model.Message.Type</dd>
+
+            <dt class="col-sm-3">Source</dt>
+            <dd class="col-sm-9">@Model.Message.SourceSystem / @Model.Message.SourceEntity</dd>
+
+            <dt class="col-sm-3">Destination</dt>
+            <dd class="col-sm-9">@Model.Message.DestinationSystem / @Model.Message.DestinationEntity</dd>
+
+            <dt class="col-sm-3">Source ID</dt>
+            <dd class="col-sm-9"><code>@Model.Message.SourceId</code></dd>
+
+            <dt class="col-sm-3">Queue</dt>
+            <dd class="col-sm-9">@Model.Message.Queue</dd>
+
+            <dt class="col-sm-3">Response Queue</dt>
+            <dd class="col-sm-9">@Model.Message.ResponseQueue</dd>
+
+            <dt class="col-sm-3">Environment</dt>
+            <dd class="col-sm-9">@Model.Message.Environment</dd>
+
+            <dt class="col-sm-3">Created</dt>
+            <dd class="col-sm-9">@Model.Message.CreatedAt?.ToString("yyyy-MM-dd HH:mm:ss")</dd>
+
+            <dt class="col-sm-3">Modified</dt>
+            <dd class="col-sm-9">@Model.Message.ModifiedDateTime?.ToString("yyyy-MM-dd HH:mm:ss")</dd>
+        </dl>
+    </div>
+</div>
+
+<!-- Error Log -->
+@if (Model.Message.HasError)
+{
+    <div class="card border-danger mb-4">
+        <div class="card-header bg-danger text-white fw-semibold">❌ Error Log</div>
+        <div class="card-body bg-light">
+            <pre class="mb-0" style="white-space: pre-wrap; font-size: 0.85rem;">@Model.Message.MessageLog</pre>
+        </div>
+    </div>
+}
+else if (!string.IsNullOrWhiteSpace(Model.Message.MessageLog))
+{
+    <div class="card border-success mb-4">
+        <div class="card-header bg-success text-white fw-semibold">✅ Message Log</div>
+        <div class="card-body bg-light">
+            <pre class="mb-0" style="white-space: pre-wrap; font-size: 0.85rem;">@Model.Message.MessageLog</pre>
+        </div>
+    </div>
+}
+
+<!-- Payload -->
+<div class="card mb-4">
+    <div class="card-header fw-semibold d-flex justify-content-between">
+        <span>Payload</span>
+        <div class="d-flex gap-2">
+            <button id="btnCopy" class="btn btn-sm btn-outline-secondary"
+                    onclick="navigator.clipboard.writeText(document.getElementById('payloadRaw').value)">
+                Copy
+            </button>
+            <button id="btnEdit" class="btn btn-sm btn-outline-primary" onclick="togglePayloadEdit(true)">
+                ✏️ Edit
+            </button>
+        </div>
+    </div>
+    <div class="card-body bg-light">
+        <pre id="payload" class="mb-0 json-pretty" style="white-space: pre-wrap; font-size: 0.8rem;">@Model.Message.Payload</pre>
+        <textarea id="payloadRaw" class="d-none">@Model.Message.Payload</textarea>
+        <form id="payloadEditForm" asp-action="UpdatePayload" method="post" class="d-none">
+            <input type="hidden" name="id" value="@Model.Message.Id" />
+            <textarea id="payloadEditor" name="payload" class="form-control font-monospace" rows="16"
+                      style="font-size: 0.8rem; white-space: pre; tab-size: 2;"></textarea>
+            <div class="mt-2 d-flex gap-2">
+                <button type="submit" class="btn btn-sm btn-success">💾 Save</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="togglePayloadEdit(false)">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Log Details -->
+@if (Model.LogDetails.Count > 0)
+{
+    <div class="card mb-4">
+        <div class="card-header fw-semibold">
+            📋 Processing Steps
+            <span class="badge bg-secondary ms-2">@Model.LogDetails.Count</span>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-sm table-striped mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 50px;">#</th>
+                        <th style="width: 200px;">Name</th>
+                        <th>Detail</th>
+                        <th style="width: 180px;">Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ var step = 0; }
+                    @foreach (var log in Model.LogDetails)
+                    {
+                        step++;
+                        var isError = log.Name.Equals("Error", StringComparison.OrdinalIgnoreCase)
+                                   || (log.Detail?.StartsWith("FAILED", StringComparison.OrdinalIgnoreCase) ?? false);
+                        <tr class="@(isError ? "table-danger" : "")">
+                            <td class="text-muted">@step</td>
+                            <td><strong>@log.Name</strong></td>
+                            <td style="font-size: 0.85rem;">
+                                @if (!string.IsNullOrWhiteSpace(log.Detail))
+                                {
+                                    <code style="white-space: pre-wrap;">@log.Detail</code>
+                                }
+                            </td>
+                            <td class="text-muted" style="font-size: 0.8rem;">@log.CreatedDateTime.ToString("yyyy-MM-dd HH:mm:ss.fff")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<style>
+    .json-pretty .json-key { color: #881391; font-weight: 600; }
+    .json-pretty .json-string { color: #0b7e3d; }
+    .json-pretty .json-number { color: #1a5fb4; }
+    .json-pretty .json-bool { color: #c64600; font-weight: 600; }
+    .json-pretty .json-null { color: #6c757d; font-style: italic; }
+</style>
+
+@section Scripts {
+<script>
+(function () {
+    function highlightJson(jsonStr) {
+        return jsonStr
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"([^"\\]*(\\.[^"\\]*)*)"(\s*:)?/g, function (match, p1, _p2, colon) {
+                if (colon) {
+                    return '<span class="json-key">"' + p1 + '"</span>:';
+                }
+                return '<span class="json-string">"' + p1 + '"</span>';
+            })
+            .replace(/\b(-?\d+(\.\d+)?([eE][+-]?\d+)?)\b/g, '<span class="json-number">$1</span>')
+            .replace(/\b(true|false)\b/g, '<span class="json-bool">$1</span>')
+            .replace(/\bnull\b/g, '<span class="json-null">null</span>');
+    }
+
+    function prettify(pre) {
+        var raw = pre.textContent.trim();
+        try {
+            var parsed = JSON.parse(raw);
+            var formatted = JSON.stringify(parsed, null, 2);
+            pre.innerHTML = highlightJson(formatted);
+        } catch (_) {}
+    }
+
+    prettify(document.getElementById('payload'));
+
+    // Toggle payload edit mode
+    window.togglePayloadEdit = function (editing) {
+        var pre = document.getElementById('payload');
+        var form = document.getElementById('payloadEditForm');
+        var editor = document.getElementById('payloadEditor');
+        var btnEdit = document.getElementById('btnEdit');
+
+        if (editing) {
+            // Load current raw JSON into editor, pretty-printed
+            var raw = document.getElementById('payloadRaw').value.trim();
+            try { raw = JSON.stringify(JSON.parse(raw), null, 2); } catch (_) {}
+            editor.value = raw;
+            pre.classList.add('d-none');
+            form.classList.remove('d-none');
+            btnEdit.classList.add('d-none');
+        } else {
+            pre.classList.remove('d-none');
+            form.classList.add('d-none');
+            btnEdit.classList.remove('d-none');
+        }
+    };
+
+    // Also prettify message log if it contains JSON
+    document.querySelectorAll('.card-body pre.mb-0:not(#payload):not(.json-pretty)').forEach(function (pre) {
+        var raw = pre.textContent.trim();
+        try {
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                pre.classList.add('json-pretty');
+                pre.innerHTML = highlightJson(JSON.stringify(parsed, null, 2));
+            }
+        } catch (_) {}
+    });
+})();
+</script>
+}

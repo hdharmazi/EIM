@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "ARM.Integration.Test": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
