@@ -48,8 +48,10 @@ namespace ARM.Integration.EIM.Orchestration
                 FirstName = getField("mserp_firstname", false),
                 LastName = getField("mserp_lastname", false),
                 MiddleName = getField("mserp_middlename", false),
-                AssociatedContactNumber = getField("mserp_associatedcontactnumber", true),
-                AssociatedContactType = ResolveOptionSet(getField("mserp_associatedcontacttype", true)),
+                AssociatedCustomerAccount = getField("mserp_wtc_associatedcustomeraccount", true),
+                AssociatedPartyNumber = getField("mserp_associatedpartynumber", true),
+                ContactPersonPartyNumber = getField("mserp_contactpersonpartynumber", true)
+
             };
         }
 

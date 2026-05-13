@@ -55,7 +55,8 @@ namespace ARM.Integration.Test
                 Console.WriteLine("  14. Capture → D365: New PartyContact (sends Capture message)");
                 Console.WriteLine("  15. Capture → D365: Update PartyContact (sends Capture message)");
                 Console.WriteLine("  16. Capture → D365: Delete PartyContact (sends Capture message)");
-                Console.WriteLine("  13. Listen for messages on a queue");
+                Console.WriteLine("  17. D365 → Capture: New Contact (no customer account - expect skip)");
+                Console.WriteLine("  99. Listen for messages on a queue");
                 Console.WriteLine("  0. Exit");
                 Console.Write("\nChoice: ");
 
@@ -80,7 +81,8 @@ namespace ARM.Integration.Test
                         case "14": await SimulateCapturePartyContactCreate(); break;
                         case "15": await SimulateCapturePartyContactUpdate(); break;
                         case "16": await SimulateCapturePartyContactDelete(); break;
-                        case "13": await ListenOnQueue(); break;
+                        case "17": await SimulateD365ContactCreateNoCustomer(); break;
+                        case "99": await ListenOnQueue(); break;
                         case "0": return 0;
                         default: Console.WriteLine("Invalid choice."); break;
                     }
@@ -191,7 +193,7 @@ namespace ARM.Integration.Test
         {
             var eventContext = BuildD365Event(
                 messageName: "OnExternalCreated",
-                entityName: "mserp_smmcontactpersoncdsv2entity",
+                entityName: "mserp_smmcontactpersonv2entity",
                 attributes: new Dictionary<string, string>
                 {
                     ["mserp_dataareaid"] = "WTC",
@@ -200,7 +202,8 @@ namespace ARM.Integration.Test
                     ["mserp_lastname"] = "Doe",
                     ["mserp_middlename"] = "M",
                     ["mserp_associatedcontactnumber"] = "AR-038824",
-                    ["mserp_associatedcontacttype"] = "Customer"
+                    ["mserp_associatedcontacttype"] = "Customer",
+                    ["mserp_wtc_associatedcustomeraccount"] = "CUST-SIM-001",
                 });
 
             await SendToQueue(D365Queue, eventContext, "D365 Contact Create Event");
@@ -217,7 +220,7 @@ namespace ARM.Integration.Test
 
             var eventContext = BuildD365Event(
                 messageName: "OnExternalUpdated",
-                entityName: "mserp_smmcontactpersoncdsv2entity",
+                entityName: "mserp_smmcontactpersonv2entity",
                 attributes: new Dictionary<string, string>
                 {
                     ["mserp_dataareaid"] = "WTC",
@@ -226,7 +229,8 @@ namespace ARM.Integration.Test
                     ["mserp_lastname"] = "Smith",
                     ["mserp_middlename"] = "M",
                     ["mserp_associatedcontactnumber"] = "AR-038824",
-                    ["mserp_associatedcontacttype"] = "Customer"
+                    ["mserp_associatedcontacttype"] = "Customer",
+                    ["mserp_wtc_associatedcustomeraccount"] = "CUST-SIM-001",
                 },
                 changedFields: changedFields);
 
@@ -246,7 +250,7 @@ namespace ARM.Integration.Test
 
             var eventContext = BuildD365Event(
                 messageName: "OnExternalDeleted",
-                entityName: "mserp_smmcontactpersoncdsv2entity",
+                entityName: "mserp_smmcontactpersonv2entity",
                 attributes: new Dictionary<string, string>
                 {
                     ["mserp_dataareaid"] = "WTC",
@@ -257,6 +261,29 @@ namespace ARM.Integration.Test
             await SendToQueue(D365Queue, eventContext, "D365 Contact Delete Event");
             Console.WriteLine("  → Listening for mapped result on Capture output queue...");
             await ListenForSingleMessage(CaptureOutputQueue, TimeSpan.FromSeconds(60));
+        }
+
+        /// <summary>
+        /// Simulates a D365 contact event WITHOUT mserp_wtc_associatedcustomeraccount.
+        /// Expects the message to be silently discarded (no output on Capture queue).
+        /// </summary>
+        static async Task SimulateD365ContactCreateNoCustomer()
+        {
+            var eventContext = BuildD365Event(
+                messageName: "OnExternalCreated",
+                entityName: "mserp_smmcontactpersonv2entity",
+                attributes: new Dictionary<string, string>
+                {
+                    ["mserp_dataareaid"] = "WTC",
+                    ["mserp_contactpersonid"] = "CONT-SIM-SKIP",
+                    ["mserp_firstname"] = "Skip",
+                    ["mserp_lastname"] = "Me",
+                    // mserp_wtc_associatedcustomeraccount intentionally omitted
+                });
+
+            await SendToQueue(D365Queue, eventContext, "D365 Contact Create Event (no customer - expect skip)");
+            Console.WriteLine("  → Listening for result on Capture output queue (should NOT receive anything)...");
+            await ListenForSingleMessage(CaptureOutputQueue, TimeSpan.FromSeconds(15));
         }
 
         // ─── Flow 2: Simulate Capture messages ──────────────────────────

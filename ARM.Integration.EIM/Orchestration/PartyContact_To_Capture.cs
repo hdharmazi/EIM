@@ -10,14 +10,11 @@ namespace ARM.Integration.EIM.Orchestration
     {
         protected override string EntityName => "PartyContact";
 
-        protected override string GetSourceId(QueueMessageContract data, EventContext context)
-            => data.MessageId;
-
         private static readonly Dictionary<int, string> TypeMap = new()
         {
             [200000000] = "None",
             [200000001] = "Phone",
-            [200000002] = "Email address",
+            [200000002] = "Email",
             [200000003] = "URL",
             [200000004] = "Telex",
             [200000005] = "Fax",
@@ -52,11 +49,11 @@ namespace ARM.Integration.EIM.Orchestration
             return new CapturePartyContactMessageContract
             {
                 PartyNumber = getField("mserp_partynumber", true),
-                ElectronicAddressId = action != "New" ? getField("mserp_electronicaddressid", true) : null,
-                Locator = getField("mserp_locator", false),
-                LocatorExtension = getField("mserp_locatorextension", false),
-                Description = getField("mserp_description", false),
-                Type = ResolveType(getField("mserp_type", false)),
+                ElectronicAddressId =  getField("mserp_electronicaddressid", true),
+                Locator = getField("mserp_locator", true),
+                LocatorExtension = getField("mserp_locatorextension", true),
+                Description = getField("mserp_description", true),
+                Type = ResolveType(getField("mserp_type", true)),
             };
         }
 

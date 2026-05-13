@@ -9,9 +9,6 @@ namespace ARM.Integration.EIM.Orchestration
     {
         protected override string EntityName => "CustomerAddress";
 
-        protected override string GetSourceId(QueueMessageContract data, EventContext context)
-            => data.MessageId;
-
         protected override CaptureCustomerAddressMessageContract MapFields(Func<string, bool, string?> getField, string action)
         {
             return new CaptureCustomerAddressMessageContract

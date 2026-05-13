@@ -26,7 +26,7 @@ public class QueueDataEventsHandler(
     private static readonly Dictionary<string, (string Type, string QueueSetting)> EntityRoutes = new(StringComparer.OrdinalIgnoreCase)
     {
         ["mserp_custcustomerv3entity"]      = ("Customer_To_Capture","D365ToCaptureQueue"),
-        ["mserp_smmcontactpersoncdsv2entity"]  = ("Contact_To_Capture","D365ToCaptureQueue"),
+        ["mserp_smmcontactpersonv2entity"]   = ("Contact_To_Capture","D365ToCaptureQueue"),
         ["mserp_custpostaladdressv2entity"]  = ("CustomerAddress_To_Capture","D365ToCaptureQueue"),
         ["mserp_dirpartycontactv3entity"]    = ("PartyContact_To_Capture","D365ToCaptureQueue"),
     };
@@ -52,7 +52,7 @@ public class QueueDataEventsHandler(
             "mserp_taxstatus",
             "mserp_partynumber"
         },
-        ["mserp_smmcontactpersoncdsv2entity"] = new(StringComparer.OrdinalIgnoreCase)
+        ["mserp_smmcontactpersonv2entity"] = new(StringComparer.OrdinalIgnoreCase)
         {
             "mserp_contactpersonid",
             "mserp_firstname",
@@ -64,6 +64,15 @@ public class QueueDataEventsHandler(
             "mserp_associatedcontactnumber"
 
         }
+    };
+
+    /// <summary>
+    /// Required non-empty fields per entity. If the field is missing or blank,
+    /// the message is discarded before DB insert.
+    /// </summary>
+    private static readonly Dictionary<string, string> EntityRequiredFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["mserp_smmcontactpersonv2entity"] = "mserp_wtc_associatedcustomeraccount",
     };
 
     [Function(nameof(QueueDataEventsHandler))]
@@ -131,6 +140,20 @@ public class QueueDataEventsHandler(
             if (!changedFields.Any(trackedFields.Contains))
             {
                 logger.LogInformation("Message {id} has no tracked field changes, skipping.", message.MessageId);
+                await messageActions.CompleteMessageAsync(message);
+                return;
+            }
+        }
+
+        // Skip if a required field is missing or blank (before DB insert)
+        if (EntityRequiredFields.TryGetValue(context.PrimaryEntityName, out var requiredField))
+        {
+            var attrs = D365FSCEventParser.GetTargetAttributes(context.InputParameters);
+            if (attrs is null || !attrs.TryGetValue(requiredField, out var fieldVal)
+                || string.IsNullOrWhiteSpace(fieldVal?.ToString()))
+            {
+                logger.LogInformation("Message {id} skipped: required field '{field}' is empty or missing.",
+                    message.MessageId, requiredField);
                 await messageActions.CompleteMessageAsync(message);
                 return;
             }

@@ -28,6 +28,10 @@ namespace ARM.Integration.EIM
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string AssociatedPartyNumber { get; set; }
 
+        [JsonPropertyName("AssociatedCustomerAccount")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string AssociatedCustomerAccount { get; set; }
+
         [JsonPropertyName("AssociatedContactNumber")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string AssociatedContactNumber { get; set; }
@@ -35,5 +39,9 @@ namespace ARM.Integration.EIM
         [JsonPropertyName("AssociatedContactType")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string AssociatedContactType { get; set; }
+
+         [JsonPropertyName("ContactPersonPartyNumber")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string ContactPersonPartyNumber { get; set; }
     }
 }
