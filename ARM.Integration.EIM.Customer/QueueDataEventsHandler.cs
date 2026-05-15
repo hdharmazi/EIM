@@ -75,6 +75,19 @@ public class QueueDataEventsHandler(
         ["mserp_smmcontactpersonv2entity"] = "mserp_wtc_associatedcustomeraccount",
     };
 
+    /// <summary>
+    /// At least one field in the set must be non-empty per entity, otherwise
+    /// the message is discarded before DB insert.
+    /// </summary>
+    private static readonly Dictionary<string, HashSet<string>> EntityRequiredAnyFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["mserp_dirpartycontactv3entity"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "mserp_wtc_contactperson",
+            "mserp_wtc_custaccount",
+        },
+    };
+
     [Function(nameof(QueueDataEventsHandler))]
     public async Task Run(
         [ServiceBusTrigger("%D365DataEventQueue%", Connection = "ServiceBus")]
@@ -154,6 +167,21 @@ public class QueueDataEventsHandler(
             {
                 logger.LogInformation("Message {id} skipped: required field '{field}' is empty or missing.",
                     message.MessageId, requiredField);
+                await messageActions.CompleteMessageAsync(message);
+                return;
+            }
+        }
+
+        // Skip if none of the required-any fields are populated (before DB insert)
+        if (EntityRequiredAnyFields.TryGetValue(context.PrimaryEntityName, out var anyFields))
+        {
+            var attrs = D365FSCEventParser.GetTargetAttributes(context.InputParameters);
+            var hasAny = attrs is not null
+                && anyFields.Any(f => attrs.TryGetValue(f, out var v) && !string.IsNullOrWhiteSpace(v?.ToString()));
+            if (!hasAny)
+            {
+                logger.LogInformation("Message {id} skipped: none of the required fields [{fields}] are populated.",
+                    message.MessageId, string.Join(", ", anyFields));
                 await messageActions.CompleteMessageAsync(message);
                 return;
             }
