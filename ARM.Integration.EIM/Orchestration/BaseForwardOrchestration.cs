@@ -33,8 +33,7 @@ public abstract class BaseForwardOrchestration<TDest> : IOrchestration where TDe
         ParseAndMap(string payload);
 
     /// <summary>
-    /// Returns the source ID for the forwarded message envelope.
-    /// Override to customize (e.g., use MessageId instead of SourceId).
+    /// Returns the source ID (business key) for the forwarded message envelope.
     /// </summary>
     protected virtual string GetSourceId(QueueMessageContract message) => message.SourceId;
 

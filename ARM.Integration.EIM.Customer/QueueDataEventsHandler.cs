@@ -60,9 +60,9 @@ public class QueueDataEventsHandler(
             "mserp_lastname",
             "mserp_middlename",
             "mserp_associatedpartynumber",
-            "mserp_associatedcontacttype",
-            "mserp_associatedcontactnumber"
-
+            "mserp_wtc_associatedcustomeraccount",
+            "mserp_associatedcontactnumber",
+            "mserp_contactpersonpartynumber"
         }
     };
 
@@ -164,11 +164,15 @@ public class QueueDataEventsHandler(
         var connectionString = Environment.GetEnvironmentVariable("EIMDB")
             ?? throw new InvalidOperationException("EIMDB environment variable is not set.");
 
+        // Resolve business key for SourceId (e.g., CustomerAccount, ContactPersonId)
+        var targetAttrs = D365FSCEventParser.GetTargetAttributes(context.InputParameters);
+        var businessKey = BusinessKeyResolver.GetBusinessKey(context.PrimaryEntityName, targetAttrs);
+
         var controller = new EIMController(connectionString, logger, orchestrations);
 
         var messageId = controller.InsertMessage(new MessageRequest
         {
-            SourceId = context.OperationId,
+            SourceId = businessKey ?? context.OperationId,
             Environment = Environment.GetEnvironmentVariable("DefaultEnvironment"),
             DestinationSystem = "CAPTURE",
             SourceSystem = "D365FSC",

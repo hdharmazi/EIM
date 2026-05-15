@@ -49,12 +49,16 @@ public static class QueueCaptureHandler
         // ── Read the Entity field from the envelope to determine orchestration ──
         var body = message.Body.ToString();
         string entity;
+        string? sourceId;
         try
         {
             using var doc = JsonDocument.Parse(body);
             entity = doc.RootElement.TryGetProperty("Entity", out var entityProp)
                 ? entityProp.GetString() ?? ""
                 : "";
+            sourceId = doc.RootElement.TryGetProperty("SourceId", out var sidProp)
+                ? sidProp.GetString()
+                : null;
         }
         catch (JsonException ex)
         {
@@ -76,7 +80,7 @@ public static class QueueCaptureHandler
 
         var messageId = controller.InsertMessage(new MessageRequest
         {
-            SourceId = message.MessageId,
+            SourceId = sourceId ?? message.MessageId,
             Environment = defaultEnvironment,
             DestinationSystem = "D365FSC",
             SourceSystem = "CAPTURE",
