@@ -27,7 +27,7 @@ public class QueueDataEventsHandler(
     {
         ["mserp_custcustomerv3entity"]      = ("Customer_To_Capture","D365ToCaptureQueue"),
         ["mserp_smmcontactpersonv2entity"]   = ("Contact_To_Capture","D365ToCaptureQueue"),
-        ["mserp_custpostaladdressv2entity"]  = ("CustomerAddress_To_Capture","D365ToCaptureQueue"),
+        ["mserp_wtc_custpostaladdressv2entity"]  = ("CustomerAddress_To_Capture","D365ToCaptureQueue"),
         ["mserp_dirpartycontactv3entity"]    = ("PartyContact_To_Capture","D365ToCaptureQueue"),
     };
 

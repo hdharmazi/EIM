@@ -12,25 +12,17 @@ namespace ARM.Integration.EIM
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string CustomerAccountNumber { get; set; }
 
-        [JsonPropertyName("AdressLocationId")]
+        [JsonPropertyName("AddressLocationId")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string AddressLocationId { get; set; }
 
         [JsonPropertyName("IsPrimary")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public bool? IsPrimary { get; set; }
+        public string IsPrimary { get; set; }
 
-        [JsonPropertyName("IsRoleDelivery")]
+        [JsonPropertyName("AddressLocationRoles")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public bool? IsRoleDelivery { get; set; }
-
-        [JsonPropertyName("IsRoleBusiness")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public bool? IsRoleBusiness { get; set; }
-
-        [JsonPropertyName("IsRoleInvoice")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public bool? IsRoleInvoice { get; set; }
+        public string AddressLocationRoles { get; set; }
 
         [JsonPropertyName("AddressDescription")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -38,7 +30,7 @@ namespace ARM.Integration.EIM
 
         [JsonPropertyName("IsPostalAddress")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public bool? IsPostalAddress { get; set; }
+        public string IsPostalAddress { get; set; }
 
         [JsonPropertyName("AddressCity")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
