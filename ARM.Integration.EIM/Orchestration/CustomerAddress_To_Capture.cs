@@ -42,12 +42,15 @@ namespace ARM.Integration.EIM.Orchestration
         {
             return new CaptureCustomerAddressMessageContract
             {
-                DataAreaId             = getField("mserp_dataareaid", true),
-                CustomerAccount        = getField("mserp_customeraccount", true),
+                CustomerLegalEntityId  = getField("mserp_dataareaid", true),
+                CustomerAccountNumber  = getField("mserp_customeraccount", true),
                 AddressLocationId      = getField("mserp_addresslocationid", true),
                 IsPrimary              = ResolveYesNo(getField("mserp_isprimary", false)),
                 AddressLocationRoles   = getField("mserp_addresslocationroles", false),
                 AddressDescription     = getField("mserp_addressdescription", false),
+                // mserp_wtc_custpostaladdressv2entity is exclusively a postal address entity —
+                // there is no source field for this; always "Yes".
+                IsPostalAddress        = "Yes",
                 AddressCity            = getField("mserp_addresscity", false),
                 AddressZipCode         = getField("mserp_addresszipcode", false),
                 AddressStreet          = getField("mserp_addressstreet", false),

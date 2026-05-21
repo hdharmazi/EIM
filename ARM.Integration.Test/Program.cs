@@ -1,7 +1,6 @@
 ﻿using ARM.Integration.Core.Helpers;
 using ARM.Integration.EIM;
 using Azure.Messaging.ServiceBus;
-using Microsoft.Extensions.Configuration;
 using System.Text.Json;
 
 namespace ARM.Integration.Test
@@ -20,28 +19,19 @@ namespace ARM.Integration.Test
     /// </summary>
     internal class Program
     {
-        // ─── Configuration ────────────────────────────────────────────────
-        // Values are loaded from local.settings.json at startup.
-        private static string ServiceBusConnectionString = "";
-        private static string D365Queue                  = "";
-        private static string CaptureCustomerQueue       = "";
-        private static string CaptureCustomerResponseQueue = "";
-        private static string CaptureOutputQueue         = "";
+        // ─── Configuration ───────────────────────────────────────────────
+        // Update these values to match your environment
+        private const string ServiceBusConnectionString =
+            "Endpoint=sb://asb-eim-wtc-nonprod.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=4gzdDB8HYmPSui549y8z+o+zHtFySmtM9+ASbLQswiw=";
+
+        // Queue names — must match the Azure Function app settings (local.settings.json)
+        private const string D365Queue = "bat-d365fsc-dataevent";
+        private const string CaptureCustomerQueue = "bat-capture-to-d365fsc";
+        private const string CaptureCustomerResponseQueue = "bat-capture-to-d365fsc-response";
+        private const string CaptureOutputQueue = "bat-d365fsc-to-capture";
 
         static async Task<int> Main(string[] args)
         {
-            // ── Load local.settings.json ──────────────────────────────────
-            var config = new ConfigurationBuilder()
-                .SetBasePath(AppContext.BaseDirectory)
-                .AddJsonFile("local.settings.json", optional: false, reloadOnChange: false)
-                .Build();
-
-            ServiceBusConnectionString    = config["ServiceBusConnectionString"]    ?? throw new InvalidOperationException("ServiceBusConnectionString not set in local.settings.json");
-            D365Queue                     = config["D365Queue"]                     ?? throw new InvalidOperationException("D365Queue not set in local.settings.json");
-            CaptureCustomerQueue          = config["CaptureToD365Queue"]            ?? throw new InvalidOperationException("CaptureToD365Queue not set in local.settings.json");
-            CaptureCustomerResponseQueue  = config["CaptureToD365ResponseQueue"]    ?? throw new InvalidOperationException("CaptureToD365ResponseQueue not set in local.settings.json");
-            CaptureOutputQueue            = config["D365ToCaptureQueue"]            ?? throw new InvalidOperationException("D365ToCaptureQueue not set in local.settings.json");
-
             Console.WriteLine("╔══════════════════════════════════════════════╗");
             Console.WriteLine("║   EIM Integration Simulation Test Program   ║");
             Console.WriteLine("╚══════════════════════════════════════════════╝");
@@ -66,12 +56,6 @@ namespace ARM.Integration.Test
                 Console.WriteLine("  15. Capture → D365: Update PartyContact (sends Capture message)");
                 Console.WriteLine("  16. Capture → D365: Delete PartyContact (sends Capture message)");
                 Console.WriteLine("  17. D365 → Capture: New Contact (no customer account - expect skip)");
-                Console.WriteLine("  18. D365 → Capture: New CustomerAddress (sends D365 event)");
-                Console.WriteLine("  19. D365 → Capture: Update CustomerAddress (sends D365 event)");
-                Console.WriteLine("  20. D365 → Capture: Delete CustomerAddress (sends D365 event)");
-                Console.WriteLine("  21. Capture → D365: New CustomerAddress (sends Capture message)");
-                Console.WriteLine("  22. Capture → D365: Update CustomerAddress (sends Capture message)");
-                Console.WriteLine("  23. Capture → D365: Delete CustomerAddress (sends Capture message)");
                 Console.WriteLine("  99. Listen for messages on a queue");
                 Console.WriteLine("  0. Exit");
                 Console.Write("\nChoice: ");
@@ -98,12 +82,6 @@ namespace ARM.Integration.Test
                         case "15": await SimulateCapturePartyContactUpdate(); break;
                         case "16": await SimulateCapturePartyContactDelete(); break;
                         case "17": await SimulateD365ContactCreateNoCustomer(); break;
-                        case "18": await SimulateD365CustomerAddressCreate(); break;
-                        case "19": await SimulateD365CustomerAddressUpdate(); break;
-                        case "20": await SimulateD365CustomerAddressDelete(); break;
-                        case "21": await SimulateCaptureCustomerAddressCreate(); break;
-                        case "22": await SimulateCaptureCustomerAddressUpdate(); break;
-                        case "23": await SimulateCaptureCustomerAddressDelete(); break;
                         case "99": await ListenOnQueue(); break;
                         case "0": return 0;
                         default: Console.WriteLine("Invalid choice."); break;
@@ -715,278 +693,6 @@ namespace ARM.Integration.Test
             };
 
             await SendToQueue(CaptureCustomerQueue, message, "Capture PartyContact Delete");
-            Console.WriteLine("  → Listening for response on response queue...");
-            await ListenForSingleMessage(CaptureCustomerResponseQueue, TimeSpan.FromSeconds(60));
-        }
-
-        // ─── Flow 1c: Simulate D365 FSC CustomerAddress events ─────────
-
-        /// <summary>
-        /// Simulates a D365 FSC "OnExternalCreated" event for a customer postal address entity.
-        /// Routed to CustomerAddress_To_Capture orchestration via mserp_wtc_custpostaladdressv2entity.
-        /// </summary>
-        static async Task SimulateD365CustomerAddressCreate()
-        {
-            var eventContext = BuildD365Event(
-                messageName: "OnExternalCreated",
-                entityName: "mserp_wtc_custpostaladdressv2entity",
-                attributes: new Dictionary<string, string>
-                {
-                    ["mserp_dataareaid"]            = "wtc",
-                    ["mserp_customeraccount"]       = "AR-019739",
-                    ["mserp_isprimary"]             = "{\"Value\":200000001}",
-                    ["mserp_addresslocationroles"]  = "Business",
-                    ["mserp_addressdescription"]    = "Main Office",
-                    ["mserp_addresscity"]           = "DALLAS",
-                    ["mserp_addresszipcode"]        = "75201",
-                    ["mserp_addressstreet"]         = "123 Main St",
-                    ["mserp_addresscountryregionid"] = "USA",
-                    ["mserp_addressstate"]          = "TX",
-                });
-
-            await SendToQueue(D365Queue, eventContext, "D365 CustomerAddress Create Event");
-            Console.WriteLine("  → Listening for mapped result on Capture output queue...");
-            await ListenForSingleMessage(CaptureOutputQueue, TimeSpan.FromSeconds(60));
-        }
-
-        /// <summary>
-        /// Simulates a D365 FSC "OnExternalUpdated" event for a customer postal address.
-        /// Only changed fields are forwarded.
-        /// </summary>
-        static async Task SimulateD365CustomerAddressUpdate()
-        {
-            var changedFields = new List<string>
-            {
-                "mserp_customeraccount",
-                "mserp_addresscity",
-                "mserp_addressstreet",
-                "mserp_addressdescription",
-                "mserp_addresslocationroles",
-                "mserp_isprimary",
-            };
-
-            var eventContext = BuildD365Event(
-                messageName: "OnExternalUpdated",
-                entityName: "mserp_wtc_custpostaladdressv2entity",
-                attributes: new Dictionary<string, string>
-                {
-                    ["mserp_dataareaid"]            = "wtc",
-                    ["mserp_customeraccount"]       = "AR-019739",
-                    ["mserp_addresslocationid"]     = "000005203",
-                    ["mserp_isprimary"]             = "{\"Value\":200000001}",
-                    ["mserp_addresslocationroles"]  = "Business;Delivery",
-                    ["mserp_addressdescription"]    = "Main Office",
-                    ["mserp_addresscity"]           = "DALLAS",
-                    ["mserp_addresszipcode"]        = "75201",
-                    ["mserp_addressstreet"]         = "456 Updated Ave",
-                    ["mserp_addresscountryregionid"] = "USA",
-                    ["mserp_addressstate"]          = "TX",
-                },
-                changedFields: changedFields);
-
-            await SendToQueue(D365Queue, eventContext, "D365 CustomerAddress Update Event");
-            Console.WriteLine("  → Listening for mapped result on Capture output queue...");
-            await ListenForSingleMessage(CaptureOutputQueue, TimeSpan.FromSeconds(60));
-        }
-
-        /// <summary>
-        /// Simulates a D365 FSC "OnExternalDeleted" event for a customer postal address.
-        /// </summary>
-        static async Task SimulateD365CustomerAddressDelete()
-        {
-            var eventContext = BuildD365Event(
-                messageName: "OnExternalDeleted",
-                entityName: "mserp_wtc_custpostaladdressv2entity",
-                attributes: new Dictionary<string, string>
-                {
-                    ["mserp_dataareaid"]        = "wtc",
-                    ["mserp_customeraccount"]   = "AR-019739",
-                    ["mserp_addresslocationid"] = "000005203",
-                });
-
-            await SendToQueue(D365Queue, eventContext, "D365 CustomerAddress Delete Event");
-            Console.WriteLine("  → Listening for mapped result on Capture output queue...");
-            await ListenForSingleMessage(CaptureOutputQueue, TimeSpan.FromSeconds(60));
-        }
-
-        // ─── Flow 2c: Simulate Capture → D365 CustomerAddress ────────────
-
-        /// <summary>
-        /// Sends a CaptureCustomerAddressMessageContract to create a new postal address in D365.
-        /// </summary>
-        static async Task SimulateCaptureCustomerAddressCreate()
-        {
-            Console.WriteLine("  Enter CustomerAddress details:");
-
-            Console.Write("    DataAreaId [wtc]: ");
-            var dataArea = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(dataArea)) dataArea = "wtc";
-
-            Console.Write("    CustomerAccount [AR-019739]: ");
-            var account = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(account)) account = "AR-019739";
-
-            Console.Write("    AddressDescription [Main Office]: ");
-            var description = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(description)) description = "Main Office";
-
-            Console.Write("    AddressStreet [123 Main St]: ");
-            var street = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(street)) street = "123 Main St";
-
-            Console.Write("    AddressCity [DALLAS]: ");
-            var city = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(city)) city = "DALLAS";
-
-            Console.Write("    AddressState [TX]: ");
-            var state = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(state)) state = "TX";
-
-            Console.Write("    AddressZipCode [75201]: ");
-            var zip = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(zip)) zip = "75201";
-
-            Console.Write("    AddressCountryRegionId [USA]: ");
-            var country = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(country)) country = "USA";
-
-            Console.Write("    AddressLocationRoles [Business]: ");
-            var roles = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(roles)) roles = "Business";
-
-            Console.Write("    IsPrimary [Yes]: ");
-            var isPrimary = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(isPrimary)) isPrimary = "Yes";
-
-            var data = new CaptureCustomerAddressMessageContract
-            {
-                DataAreaId             = dataArea,
-                CustomerAccount        = account,
-                AddressDescription     = description,
-                AddressStreet          = street,
-                AddressCity            = city,
-                AddressState           = state,
-                AddressZipCode         = zip,
-                AddressCountryRegionId = country,
-                AddressLocationRoles   = roles,
-                IsPrimary              = isPrimary,
-            };
-
-            var message = new CaptureMessageEnvelope<CaptureCustomerAddressMessageContract>
-            {
-                SourceId = $"SIM-{DateTime.UtcNow:yyyyMMddHHmmss}",
-                Action   = "New",
-                Entity   = "CustomerAddress",
-                Data     = data
-            };
-
-            await SendToQueue(CaptureCustomerQueue, message, "Capture CustomerAddress Create");
-            Console.WriteLine("  → Listening for response on response queue...");
-            await ListenForSingleMessage(CaptureCustomerResponseQueue, TimeSpan.FromSeconds(60));
-        }
-
-        /// <summary>
-        /// Sends a CaptureCustomerAddressMessageContract to update an existing postal address in D365.
-        /// </summary>
-        static async Task SimulateCaptureCustomerAddressUpdate()
-        {
-            Console.Write("  DataAreaId [wtc]: ");
-            var dataArea = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(dataArea)) dataArea = "wtc";
-
-            Console.Write("  CustomerAccount: ");
-            var account = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(account)) { Console.WriteLine("  CustomerAccount is required."); return; }
-
-            Console.Write("  AddressLocationId: ");
-            var locationId = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(locationId)) { Console.WriteLine("  AddressLocationId is required."); return; }
-
-            Console.WriteLine("  Enter new values (press Enter to skip):");
-
-            Console.Write("    AddressStreet: ");
-            var street = Console.ReadLine()?.Trim();
-
-            Console.Write("    AddressCity: ");
-            var city = Console.ReadLine()?.Trim();
-
-            Console.Write("    AddressState: ");
-            var state = Console.ReadLine()?.Trim();
-
-            Console.Write("    AddressZipCode: ");
-            var zip = Console.ReadLine()?.Trim();
-
-            Console.Write("    AddressLocationRoles: ");
-            var roles = Console.ReadLine()?.Trim();
-
-            Console.Write("    IsPrimary (Yes/No): ");
-            var isPrimary = Console.ReadLine()?.Trim();
-
-            Console.Write("    AddressDescription: ");
-            var description = Console.ReadLine()?.Trim();
-
-            var data = new CaptureCustomerAddressMessageContract
-            {
-                DataAreaId        = dataArea,
-                CustomerAccount   = account,
-                AddressLocationId = locationId,
-            };
-
-            if (!string.IsNullOrEmpty(street))      data.AddressStreet          = street;
-            if (!string.IsNullOrEmpty(city))        data.AddressCity            = city;
-            if (!string.IsNullOrEmpty(state))       data.AddressState           = state;
-            if (!string.IsNullOrEmpty(zip))         data.AddressZipCode         = zip;
-            if (!string.IsNullOrEmpty(roles))       data.AddressLocationRoles   = roles;
-            if (!string.IsNullOrEmpty(isPrimary))   data.IsPrimary              = isPrimary;
-            if (!string.IsNullOrEmpty(description)) data.AddressDescription     = description;
-
-            var message = new CaptureMessageEnvelope<CaptureCustomerAddressMessageContract>
-            {
-                SourceId = $"SIM-{DateTime.UtcNow:yyyyMMddHHmmss}",
-                Action   = "Update",
-                Entity   = "CustomerAddress",
-                Data     = data
-            };
-
-            await SendToQueue(CaptureCustomerQueue, message, "Capture CustomerAddress Update");
-            Console.WriteLine("  → Listening for response on response queue...");
-            await ListenForSingleMessage(CaptureCustomerResponseQueue, TimeSpan.FromSeconds(60));
-        }
-
-        /// <summary>
-        /// Sends a CaptureCustomerAddressMessageContract to delete a postal address from D365.
-        /// Only the 3 key fields are required.
-        /// </summary>
-        static async Task SimulateCaptureCustomerAddressDelete()
-        {
-            Console.Write("  DataAreaId [wtc]: ");
-            var dataArea = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(dataArea)) dataArea = "wtc";
-
-            Console.Write("  CustomerAccount: ");
-            var account = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(account)) { Console.WriteLine("  CustomerAccount is required."); return; }
-
-            Console.Write("  AddressLocationId: ");
-            var locationId = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(locationId)) { Console.WriteLine("  AddressLocationId is required."); return; }
-
-            var data = new CaptureCustomerAddressMessageContract
-            {
-                DataAreaId        = dataArea,
-                CustomerAccount   = account,
-                AddressLocationId = locationId,
-            };
-
-            var message = new CaptureMessageEnvelope<CaptureCustomerAddressMessageContract>
-            {
-                SourceId = $"SIM-{DateTime.UtcNow:yyyyMMddHHmmss}",
-                Action   = "Delete",
-                Entity   = "CustomerAddress",
-                Data     = data
-            };
-
-            await SendToQueue(CaptureCustomerQueue, message, "Capture CustomerAddress Delete");
             Console.WriteLine("  → Listening for response on response queue...");
             await ListenForSingleMessage(CaptureCustomerResponseQueue, TimeSpan.FromSeconds(60));
         }
