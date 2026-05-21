@@ -22,7 +22,7 @@ public static class QueueCaptureHandler
         ["Customer"] = "Customer_To_D365FSC",
         ["Contact"] = "Contact_To_D365FSC",
         ["PartyContact"] = "PartyContact_To_D365FSC",
-        ["CustomerAddress"] = "CustomerAddress_To_Capture",
+        ["CustomerAddress"] = "CustomerAddress_To_D365FSC",
     };
 
     public static async Task ProcessAsync(

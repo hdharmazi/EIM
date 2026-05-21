@@ -4,13 +4,13 @@ namespace ARM.Integration.EIM
 {
     public class CaptureCustomerAddressMessageContract
     {
-        [JsonPropertyName("CustomerLegalEntityId")]
+        [JsonPropertyName("DataAreaId")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string CustomerLegalEntityId { get; set; }
+        public string DataAreaId { get; set; }
 
-        [JsonPropertyName("CustomerAccountNumber")]
+        [JsonPropertyName("CustomerAccount")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string CustomerAccountNumber { get; set; }
+        public string CustomerAccount { get; set; }
 
         [JsonPropertyName("AddressLocationId")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -27,10 +27,6 @@ namespace ARM.Integration.EIM
         [JsonPropertyName("AddressDescription")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string AddressDescription { get; set; }
-
-        [JsonPropertyName("IsPostalAddress")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string IsPostalAddress { get; set; }
 
         [JsonPropertyName("AddressCity")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
