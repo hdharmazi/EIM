@@ -1,0 +1,7 @@
+{
+  "ServiceBusConnectionString": "Endpoint=sb://asb-eim-wtc-nonprod.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=4gzdDB8HYmPSui549y8z+o+zHtFySmtM9+ASbLQswiw=",
+  "D365Queue": "test-d365fsc-dataevent",
+  "CaptureToD365Queue": "test-capture-to-d365fsc",
+  "CaptureToD365ResponseQueue": "test-capture-to-d365fsc-response",
+  "D365ToCaptureQueue": "test-d365fsc-to-capture"
+}
