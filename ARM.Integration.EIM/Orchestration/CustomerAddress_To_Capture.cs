@@ -21,22 +21,23 @@ namespace ARM.Integration.EIM.Orchestration
         {
             if (rawValue is null) return null;
 
+            // Try plain integer string first (e.g. "200000001")
+            if (int.TryParse(rawValue, out var code))
+                return YesNoMap.TryGetValue(code, out var label) ? label : rawValue;
+
+            // Try JSON object with Value property (e.g. {"Value":200000001,...})
             try
             {
                 using var doc = JsonDocument.Parse(rawValue);
                 if (doc.RootElement.TryGetProperty("Value", out var intVal)
-                    && intVal.TryGetInt32(out var code))
-                {
-                    return YesNoMap.TryGetValue(code, out var label) ? label : code.ToString();
-                }
+                    && intVal.TryGetInt32(out var jsonCode))
+                    return YesNoMap.TryGetValue(jsonCode, out var jsonLabel) ? jsonLabel : jsonCode.ToString();
             }
-            catch
-            {
-                // Not JSON — return as-is
-            }
+            catch { }
 
             return rawValue;
         }
+
 
         protected override CaptureCustomerAddressMessageContract MapFields(Func<string, bool, string?> getField, string action)
         {
@@ -45,14 +46,14 @@ namespace ARM.Integration.EIM.Orchestration
                 DataAreaId             = getField("mserp_dataareaid", true),
                 CustomerAccount        = getField("mserp_customeraccount", true),
                 AddressLocationId      = getField("mserp_addresslocationid", true),
-                IsPrimary              = ResolveYesNo(getField("mserp_isprimary", false)),
-                AddressLocationRoles   = getField("mserp_addresslocationroles", false),
-                AddressDescription     = getField("mserp_addressdescription", false),
-                AddressCity            = getField("mserp_addresscity", false),
-                AddressZipCode         = getField("mserp_addresszipcode", false),
-                AddressStreet          = getField("mserp_addressstreet", false),
-                AddressCountryRegionId = getField("mserp_addresscountryregionid", false),
-                AddressState           = getField("mserp_addressstate", false),
+                IsPrimary              = ResolveYesNo(getField("mserp_isprimary", true)),
+                AddressLocationRoles   = getField("mserp_addresslocationroles", true),
+                AddressDescription     = getField("mserp_addressdescription", true),
+                AddressCity            = getField("mserp_addresscity", true),
+                AddressZipCode         = getField("mserp_addresszipcode", true),
+                AddressStreet          = getField("mserp_addressstreet", true),
+                AddressCountryRegionId = getField("mserp_addresscountryregionid", true),
+                AddressState           = getField("mserp_addressstate", true),
             };
         }
 

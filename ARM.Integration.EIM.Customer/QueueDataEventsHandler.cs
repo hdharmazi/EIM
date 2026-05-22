@@ -63,6 +63,17 @@ public class QueueDataEventsHandler(
             "mserp_wtc_associatedcustomeraccount",
             "mserp_associatedcontactnumber",
             "mserp_contactpersonpartynumber"
+        },
+        ["mserp_wtc_custpostaladdressv2entity"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "mserp_isprimary",
+            "mserp_addresslocationroles",
+            "mserp_addressdescription",
+            "mserp_addresscity",
+            "mserp_addresszipcode",
+            "mserp_addressstreet",
+            "mserp_addresscountryregionid",
+            "mserp_addressstate",
         }
     };
 

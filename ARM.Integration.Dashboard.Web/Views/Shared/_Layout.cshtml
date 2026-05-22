@@ -70,6 +70,13 @@
                         <span class="nav-label">Cleanup Queue</span>
                     </a>
                 </li>
+                <li>
+                    <a class="sidebar-link @(ctrl == "Simulation" ? "active" : "")"
+                       asp-controller="Simulation" asp-action="Index">
+                        <span class="nav-icon">🧪</span>
+                        <span class="nav-label">Simulation</span>
+                    </a>
+                </li>
 
                 <!-- Configuration -->
                 <li class="nav-section">Configuration</li>

@@ -51,6 +51,12 @@ builder.Services.AddHttpClient<IUserService, UserApiService>(client =>
     client.BaseAddress = new Uri(apiBaseUrl);
     client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
 });
+builder.Services.AddHttpClient<ISimulationService, SimulationApiService>(client =>
+{
+    client.BaseAddress = new Uri(apiBaseUrl);
+    client.DefaultRequestHeaders.Add("X-Api-Key", apiKey);
+    client.Timeout = TimeSpan.FromMinutes(2);
+});
 
 builder.Services.AddScoped<IClaimsTransformation, DatabaseUserClaimsTransformation>();
 
