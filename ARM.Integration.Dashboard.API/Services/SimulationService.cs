@@ -30,30 +30,34 @@ public class SimulationService(IConfiguration config)
 
         yield return Info($"Scenario: {request.Scenario}");
 
+        // Capture start time so Listen can discard stale messages enqueued before this run
+        var startedAt = DateTimeOffset.UtcNow;
+        var f  = request.Fields;
+
         IAsyncEnumerable<SimulationEvent> steps = request.Scenario switch
         {
-            "d365-customer-create"             => D365CustomerCreate(request.Fields, ct),
-            "d365-customer-update"             => D365CustomerUpdate(request.Fields, ct),
-            "d365-customer-delete"             => D365CustomerDelete(request.Fields, ct),
-            "d365-contact-create"              => D365ContactCreate(request.Fields, ct),
-            "d365-contact-update"              => D365ContactUpdate(request.Fields, ct),
-            "d365-contact-delete"              => D365ContactDelete(request.Fields, ct),
-            "d365-contact-create-no-customer"  => D365ContactCreateNoCustomer(request.Fields, ct),
-            "d365-address-create"              => D365AddressCreate(request.Fields, ct),
-            "d365-address-update"              => D365AddressUpdate(request.Fields, ct),
-            "d365-address-delete"              => D365AddressDelete(request.Fields, ct),
-            "capture-customer-create"          => CaptureCustomerCreate(request.Fields, ct),
-            "capture-customer-update"          => CaptureCustomerUpdate(request.Fields, ct),
-            "capture-customer-delete"          => CaptureCustomerDelete(request.Fields, ct),
-            "capture-contact-create"           => CaptureContactCreate(request.Fields, ct),
-            "capture-contact-update"           => CaptureContactUpdate(request.Fields, ct),
-            "capture-contact-delete"           => CaptureContactDelete(request.Fields, ct),
-            "capture-partycontact-create"      => CapturePartyContactCreate(request.Fields, ct),
-            "capture-partycontact-update"      => CapturePartyContactUpdate(request.Fields, ct),
-            "capture-partycontact-delete"      => CapturePartyContactDelete(request.Fields, ct),
-            "capture-address-create"           => CaptureAddressCreate(request.Fields, ct),
-            "capture-address-update"           => CaptureAddressUpdate(request.Fields, ct),
-            "capture-address-delete"           => CaptureAddressDelete(request.Fields, ct),
+            "d365-customer-create"             => D365CustomerCreate(f, ct, startedAt),
+            "d365-customer-update"             => D365CustomerUpdate(f, ct, startedAt),
+            "d365-customer-delete"             => D365CustomerDelete(f, ct, startedAt),
+            "d365-contact-create"              => D365ContactCreate(f, ct, startedAt),
+            "d365-contact-update"              => D365ContactUpdate(f, ct, startedAt),
+            "d365-contact-delete"              => D365ContactDelete(f, ct, startedAt),
+            "d365-contact-create-no-customer"  => D365ContactCreateNoCustomer(f, ct, startedAt),
+            "d365-address-create"              => D365AddressCreate(f, ct, startedAt),
+            "d365-address-update"              => D365AddressUpdate(f, ct, startedAt),
+            "d365-address-delete"              => D365AddressDelete(f, ct, startedAt),
+            "capture-customer-create"          => CaptureCustomerCreate(f, ct, startedAt),
+            "capture-customer-update"          => CaptureCustomerUpdate(f, ct, startedAt),
+            "capture-customer-delete"          => CaptureCustomerDelete(f, ct, startedAt),
+            "capture-contact-create"           => CaptureContactCreate(f, ct, startedAt),
+            "capture-contact-update"           => CaptureContactUpdate(f, ct, startedAt),
+            "capture-contact-delete"           => CaptureContactDelete(f, ct, startedAt),
+            "capture-partycontact-create"      => CapturePartyContactCreate(f, ct, startedAt),
+            "capture-partycontact-update"      => CapturePartyContactUpdate(f, ct, startedAt),
+            "capture-partycontact-delete"      => CapturePartyContactDelete(f, ct, startedAt),
+            "capture-address-create"           => CaptureAddressCreate(f, ct, startedAt),
+            "capture-address-update"           => CaptureAddressUpdate(f, ct, startedAt),
+            "capture-address-delete"           => CaptureAddressDelete(f, ct, startedAt),
             _                                  => UnknownScenario(request.Scenario)
         };
 
@@ -64,7 +68,7 @@ public class SimulationService(IConfiguration config)
     // ── D365 → Capture ───────────────────────────────────────────────────
 
     private async IAsyncEnumerable<SimulationEvent> D365CustomerCreate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var payload = BuildD365Event("OnExternalCreated", "mserp_custcustomerv3entity",
             new()
@@ -81,11 +85,11 @@ public class SimulationService(IConfiguration config)
             });
 
         await foreach (var e in Send(D365Queue, payload, "D365 Customer Create Event", ct)) yield return e;
-        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> D365CustomerUpdate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var changedFields = new List<string> { "mserp_organizationname", "mserp_namealias" };
         var payload = BuildD365Event("OnExternalUpdated", "mserp_custcustomerv3entity",
@@ -101,11 +105,11 @@ public class SimulationService(IConfiguration config)
             }, changedFields);
 
         await foreach (var e in Send(D365Queue, payload, "D365 Customer Update Event", ct)) yield return e;
-        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> D365CustomerDelete(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var payload = BuildD365Event("OnExternalDeleted", "mserp_custcustomerv3entity",
             new()
@@ -116,11 +120,11 @@ public class SimulationService(IConfiguration config)
             });
 
         await foreach (var e in Send(D365Queue, payload, "D365 Customer Delete Event", ct)) yield return e;
-        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> D365ContactCreate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var payload = BuildD365Event("OnExternalCreated", "mserp_smmcontactpersonv2entity",
             new()
@@ -136,11 +140,11 @@ public class SimulationService(IConfiguration config)
             });
 
         await foreach (var e in Send(D365Queue, payload, "D365 Contact Create Event", ct)) yield return e;
-        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> D365ContactUpdate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var changedFields = new List<string> { "mserp_firstname", "mserp_lastname" };
         var payload = BuildD365Event("OnExternalUpdated", "mserp_smmcontactpersonv2entity",
@@ -157,11 +161,11 @@ public class SimulationService(IConfiguration config)
             }, changedFields);
 
         await foreach (var e in Send(D365Queue, payload, "D365 Contact Update Event", ct)) yield return e;
-        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> D365ContactDelete(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var payload = BuildD365Event("OnExternalDeleted", "mserp_smmcontactpersonv2entity",
             new()
@@ -172,11 +176,11 @@ public class SimulationService(IConfiguration config)
             });
 
         await foreach (var e in Send(D365Queue, payload, "D365 Contact Delete Event", ct)) yield return e;
-        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> D365ContactCreateNoCustomer(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var payload = BuildD365Event("OnExternalCreated", "mserp_smmcontactpersonv2entity",
             new()
@@ -189,11 +193,11 @@ public class SimulationService(IConfiguration config)
 
         await foreach (var e in Send(D365Queue, payload, "D365 Contact Create (no customer)", ct)) yield return e;
         yield return Info("→ Listening on Capture output queue (should NOT receive anything within 15s)...");
-        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(15), ct)) yield return e;
+        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(15), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> D365AddressCreate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var payload = BuildD365Event("OnExternalCreated", "mserp_wtc_custpostaladdressv2entity",
             new()
@@ -211,11 +215,11 @@ public class SimulationService(IConfiguration config)
             });
 
         await foreach (var e in Send(D365Queue, payload, "D365 CustomerAddress Create Event", ct)) yield return e;
-        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> D365AddressUpdate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var changedFields = new List<string>
         {
@@ -239,11 +243,11 @@ public class SimulationService(IConfiguration config)
             }, changedFields);
 
         await foreach (var e in Send(D365Queue, payload, "D365 CustomerAddress Update Event", ct)) yield return e;
-        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> D365AddressDelete(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var payload = BuildD365Event("OnExternalDeleted", "mserp_wtc_custpostaladdressv2entity",
             new()
@@ -254,13 +258,13 @@ public class SimulationService(IConfiguration config)
             });
 
         await foreach (var e in Send(D365Queue, payload, "D365 CustomerAddress Delete Event", ct)) yield return e;
-        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureOutQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
-    // ── Capture → D365 ───────────────────────────────────────────────────
+    // ── Capture → D365
 
     private async IAsyncEnumerable<SimulationEvent> CaptureCustomerCreate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var envelope = new CaptureMessageEnvelope<CaptureCustomerMessageContract>
         {
@@ -281,11 +285,11 @@ public class SimulationService(IConfiguration config)
         };
 
         await foreach (var e in Send(CaptureQueue, envelope, "Capture Customer Create", ct)) yield return e;
-        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> CaptureCustomerUpdate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var account = Get(f, "customeraccount", "");
         if (string.IsNullOrEmpty(account)) { yield return Err("CustomerAccount is required."); yield break; }
@@ -309,11 +313,11 @@ public class SimulationService(IConfiguration config)
         };
 
         await foreach (var e in Send(CaptureQueue, envelope, "Capture Customer Update", ct)) yield return e;
-        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> CaptureCustomerDelete(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var account = Get(f, "customeraccount", "");
         if (string.IsNullOrEmpty(account)) { yield return Err("CustomerAccount is required."); yield break; }
@@ -327,11 +331,11 @@ public class SimulationService(IConfiguration config)
         };
 
         await foreach (var e in Send(CaptureQueue, envelope, "Capture Customer Delete", ct)) yield return e;
-        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> CaptureContactCreate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var data = new CaptureContactMessageContract
         {
@@ -352,11 +356,11 @@ public class SimulationService(IConfiguration config)
         };
 
         await foreach (var e in Send(CaptureQueue, envelope, "Capture Contact Create", ct)) yield return e;
-        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> CaptureContactUpdate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var contactId = Get(f, "contactpersonid", "");
         if (string.IsNullOrEmpty(contactId)) { yield return Err("ContactPersonId is required."); yield break; }
@@ -380,11 +384,11 @@ public class SimulationService(IConfiguration config)
         };
 
         await foreach (var e in Send(CaptureQueue, envelope, "Capture Contact Update", ct)) yield return e;
-        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> CaptureContactDelete(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var contactId = Get(f, "contactpersonid", "");
         if (string.IsNullOrEmpty(contactId)) { yield return Err("ContactPersonId is required."); yield break; }
@@ -398,11 +402,11 @@ public class SimulationService(IConfiguration config)
         };
 
         await foreach (var e in Send(CaptureQueue, envelope, "Capture Contact Delete", ct)) yield return e;
-        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> CapturePartyContactCreate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var data = new CapturePartyContactMessageContract
         {
@@ -425,11 +429,11 @@ public class SimulationService(IConfiguration config)
         };
 
         await foreach (var e in Send(CaptureQueue, envelope, "Capture PartyContact Create", ct)) yield return e;
-        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> CapturePartyContactUpdate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var partyNumber      = Get(f, "partynumber",         "");
         var electronicAddrId = Get(f, "electronicaddressid", "");
@@ -453,11 +457,11 @@ public class SimulationService(IConfiguration config)
         };
 
         await foreach (var e in Send(CaptureQueue, envelope, "Capture PartyContact Update", ct)) yield return e;
-        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> CapturePartyContactDelete(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var partyNumber      = Get(f, "partynumber",         "");
         var electronicAddrId = Get(f, "electronicaddressid", "");
@@ -473,11 +477,11 @@ public class SimulationService(IConfiguration config)
         };
 
         await foreach (var e in Send(CaptureQueue, envelope, "Capture PartyContact Delete", ct)) yield return e;
-        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> CaptureAddressCreate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var envelope = new CaptureMessageEnvelope<CaptureCustomerAddressMessageContract>
         {
@@ -500,11 +504,11 @@ public class SimulationService(IConfiguration config)
         };
 
         await foreach (var e in Send(CaptureQueue, envelope, "Capture CustomerAddress Create", ct)) yield return e;
-        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> CaptureAddressUpdate(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var account    = Get(f, "customeraccount",   "");
         var locationId = Get(f, "addresslocationid", "");
@@ -534,11 +538,11 @@ public class SimulationService(IConfiguration config)
         };
 
         await foreach (var e in Send(CaptureQueue, envelope, "Capture CustomerAddress Update", ct)) yield return e;
-        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
     private async IAsyncEnumerable<SimulationEvent> CaptureAddressDelete(
-        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct)
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var account    = Get(f, "customeraccount",   "");
         var locationId = Get(f, "addresslocationid", "");
@@ -559,10 +563,10 @@ public class SimulationService(IConfiguration config)
         };
 
         await foreach (var e in Send(CaptureQueue, envelope, "Capture CustomerAddress Delete", ct)) yield return e;
-        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct)) yield return e;
+        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromSeconds(60), ct, startedAt)) yield return e;
     }
 
-    // ── Infrastructure helpers ────────────────────────────────────────────
+    // ── Infrastructure helpers
 
     private async IAsyncEnumerable<SimulationEvent> Send(
         string queueName, object message, string description,
@@ -589,37 +593,54 @@ public class SimulationService(IConfiguration config)
 
     private async IAsyncEnumerable<SimulationEvent> Listen(
         string queueName, TimeSpan timeout,
-        [EnumeratorCancellation] CancellationToken ct)
+        [EnumeratorCancellation] CancellationToken ct,
+        DateTimeOffset? ignoreMessagesBefore = null)
     {
         yield return Info($"→ Listening on '{queueName}' (timeout: {timeout.TotalSeconds}s)...");
 
         await using var client   = new ServiceBusClient(SbConn);
         await using var receiver = client.CreateReceiver(queueName);
 
-        var msg = await receiver.ReceiveMessageAsync(timeout, ct);
-        if (msg is null)
+        var deadline = DateTimeOffset.UtcNow.Add(timeout);
+
+        while (DateTimeOffset.UtcNow < deadline)
         {
-            yield return new SimulationEvent("warning", $"⏱ No response received within {timeout.TotalSeconds}s on '{queueName}'.");
+            var remaining = deadline - DateTimeOffset.UtcNow;
+            var msg = await receiver.ReceiveMessageAsync(remaining > TimeSpan.Zero ? remaining : TimeSpan.FromSeconds(1), ct);
+
+            if (msg is null)
+            {
+                yield return new SimulationEvent("warning", $"⏱ No response received within {timeout.TotalSeconds}s on '{queueName}'.");
+                yield break;
+            }
+
+            // Dead-letter stale messages so they don't loop back into the queue
+            if (ignoreMessagesBefore.HasValue && msg.EnqueuedTime < ignoreMessagesBefore.Value)
+            {
+                yield return Info($"  ⏭ Skipping stale message (EnqueuedAt: {msg.EnqueuedTime:yyyy-MM-dd HH:mm:ss} UTC) — dead-lettering it.");
+                await receiver.DeadLetterMessageAsync(msg, "StaleSimulationMessage", "Message was enqueued before this simulation run started.", ct);
+                continue;
+            }
+
+            await receiver.CompleteMessageAsync(msg, ct);
+            yield return new SimulationEvent("success", $"✓ Received message from '{queueName}'");
+            yield return Info($"  MessageId: {msg.MessageId}");
+            yield return Info($"  EnqueuedAt: {msg.EnqueuedTime:yyyy-MM-dd HH:mm:ss} UTC");
+
+            var body = msg.Body.ToString();
+            string receivedText;
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                receivedText  = JsonSerializer.Serialize(doc.RootElement, _indented);
+            }
+            catch
+            {
+                receivedText = body;
+            }
+            yield return new SimulationEvent("received", receivedText);
             yield break;
         }
-
-        await receiver.CompleteMessageAsync(msg, ct);
-        yield return new SimulationEvent("success", $"✓ Received message from '{queueName}'");
-        yield return Info($"  MessageId: {msg.MessageId}");
-        yield return Info($"  EnqueuedAt: {msg.EnqueuedTime:yyyy-MM-dd HH:mm:ss} UTC");
-
-        var body = msg.Body.ToString();
-        string receivedText;
-        try
-        {
-            using var doc = JsonDocument.Parse(body);
-            receivedText  = JsonSerializer.Serialize(doc.RootElement, _indented);
-        }
-        catch
-        {
-            receivedText = body;
-        }
-        yield return new SimulationEvent("received", receivedText);
     }
 
     private static object BuildD365Event(
