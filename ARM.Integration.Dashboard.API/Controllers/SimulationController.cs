@@ -7,7 +7,7 @@ namespace ARM.Integration.Dashboard.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class SimulationController(SimulationService service) : ControllerBase
+public class SimulationController(SimulationService service, IConfiguration configuration) : ControllerBase
 {
     private static readonly JsonSerializerOptions _camelCase = new()
     {
@@ -26,5 +26,20 @@ public class SimulationController(SimulationService service) : ControllerBase
             await Response.WriteAsync($"data: {JsonSerializer.Serialize(evt, _camelCase)}\n\n", ct);
             await Response.Body.FlushAsync(ct);
         }
+    }
+
+    [HttpGet("config")]
+    public ActionResult<SimulationConfigResponse> GetConfig()
+    {
+        var sbConn = configuration["Simulation:ServiceBusConnectionString"] ?? "";
+
+        return Ok(new SimulationConfigResponse
+        {
+            D365Queue = configuration["Simulation:D365Queue"] ?? "",
+            CaptureToD365Queue = configuration["Simulation:CaptureToD365Queue"] ?? "",
+            CaptureToD365ResponseQueue = configuration["Simulation:CaptureToD365ResponseQueue"] ?? "",
+            D365ToCaptureQueue = configuration["Simulation:D365ToCaptureQueue"] ?? "",
+            IsServiceBusConfigured = !string.IsNullOrWhiteSpace(sbConn)
+        });
     }
 }

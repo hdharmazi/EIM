@@ -1,3 +1,4 @@
+@model ARM.Integration.Dashboard.Web.Models.SimulationPageViewModel
 @{
     ViewData["Title"] = "Integration Simulation";
 }
@@ -5,6 +6,40 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h4 class="mb-0">Integration Simulation</h4>
     <small class="text-muted">Send test messages to Service Bus and watch results in real time</small>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <span class="fw-semibold small">Simulation Configuration</span>
+        @if (Model.Config.IsServiceBusConfigured)
+        {
+            <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">Service Bus: Configured</span>
+        }
+        else
+        {
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Service Bus: Not configured</span>
+        }
+    </div>
+    <div class="card-body py-3">
+        <div class="row g-3 small">
+            <div class="col-md-6">
+                <div class="text-muted">D365Queue</div>
+                <div class="fw-semibold">@(string.IsNullOrWhiteSpace(Model.Config.D365Queue) ? "Not configured" : Model.Config.D365Queue)</div>
+            </div>
+            <div class="col-md-6">
+                <div class="text-muted">CaptureToD365Queue</div>
+                <div class="fw-semibold">@(string.IsNullOrWhiteSpace(Model.Config.CaptureToD365Queue) ? "Not configured" : Model.Config.CaptureToD365Queue)</div>
+            </div>
+            <div class="col-md-6">
+                <div class="text-muted">CaptureToD365ResponseQueue</div>
+                <div class="fw-semibold">@(string.IsNullOrWhiteSpace(Model.Config.CaptureToD365ResponseQueue) ? "Not configured" : Model.Config.CaptureToD365ResponseQueue)</div>
+            </div>
+            <div class="col-md-6">
+                <div class="text-muted">D365ToCaptureQueue</div>
+                <div class="fw-semibold">@(string.IsNullOrWhiteSpace(Model.Config.D365ToCaptureQueue) ? "Not configured" : Model.Config.D365ToCaptureQueue)</div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="row g-3">

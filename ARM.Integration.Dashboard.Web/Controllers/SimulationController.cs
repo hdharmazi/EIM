@@ -1,4 +1,5 @@
 using ARM.Integration.Dashboard.Web.Services;
+using ARM.Integration.Dashboard.Web.Models;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 
@@ -6,7 +7,12 @@ namespace ARM.Integration.Dashboard.Web.Controllers;
 
 public class SimulationController(ISimulationService service) : Controller
 {
-    public IActionResult Index() => View();
+    public async Task<IActionResult> Index(CancellationToken ct)
+    {
+        var config = await service.GetConfigAsync(ct);
+        var vm = new SimulationPageViewModel { Config = config };
+        return View(vm);
+    }
 
     [HttpPost]
     public async Task Run([FromBody] JsonElement body, CancellationToken ct)
