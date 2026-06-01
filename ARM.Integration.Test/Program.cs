@@ -575,9 +575,12 @@ namespace ARM.Integration.Test
         {
             Console.WriteLine("  Enter PartyContact details:");
 
-            Console.Write("    PartyNumber [000000706]: ");
-            var partyNumber = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(partyNumber)) partyNumber = "000000706";
+            Console.Write("    Contact Party Number [000000706]: ");
+            var contactPartyNumber = Console.ReadLine()?.Trim();
+            if (string.IsNullOrEmpty(contactPartyNumber)) contactPartyNumber = "000000706";
+
+            Console.Write("    Customer Party Number []: ");
+            var customerPartyNumber = Console.ReadLine()?.Trim();
 
             Console.Write("    Locator [712-366-2241]: ");
             var locator = Console.ReadLine()?.Trim();
@@ -599,14 +602,15 @@ namespace ARM.Integration.Test
 
             var data = new CapturePartyContactMessageContract
             {
-                PartyNumber = partyNumber,
+                ContactPartyNumber = contactPartyNumber,
                 Locator = locator,
                 IsPrimary = isPrimary,
                 Type = type,
             };
 
-            if (!string.IsNullOrEmpty(locatorExt)) data.LocatorExtension = locatorExt;
-            if (!string.IsNullOrEmpty(description)) data.Description = description;
+            if (!string.IsNullOrEmpty(locatorExt))     data.LocatorExtension    = locatorExt;
+            if (!string.IsNullOrEmpty(description))    data.Description         = description;
+            if (!string.IsNullOrEmpty(customerPartyNumber)) data.CustomerPartyNumber = customerPartyNumber;
 
             var message = new CaptureMessageEnvelope<CapturePartyContactMessageContract>
             {
@@ -626,11 +630,15 @@ namespace ARM.Integration.Test
         /// </summary>
         static async Task SimulateCapturePartyContactUpdate()
         {
-            Console.Write("  Enter PartyNumber: ");
-            var partyNumber = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(partyNumber))
+            Console.Write("  Enter Contact Party Number (or leave empty): ");
+            var contactPartyNumber = Console.ReadLine()?.Trim();
+
+            Console.Write("  Enter Customer Party Number (or leave empty): ");
+            var customerPartyNumber = Console.ReadLine()?.Trim();
+
+            if (string.IsNullOrEmpty(contactPartyNumber) && string.IsNullOrEmpty(customerPartyNumber))
             {
-                Console.WriteLine("  PartyNumber is required.");
+                Console.WriteLine("  At least one of ContactPartyNumber or CustomerPartyNumber is required.");
                 return;
             }
 
@@ -660,7 +668,8 @@ namespace ARM.Integration.Test
 
             var data = new CapturePartyContactMessageContract
             {
-                PartyNumber = partyNumber,
+                ContactPartyNumber  = string.IsNullOrEmpty(contactPartyNumber)  ? null : contactPartyNumber,
+                CustomerPartyNumber = string.IsNullOrEmpty(customerPartyNumber) ? null : customerPartyNumber,
                 ElectronicAddressId = electronicAddressId,
                 Locator = locator,
                 LocatorExtension = locatorExt,
@@ -686,11 +695,15 @@ namespace ARM.Integration.Test
         /// </summary>
         static async Task SimulateCapturePartyContactDelete()
         {
-            Console.Write("  Enter PartyNumber: ");
-            var partyNumber = Console.ReadLine()?.Trim();
-            if (string.IsNullOrEmpty(partyNumber))
+            Console.Write("  Enter Contact Party Number (or leave empty): ");
+            var contactPartyNumber = Console.ReadLine()?.Trim();
+
+            Console.Write("  Enter Customer Party Number (or leave empty): ");
+            var customerPartyNumber = Console.ReadLine()?.Trim();
+
+            if (string.IsNullOrEmpty(contactPartyNumber) && string.IsNullOrEmpty(customerPartyNumber))
             {
-                Console.WriteLine("  PartyNumber is required.");
+                Console.WriteLine("  At least one of ContactPartyNumber or CustomerPartyNumber is required.");
                 return;
             }
 
@@ -709,7 +722,8 @@ namespace ARM.Integration.Test
                 Entity = "PartyContact",
                 Data = new CapturePartyContactMessageContract
                 {
-                    PartyNumber = partyNumber,
+                    ContactPartyNumber  = string.IsNullOrEmpty(contactPartyNumber)  ? null : contactPartyNumber,
+                    CustomerPartyNumber = string.IsNullOrEmpty(customerPartyNumber) ? null : customerPartyNumber,
                     ElectronicAddressId = electronicAddressId,
                 }
             };

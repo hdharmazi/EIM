@@ -17,6 +17,7 @@
   
   
   
+  
   <Project Path="ARM.Integration.Core/ARM.Integration.Core.csproj" />
   <Project Path="ARM.Integration.Dashboard.API/ARM.Integration.Dashboard.API.csproj" />
   <Project Path="ARM.Integration.Dashboard.Web/ARM.Integration.Dashboard.Web.csproj" />

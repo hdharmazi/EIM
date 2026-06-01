@@ -1,7 +1,7 @@
 az login az account set --subscription <your-subscription-id>
 
--- Add quewue 
-az deployment group create  --resource-group d365fsc-integration-nonprod --template-file ARM.Integration.EIM\bicep\main-addqueue.bicep
+-- Add queue
+az deployment group create  --resource-group d365fsc-integration-nonprod --template-file ARM.Integration.EIM\script\bicep\main-addqueue.bicep
  
 -- Add 
 

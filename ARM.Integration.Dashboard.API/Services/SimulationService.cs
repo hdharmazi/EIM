@@ -410,15 +410,17 @@ public class SimulationService(IConfiguration config)
     {
         var data = new CapturePartyContactMessageContract
         {
-            PartyNumber = Get(f, "partynumber", "000000706"),
+            ContactPartyNumber = Get(f, "contactpartynumber", "000000706"),
             Locator     = Get(f, "locator",     "712-366-2241"),
             IsPrimary   = Get(f, "isprimary",   "Yes"),
             Type        = Get(f, "type",        "Phone"),
         };
-        var ext  = Get(f, "locatorextension", "");
-        var desc = Get(f, "description",      "");
-        if (!string.IsNullOrEmpty(ext))  data.LocatorExtension = ext;
-        if (!string.IsNullOrEmpty(desc)) data.Description      = desc;
+        var ext             = Get(f, "locatorextension",    "");
+        var desc            = Get(f, "description",         "");
+        var custPartyNumber = Get(f, "customerpartynumber", "");
+        if (!string.IsNullOrEmpty(ext))             data.LocatorExtension    = ext;
+        if (!string.IsNullOrEmpty(desc))            data.Description         = desc;
+        if (!string.IsNullOrEmpty(custPartyNumber)) data.CustomerPartyNumber = custPartyNumber;
 
         var envelope = new CaptureMessageEnvelope<CapturePartyContactMessageContract>
         {
@@ -435,9 +437,11 @@ public class SimulationService(IConfiguration config)
     private async IAsyncEnumerable<SimulationEvent> CapturePartyContactUpdate(
         Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
-        var partyNumber      = Get(f, "partynumber",         "");
-        var electronicAddrId = Get(f, "electronicaddressid", "");
-        if (string.IsNullOrEmpty(partyNumber))      { yield return Err("PartyNumber is required.");         yield break; }
+        var contactPartyNumber  = Get(f, "contactpartynumber",  "");
+        var customerPartyNumber = Get(f, "customerpartynumber", "");
+        var electronicAddrId    = Get(f, "electronicaddressid", "");
+        if (string.IsNullOrEmpty(contactPartyNumber) && string.IsNullOrEmpty(customerPartyNumber))
+            { yield return Err("At least one of ContactPartyNumber or CustomerPartyNumber is required."); yield break; }
         if (string.IsNullOrEmpty(electronicAddrId)) { yield return Err("ElectronicAddressId is required."); yield break; }
 
         var envelope = new CaptureMessageEnvelope<CapturePartyContactMessageContract>
@@ -447,7 +451,8 @@ public class SimulationService(IConfiguration config)
             Entity   = "PartyContact",
             Data     = new()
             {
-                PartyNumber         = partyNumber,
+                ContactPartyNumber  = string.IsNullOrEmpty(contactPartyNumber)  ? null : contactPartyNumber,
+                CustomerPartyNumber = string.IsNullOrEmpty(customerPartyNumber) ? null : customerPartyNumber,
                 ElectronicAddressId = electronicAddrId,
                 Locator             = Get(f, "locator",          "712-366-2241"),
                 LocatorExtension    = Get(f, "locatorextension", ""),
@@ -463,9 +468,11 @@ public class SimulationService(IConfiguration config)
     private async IAsyncEnumerable<SimulationEvent> CapturePartyContactDelete(
         Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
-        var partyNumber      = Get(f, "partynumber",         "");
-        var electronicAddrId = Get(f, "electronicaddressid", "");
-        if (string.IsNullOrEmpty(partyNumber))      { yield return Err("PartyNumber is required.");         yield break; }
+        var contactPartyNumber  = Get(f, "contactpartynumber",  "");
+        var customerPartyNumber = Get(f, "customerpartynumber", "");
+        var electronicAddrId    = Get(f, "electronicaddressid", "");
+        if (string.IsNullOrEmpty(contactPartyNumber) && string.IsNullOrEmpty(customerPartyNumber))
+            { yield return Err("At least one of ContactPartyNumber or CustomerPartyNumber is required."); yield break; }
         if (string.IsNullOrEmpty(electronicAddrId)) { yield return Err("ElectronicAddressId is required."); yield break; }
 
         var envelope = new CaptureMessageEnvelope<CapturePartyContactMessageContract>
@@ -473,7 +480,12 @@ public class SimulationService(IConfiguration config)
             SourceId = $"SIM-DEL-{DateTime.UtcNow:yyyyMMddHHmmss}",
             Action   = "Delete",
             Entity   = "PartyContact",
-            Data     = new() { PartyNumber = partyNumber, ElectronicAddressId = electronicAddrId }
+            Data     = new()
+            {
+                ContactPartyNumber  = string.IsNullOrEmpty(contactPartyNumber)  ? null : contactPartyNumber,
+                CustomerPartyNumber = string.IsNullOrEmpty(customerPartyNumber) ? null : customerPartyNumber,
+                ElectronicAddressId = electronicAddrId,
+            }
         };
 
         await foreach (var e in Send(CaptureQueue, envelope, "Capture PartyContact Delete", ct)) yield return e;

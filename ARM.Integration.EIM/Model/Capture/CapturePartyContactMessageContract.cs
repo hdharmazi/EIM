@@ -4,9 +4,13 @@ namespace ARM.Integration.EIM
 {
     public class CapturePartyContactMessageContract
     {
-        [JsonPropertyName("PartyNumber")]
+        [JsonPropertyName("ContactPartyNumber")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string PartyNumber { get; set; }
+        public string ContactPartyNumber { get; set; }
+
+        [JsonPropertyName("CustomerPartyNumber")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string CustomerPartyNumber { get; set; }
 
         [JsonPropertyName("ElectronicAddressId")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

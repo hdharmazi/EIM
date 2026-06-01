@@ -46,9 +46,11 @@ namespace ARM.Integration.EIM.Orchestration
 
         protected override CapturePartyContactMessageContract MapFields(Func<string, bool, string?> getField, string action)
         {
+            var partyNumber = getField("mserp_partynumber", true);
             return new CapturePartyContactMessageContract
             {
-                PartyNumber = getField("mserp_partynumber", true),
+                ContactPartyNumber  = partyNumber,
+                CustomerPartyNumber = partyNumber,
                 ElectronicAddressId =  getField("mserp_electronicaddressid", true),
                 Locator = getField("mserp_locator", true),
                 LocatorExtension = getField("mserp_locatorextension", true),

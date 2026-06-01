@@ -19,11 +19,14 @@ namespace ARM.Integration.EIM.Orchestration
             return (envelope.SourceId, envelope.Action, envelope.Data ?? throw new JsonException("Data is null."));
         }
 
+        private static string? ResolvePartyNumber(CapturePartyContactMessageContract source) =>
+            !string.IsNullOrWhiteSpace(source.ContactPartyNumber) ? source.ContactPartyNumber : source.CustomerPartyNumber;
+
         protected override PartyContactsEntity MapToTarget(CapturePartyContactMessageContract source)
         {
             return new PartyContactsEntity
             {
-                PartyNumber = source.PartyNumber,
+                PartyNumber = ResolvePartyNumber(source),
                 ElectronicAddressId = source.ElectronicAddressId,
                 Locator = source.Locator,
                 LocatorExtension = source.LocatorExtension,
@@ -69,7 +72,8 @@ namespace ARM.Integration.EIM.Orchestration
             {
                 return new CapturePartyContactMessageContract
                 {
-                    PartyNumber = d365Result.PartyNumber,
+                    ContactPartyNumber  = d365Result.PartyNumber,
+                    CustomerPartyNumber = d365Result.PartyNumber,
                     ElectronicAddressId = d365Result.ElectronicAddressId,
                     Locator = d365Result.Locator,
                     LocatorExtension = d365Result.LocatorExtension,
@@ -87,7 +91,8 @@ namespace ARM.Integration.EIM.Orchestration
 
             return new CapturePartyContactMessageContract
             {
-                PartyNumber = source.PartyNumber,
+                ContactPartyNumber  = source.ContactPartyNumber,
+                CustomerPartyNumber = source.CustomerPartyNumber,
                 ElectronicAddressId = source.ElectronicAddressId,
                 Locator = source.Locator,
                 LocatorExtension = source.LocatorExtension,
