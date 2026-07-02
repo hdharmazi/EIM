@@ -53,7 +53,7 @@ public abstract class BaseForwardOrchestration<TDest> : IOrchestration where TDe
         };
     }
 
-    public async Task<string> ProcessAsync(
+    public async Task<OrchestrationResult> ProcessAsync(
         QueueMessageContract data,
         string connectionString,
         IOrchestrationLogger stepLog,
@@ -82,7 +82,7 @@ public abstract class BaseForwardOrchestration<TDest> : IOrchestration where TDe
             {
                 result = "not tracked fields";
                 stepLog.Log("Result", result);
-                return result;
+                return OrchestrationResult.Completed(result);
             }
 
             var envelope = CreateEnvelope(mappedData, GetSourceId(data), action, sourceTimestamp);
@@ -103,6 +103,6 @@ public abstract class BaseForwardOrchestration<TDest> : IOrchestration where TDe
             throw;
         }
 
-        return result;
+        return OrchestrationResult.Completed(result);
     }
 }

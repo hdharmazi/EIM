@@ -47,7 +47,7 @@ public abstract class BaseCrudOrchestration<TSource, TDest> : IOrchestration
     /// <summary>Builds the response data from either the target result or the source context.</summary>
     protected abstract TSource BuildResponseData(TSource source, TDest? result, string action);
 
-    public async Task<string> ProcessAsync(
+    public async Task<OrchestrationResult> ProcessAsync(
         QueueMessageContract data,
         string connectionString,
         IOrchestrationLogger stepLog,
@@ -143,6 +143,6 @@ public abstract class BaseCrudOrchestration<TSource, TDest> : IOrchestration
             throw;
         }
 
-        return result;
+        return OrchestrationResult.Completed(result);
     }
 }

@@ -12,7 +12,7 @@ namespace ARM.Integration.EIM.Orchestration
     /// </summary>
     public class Sample : IOrchestration
     {
-        public async Task<string> ProcessAsync(
+        public async Task<OrchestrationResult> ProcessAsync(
             QueueMessageContract data,
             string connectionString,
             IOrchestrationLogger stepLog,
@@ -43,7 +43,7 @@ namespace ARM.Integration.EIM.Orchestration
                 throw;
             }
 
-            return result;
+            return OrchestrationResult.Completed(result);
         }
     }
 }

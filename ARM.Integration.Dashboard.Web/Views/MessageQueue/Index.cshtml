@@ -13,7 +13,7 @@
     <div class="col-auto">
         <select name="status" class="form-select form-select-sm">
             <option value="">All Statuses</option>
-            @foreach (var (val, label) in new[] { ("0","NEW"), ("1","PROCESSING"), ("2","COMPLETED"), ("3","FAILED"), ("4","DEAD") })
+            @foreach (var (val, label) in new[] { ("0","NEW"), ("1","PROCESSING"), ("2","COMPLETED"), ("3","FAILED"), ("4","DEAD"), ("5","AWAITING D365") })
             {
                 <option value="@val" selected="@(Model.StatusFilter?.ToString() == val)">@label</option>
             }

@@ -25,6 +25,7 @@ public class MessageQueueRecord
         2 => "COMPLETED",
         3 => "FAILED",
         4 => "DEAD",
+        5 => "AWAITING D365",
         _ => "UNKNOWN"
     };
 
@@ -35,6 +36,7 @@ public class MessageQueueRecord
         2 => "badge bg-success",
         3 => "badge bg-warning text-dark",
         4 => "badge bg-danger",
+        5 => "badge bg-info text-dark",
         _ => "badge bg-dark"
     };
 

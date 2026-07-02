@@ -77,9 +77,10 @@ namespace ARM.Integration.EIM
                 UpdateMessageStatus(messageId, "Processing..", 1);
 
                 var message = GetMessage(messageId);
-                responseMessage = await DispatchOrchestrationAsync(message, messageId, ct);
+                var result = await DispatchOrchestrationAsync(message, messageId, ct);
 
-                UpdateMessageStatus(messageId, responseMessage, 2);
+                responseMessage = result.Message;
+                UpdateMessageStatus(messageId, result.Message, result.Status, result.DestinationId);
             }
             catch (ApplicationException exception)
             {
@@ -127,7 +128,7 @@ namespace ARM.Integration.EIM
             return result;
         }
 
-        private async Task<string> DispatchOrchestrationAsync(
+        private async Task<OrchestrationResult> DispatchOrchestrationAsync(
             QueueMessageContract message, string messageId, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(message.Type))
@@ -154,21 +155,90 @@ namespace ARM.Integration.EIM
                 ?? throw new ApplicationException($"Method 'ProcessAsync' not found on '{message.Type}'.");
 
             var eimMessagesJson = JsonSerializer.Serialize(message);
-            var task = (Task<string>)methodInfo.Invoke(instance, [eimMessagesJson, _connectionString, stepLog]);
-            return await task;
+            var invokeResult = methodInfo.Invoke(instance, [eimMessagesJson, _connectionString, stepLog]);
+
+            // Adapt legacy orchestrations that return Task<string> into an OrchestrationResult.
+            if (invokeResult is Task<OrchestrationResult> resultTask)
+            {
+                return await resultTask;
+            }
+
+            var legacyString = await (Task<string>)invokeResult!;
+            return OrchestrationResult.Completed(legacyString);
         }
 
-        private void UpdateMessageStatus(string messageId, string message, int status)
+        private void UpdateMessageStatus(string messageId, string message, int status, string? destinationId = null)
         {
-            const string sql = @"UPDATE MESSAGEQUEUETABLE 
+            var sql = destinationId is null
+                ? @"UPDATE MESSAGEQUEUETABLE 
                 SET STATUS = @STATUS, MESSAGELOG = @MESSAGELOG, MODIFIEDDATETIME = @MODIFIEDDATETIME 
+                WHERE ID = @ID"
+                : @"UPDATE MESSAGEQUEUETABLE 
+                SET STATUS = @STATUS, MESSAGELOG = @MESSAGELOG, MODIFIEDDATETIME = @MODIFIEDDATETIME, DESTINATIONID = @DESTINATIONID 
                 WHERE ID = @ID";
 
-            new SQLServerHelper(_connectionString).ExecuteNonQuery(sql, CommandType.Text,
+            var parameters = new List<SqlParameter>
+            {
+                new("@STATUS", status),
+                new("@MESSAGELOG", message),
+                new("@MODIFIEDDATETIME", DateTime.UtcNow),
+                new("@ID", messageId),
+            };
+            if (destinationId is not null)
+                parameters.Add(new SqlParameter("@DESTINATIONID", destinationId));
+
+            new SQLServerHelper(_connectionString).ExecuteNonQuery(sql, CommandType.Text, [.. parameters]);
+        }
+
+        /// <summary>
+        /// Updates the status and log of the message correlated by DESTINATIONID.
+        /// Used by asynchronous reconciliation (e.g., D365 business events) to finalize a
+        /// previously submitted message. Idempotent and not gated on the current status,
+        /// so late or duplicate events still reconcile correctly.
+        /// </summary>
+        /// <returns>The number of rows updated.</returns>
+        public int UpdateStatusByDestinationId(string destinationId, int status, string message)
+        {
+            if (string.IsNullOrWhiteSpace(destinationId))
+                throw new ArgumentException("DestinationId is required.", nameof(destinationId));
+
+            const string sql = @"UPDATE MESSAGEQUEUETABLE 
+                SET STATUS = @STATUS, MESSAGELOG = @MESSAGELOG, MODIFIEDDATETIME = @MODIFIEDDATETIME 
+                WHERE DESTINATIONID = @DESTINATIONID";
+
+            return new SQLServerHelper(_connectionString).ExecuteNonQuery(sql, CommandType.Text,
                 new SqlParameter("@STATUS", status),
                 new SqlParameter("@MESSAGELOG", message),
                 new SqlParameter("@MODIFIEDDATETIME", DateTime.UtcNow),
-                new SqlParameter("@ID", messageId));
+                new SqlParameter("@DESTINATIONID", destinationId));
+        }
+
+        /// <summary>
+        /// Escalates messages stuck at <paramref name="fromStatus"/> whose last modification is older
+        /// than <paramref name="olderThanUtc"/> to <paramref name="toStatus"/>. Used by the safety-net
+        /// sweeper for asynchronous messages awaiting D365 confirmation that never arrived.
+        /// </summary>
+        /// <returns>The IDs of the escalated message rows (for alerting).</returns>
+        public IReadOnlyList<string> EscalateStuckMessages(
+            int fromStatus, int toStatus, DateTime olderThanUtc, string message)
+        {
+            const string sql = @"UPDATE MESSAGEQUEUETABLE 
+                SET STATUS = @TO, MESSAGELOG = @MESSAGELOG, MODIFIEDDATETIME = @MODIFIEDDATETIME 
+                OUTPUT inserted.ID 
+                WHERE STATUS = @FROM AND MODIFIEDDATETIME < @CUTOFF";
+
+            var ids = new List<string>();
+            new SQLServerHelper(_connectionString).ExecuteReader(
+                sql,
+                r => ids.Add(r["ID"].ToString() ?? ""),
+                CommandType.Text,
+                new SqlParameter("@TO", toStatus),
+                new SqlParameter("@MESSAGELOG", message),
+                new SqlParameter("@MODIFIEDDATETIME", DateTime.UtcNow),
+                new SqlParameter("@FROM", fromStatus),
+                new SqlParameter("@CUTOFF", olderThanUtc));
+
+            return ids;
         }
     }
 

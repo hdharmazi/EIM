@@ -21,6 +21,7 @@ STATUS value:
 2 - Completed
 3 - Failed
 4 - Dead Letter
+5 - Submitted / Awaiting D365 (async: submitted to a D365 message queue, awaiting business-event confirmation)
 */
 --------------------------------------------------------------
 	
@@ -53,6 +54,11 @@ GO
 ALTER TABLE [dbo].[MESSAGEQUEUETABLE] ADD  CONSTRAINT [DF_MESSAGEQUEUETABLE_STATUS]  DEFAULT ((0)) FOR [STATUS]
 GO
 ALTER TABLE [dbo].[MESSAGEQUEUETABLE] ADD  CONSTRAINT [DF_MESSAGEQUEUETABLE_CREATED]  DEFAULT (sysdatetime()) FOR [CREATEDDATETIME]
+GO
+
+-- Index to support asynchronous reconciliation by correlation id (DESTINATIONID holds the D365 CreatedTransactionId)
+CREATE NONCLUSTERED INDEX [IX_MESSAGEQUEUETABLE_DESTINATIONID]
+    ON [dbo].[MESSAGEQUEUETABLE] ([DESTINATIONID] ASC)
 GO
 
 -------------------------------------------------------------
@@ -263,3 +269,11 @@ GO
 
 
 
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE name = 'IX_MESSAGEQUEUETABLE_DESTINATIONID'
+      AND object_id = OBJECT_ID('dbo.MESSAGEQUEUETABLE')
+)
+CREATE NONCLUSTERED INDEX [IX_MESSAGEQUEUETABLE_DESTINATIONID]
+    ON [dbo].[MESSAGEQUEUETABLE] ([DESTINATIONID] ASC);
+GO

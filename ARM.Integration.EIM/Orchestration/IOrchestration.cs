@@ -17,8 +17,11 @@ public interface IOrchestration
     /// <param name="connectionString">The EIM database connection string for environment lookups.</param>
     /// <param name="stepLog">Logger for writing step-level orchestration logs.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>A result string (typically the serialized response payload).</returns>
-    Task<string> ProcessAsync(
+    /// <returns>
+    /// An <see cref="OrchestrationResult"/> carrying the resulting message status, a log message,
+    /// and an optional destination correlation id.
+    /// </returns>
+    Task<OrchestrationResult> ProcessAsync(
         QueueMessageContract message,
         string connectionString,
         IOrchestrationLogger stepLog,

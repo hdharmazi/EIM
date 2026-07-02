@@ -17,6 +17,7 @@ builder.Services.AddSingleton<IReadOnlyDictionary<string, IOrchestration>>(_ =>
         ["CustomerAddress_To_Capture"] = new CustomerAddress_To_Capture(),
         ["CustomerAddress_To_D365FSC"] = new CustomerAddress_To_D365FSC(),
         ["PartyContact_To_Capture"] = new PartyContact_To_Capture(),
+        ["SalesOrder_To_D365FSC"] = new SalesOrder_To_D365FSC(),
         ["Sample"] = new Sample(),
     });
 
