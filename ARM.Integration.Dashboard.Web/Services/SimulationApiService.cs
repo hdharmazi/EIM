@@ -21,4 +21,15 @@ public class SimulationApiService(HttpClient httpClient) : ISimulationService
         // ResponseHeadersRead is critical for SSE — do NOT buffer the whole stream
         return await httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
     }
+
+    public async Task<HttpResponseMessage> ParseSalesOrderAsync(Stream fileStream, string fileName, CancellationToken ct = default)
+    {
+        var content = new MultipartFormDataContent();
+        var fileContent = new StreamContent(fileStream);
+        fileContent.Headers.ContentType =
+            new System.Net.Http.Headers.MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        content.Add(fileContent, "file", fileName);
+
+        return await httpClient.PostAsync("api/simulation/salesorder/parse", content, ct);
+    }
 }

@@ -28,4 +28,22 @@ public class SimulationController(ISimulationService service) : Controller
         await using var stream = await apiResponse.Content.ReadAsStreamAsync(ct);
         await stream.CopyToAsync(Response.Body, ct);
     }
+
+    [HttpPost]
+    public async Task<IActionResult> ParseSalesOrder(IFormFile file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest("No file uploaded.");
+
+        await using var stream = file.OpenReadStream();
+        using var apiResponse = await service.ParseSalesOrderAsync(stream, file.FileName, ct);
+
+        var json = await apiResponse.Content.ReadAsStringAsync(ct);
+        return new ContentResult
+        {
+            Content = json,
+            ContentType = "application/json",
+            StatusCode = (int)apiResponse.StatusCode
+        };
+    }
 }

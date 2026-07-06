@@ -7,7 +7,10 @@ namespace ARM.Integration.Dashboard.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class SimulationController(SimulationService service, IConfiguration configuration) : ControllerBase
+public class SimulationController(
+    SimulationService service,
+    SalesOrderExcelParser salesOrderParser,
+    IConfiguration configuration) : ControllerBase
 {
     private static readonly JsonSerializerOptions _camelCase = new()
     {
@@ -25,6 +28,27 @@ public class SimulationController(SimulationService service, IConfiguration conf
         {
             await Response.WriteAsync($"data: {JsonSerializer.Serialize(evt, _camelCase)}\n\n", ct);
             await Response.Body.FlushAsync(ct);
+        }
+    }
+
+    [HttpPost("salesorder/parse")]
+    public async Task<ActionResult<SalesOrderParseResponse>> ParseSalesOrder(IFormFile file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest("No file uploaded.");
+
+        // Copy to a seekable stream for ClosedXML
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, ct);
+        ms.Position = 0;
+
+        try
+        {
+            return Ok(salesOrderParser.Parse(ms));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest($"Could not read the workbook: {ex.Message}");
         }
     }
 

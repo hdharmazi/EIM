@@ -8,6 +8,7 @@ builder.Services.AddScoped<MessageQueueRepository>();
 builder.Services.AddScoped<EnvironmentRepository>();
 builder.Services.AddScoped<UserRepository>();
 builder.Services.AddScoped<SimulationService>();
+builder.Services.AddScoped<SalesOrderExcelParser>();
 
 var app = builder.Build();
 

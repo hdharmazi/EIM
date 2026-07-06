@@ -104,8 +104,7 @@ const SCENARIOS = {
   "capture-partycontact-delete":     { label:"Capture \u2192 PartyContact Delete",                   group:"Capture \u2192 D365", fields:[{k:"contactpartynumber",l:"Contact Party Number",d:""},{k:"customerpartynumber",l:"Customer Party Number",d:""},{k:"electronicaddressid",l:"Electronic Address ID",d:"",req:true}]},
   "capture-address-create":          { label:"Capture \u2192 CustomerAddress Create",                group:"Capture \u2192 D365", fields:[{k:"dataAreaId",l:"Data Area ID",d:"wtc"},{k:"customeraccount",l:"Customer Account",d:"AR-019739"},{k:"addressdescription",l:"Description",d:"Main Office"},{k:"addressstreet",l:"Street",d:"123 Main St"},{k:"addresscity",l:"City",d:"DALLAS"},{k:"addressstate",l:"State",d:"TX"},{k:"addresszipcode",l:"Zip Code",d:"75201"},{k:"addresscountryregionid",l:"Country Region ID",d:"USA"},{k:"addresslocationroles",l:"Location Roles",d:"Business"},{k:"isprimary",l:"Is Primary",d:"Yes"}]},
   "capture-address-update":          { label:"Capture \u2192 CustomerAddress Update",                group:"Capture \u2192 D365", fields:[{k:"dataAreaId",l:"Data Area ID",d:"wtc"},{k:"customeraccount",l:"Customer Account",d:"",req:true},{k:"addresslocationid",l:"Location ID",d:"",req:true},{k:"addressstreet",l:"Street",d:""},{k:"addresscity",l:"City",d:""},{k:"addressstate",l:"State",d:""},{k:"addresszipcode",l:"Zip Code",d:""},{k:"addresslocationroles",l:"Location Roles",d:""},{k:"isprimary",l:"Is Primary",d:""},{k:"addressdescription",l:"Description",d:""}]},
-  "capture-address-delete":          { label:"Capture \u2192 CustomerAddress Delete",                group:"Capture \u2192 D365", fields:[{k:"dataAreaId",l:"Data Area ID",d:"wtc"},{k:"customeraccount",l:"Customer Account",d:"",req:true},{k:"addresslocationid",l:"Location ID",d:"",req:true}]},
-};
+  "capture-address-delete":          { label:"Capture \u2192 CustomerAddress Delete",                group:"Capture \u2192 D365", fields:[{k:"dataAreaId",l:"Data Area ID",d:"wtc"},{k:"customeraccount",l:"Customer Account",d:"",req:true},{k:"addresslocationid",l:"Location ID",d:"",req:true}]},  "capture-salesorder-import":       { label:"Capture \u2192 Sales Order (Excel import)",            group:"Capture \u2192 D365", custom:"salesorder-import", fields:[] },};
 
 // ── Build grouped dropdown ────────────────────────────────────────────────
 (function buildDropdown() {
@@ -136,6 +135,14 @@ function onScenarioChange() {
     if (!id) { fc.innerHTML = ''; btn.disabled = true; return; }
 
     const scenario = SCENARIOS[id];
+
+    // Custom scenarios render their own UI (e.g. Excel import)
+    if (scenario.custom === 'salesorder-import') {
+        renderSalesOrderImportUI(fc);
+        btn.disabled = true; // enabled once a sheet is selected
+        return;
+    }
+
     let html = '<div class="mb-2"><small class="text-muted fw-semibold">Payload Fields</small></div>';
     for (const field of scenario.fields) {
         const req = field.req ? ' <span class="text-danger">*</span>' : '';
@@ -149,6 +156,89 @@ function onScenarioChange() {
     }
     fc.innerHTML = html;
     btn.disabled = false;
+}
+
+// ── Sales Order Excel import ───────────────────────────────────────────────
+let _salesOrders = {}; // sheetName -> mapped order JSON string
+let _selectedOrderSheet = null;
+
+function renderSalesOrderImportUI(fc) {
+    _salesOrders = {};
+    _selectedOrderSheet = null;
+    fc.innerHTML = `
+        <div class="mb-2"><small class="text-muted fw-semibold">Sales Order Import</small></div>
+        <div class="mb-2">
+            <label class="form-label form-label-sm mb-1">Data Area ID</label>
+            <input type="text" id="soDataAreaId" class="form-control form-control-sm" value="WTC" />
+        </div>
+        <div class="mb-2">
+            <label class="form-label form-label-sm mb-1">Workbook (.xlsx)</label>
+            <input type="file" id="soFile" class="form-control form-control-sm" accept=".xlsx"
+                   onclick="this.value=null" onchange="parseSalesOrderFile()" />
+        </div>
+        <div id="soSheets" class="mt-2"></div>`;
+}
+
+async function parseSalesOrderFile() {
+    const input = document.getElementById('soFile');
+    const container = document.getElementById('soSheets');
+    const runBtn = document.getElementById('runBtn');
+    _salesOrders = {};
+    _selectedOrderSheet = null;
+    runBtn.disabled = true;
+
+    if (!input.files || input.files.length === 0) { container.innerHTML = ''; return; }
+
+    container.innerHTML = '<div class="text-muted small">Parsing workbook…</div>';
+
+    const form = new FormData();
+    form.append('file', input.files[0]);
+
+    let data;
+    try {
+        const resp = await fetch('/Simulation/ParseSalesOrder', { method: 'POST', body: form });
+        if (!resp.ok) {
+            container.innerHTML = `<div class="text-danger small">Upload failed: HTTP ${resp.status} — ${await resp.text()}</div>`;
+            return;
+        }
+        data = await resp.json();
+    } catch (err) {
+        container.innerHTML = `<div class="text-danger small">Upload error: ${err.message}</div>`;
+        return;
+    }
+
+    const sheets = data.sheets ?? [];
+    if (sheets.length === 0) { container.innerHTML = '<div class="text-warning small">No worksheets found.</div>'; return; }
+
+    let html = '<div class="mb-1"><small class="text-muted fw-semibold">Select a sheet (one order)</small></div>';
+    for (const s of sheets) {
+        if (s.ok) {
+            _salesOrders[s.sheetName] = s.orderJson;
+            const p = s.preview ?? {};
+            const pbl = p.pBLId ?? p.pblId ?? p.PBLId ?? '';
+            html += `
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="soSheet" id="so_${s.sheetName}"
+                           value="${s.sheetName}" onchange="onSalesOrderSheetSelect(this.value)">
+                    <label class="form-check-label small" for="so_${s.sheetName}">
+                        <span class="fw-semibold">${s.sheetName}</span>
+                        &mdash; ${pbl} · ${p.custName ?? ''} · Qty ${p.quantity ?? 0} · ${p.lineCount ?? 0} lines
+                    </label>
+                </div>`;
+        } else {
+            const e = s.error ?? {};
+            html += `
+                <div class="text-danger small py-1">
+                    <span class="fw-semibold">${s.sheetName}</span> — ${e.sheet ? '[' + e.cell + '] ' : ''}${e.message ?? 'invalid'}
+                </div>`;
+        }
+    }
+    container.innerHTML = html;
+}
+
+function onSalesOrderSheetSelect(sheetName) {
+    _selectedOrderSheet = sheetName;
+    document.getElementById('runBtn').disabled = !sheetName;
 }
 
 function collectFields() {
@@ -213,8 +303,25 @@ async function runSimulation() {
     const scenarioId = document.getElementById('scenarioPicker').value;
     if (!scenarioId) return;
 
+    const scenario = SCENARIOS[scenarioId];
+
+    // Build the fields payload (custom scenarios assemble their own)
+    let fields;
+    if (scenario.custom === 'salesorder-import') {
+        if (!_selectedOrderSheet || !_salesOrders[_selectedOrderSheet]) {
+            appendLog('error', 'Select a parsed sheet before running.');
+            return;
+        }
+        fields = {
+            order: _salesOrders[_selectedOrderSheet],
+            dataAreaId: (document.getElementById('soDataAreaId')?.value || 'WTC')
+        };
+    } else {
+        fields = collectFields();
+    }
+
     clearLog();
-    appendLog('info', 'Starting: ' + SCENARIOS[scenarioId].label);
+    appendLog('info', 'Starting: ' + scenario.label);
     appendLog('info', new Date().toISOString());
 
     _running = true;
@@ -226,7 +333,7 @@ async function runSimulation() {
         const response = await fetch('/Simulation/Run', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ scenario: scenarioId, fields: collectFields() })
+            body:    JSON.stringify({ scenario: scenarioId, fields: fields })
         });
 
         if (!response.ok) {

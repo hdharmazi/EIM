@@ -3,6 +3,7 @@ using ARM.Integration.EIM;
 using Azure.Messaging.ServiceBus;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ARM.Integration.Dashboard.API.Services;
 
@@ -58,6 +59,7 @@ public class SimulationService(IConfiguration config)
             "capture-address-create"           => CaptureAddressCreate(f, ct, startedAt),
             "capture-address-update"           => CaptureAddressUpdate(f, ct, startedAt),
             "capture-address-delete"           => CaptureAddressDelete(f, ct, startedAt),
+            "capture-salesorder-import"        => CaptureSalesOrderImport(f, ct, startedAt),
             _                                  => UnknownScenario(request.Scenario)
         };
 
@@ -579,6 +581,52 @@ public class SimulationService(IConfiguration config)
     }
 
     // ── Infrastructure helpers
+
+    // ── Capture → D365: Sales Order (Excel import) ───────────────────────
+
+    private async IAsyncEnumerable<SimulationEvent> CaptureSalesOrderImport(
+        Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
+    {
+        var orderJson = Get(f, "order", "");
+        if (string.IsNullOrWhiteSpace(orderJson))
+        {
+            yield return Err("No order data. Upload a workbook and select a sheet first.");
+            yield break;
+        }
+
+        var dataAreaId = Get(f, "dataAreaId", "WTC");
+
+        // Parse the mapped order JSON (yield cannot live inside try/catch, so resolve first)
+        JsonObject? data = null;
+        string? parseError = null;
+        try
+        {
+            data = JsonNode.Parse(orderJson) as JsonObject;
+            if (data is null) parseError = "Order data is not a JSON object.";
+        }
+        catch (Exception ex)
+        {
+            parseError = "Order data is not valid JSON: " + ex.Message;
+        }
+
+        if (parseError is not null) { yield return Err(parseError); yield break; }
+
+        // dataAreaId is supplied at send time and lifted to _companyId by SalesOrder_To_D365FSC
+        data!["dataAreaId"] = dataAreaId;
+
+        var envelope = new JsonObject
+        {
+            ["SourceId"] = $"SIM-SO-{DateTime.UtcNow:yyyyMMddHHmmss}",
+            ["Action"]   = "New",
+            ["Entity"]   = "SalesOrderQueue",
+            ["Data"]     = data
+        };
+
+        yield return Info($"Sales order {data["PBLId"]?.GetValue<string>() ?? "(no PBLId)"} — dataAreaId '{dataAreaId}'");
+
+        await foreach (var e in Send(CaptureQueue, envelope, "Capture Sales Order Import", ct)) yield return e;
+        await foreach (var e in Listen(CaptureRespQueue, TimeSpan.FromMinutes(5), ct, startedAt)) yield return e;
+    }
 
     private async IAsyncEnumerable<SimulationEvent> Send(
         string queueName, object message, string description,

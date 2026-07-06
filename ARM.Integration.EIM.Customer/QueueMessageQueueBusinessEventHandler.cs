@@ -1,9 +1,12 @@
 using ARM.Integration.EIM;
 using ARM.Integration.EIM.Orchestration;
+using ARM.Integration.EIM.Utilities;
+using ARM.Integration.Core.Helpers;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ARM.Integration.EIM.Customer;
 
@@ -17,15 +20,15 @@ namespace ARM.Integration.EIM.Customer;
 /// Processed → 2 (Completed), Failed/Cancelled → 3 (Failed, with <c>MessageInfolog</c> logged).
 /// It does NOT insert a new message row. Updates are idempotent and tolerate late/duplicate delivery.
 /// </summary>
-public class QueueBusinessEventHandler(
+public class QueueMessageQueueBusinessEventHandler(
     ILoggerFactory loggerFactory,
     IReadOnlyDictionary<string, IOrchestration> orchestrations)
 {
-    private readonly ILogger logger = loggerFactory.CreateLogger<QueueBusinessEventHandler>();
+    private readonly ILogger logger = loggerFactory.CreateLogger<QueueMessageQueueBusinessEventHandler>();
 
     private const string MessageProcessedEventId = "SysMessageProcessorMessageProcessedBusinessEvent";
 
-    [Function(nameof(QueueBusinessEventHandler))]
+    [Function(nameof(QueueMessageQueueBusinessEventHandler))]
     public async Task Run(
         [ServiceBusTrigger("%D365BusinessEventQueue%", Connection = "ServiceBus")]
         ServiceBusReceivedMessage message,
@@ -34,6 +37,12 @@ public class QueueBusinessEventHandler(
         logger.LogInformation("Business event message ID: {id}", message.MessageId);
 
         var body = message.Body.ToString();
+
+        // ── Trace: prove the event reached THIS handler, and on which queue ──
+        var queueName = Environment.GetEnvironmentVariable("D365BusinessEventQueue");
+        logger.LogInformation(
+            "[BusinessEventTrace] Handler={handler} Queue={queue} MessageId={id} Body={body}",
+            nameof(QueueMessageQueueBusinessEventHandler), queueName, message.MessageId, body);
 
         // ── Route by BusinessEventId ──
         string? businessEventId;
@@ -60,10 +69,10 @@ public class QueueBusinessEventHandler(
         }
 
         // ── Parse the reconciliation event ──
-        SysMessageBusinessEventContract? evt;
+        SysMessageBusinessEventsContract? evt;
         try
         {
-            evt = JsonSerializer.Deserialize<SysMessageBusinessEventContract>(body);
+            evt = JsonSerializer.Deserialize<SysMessageBusinessEventsContract>(body);
         }
         catch (JsonException ex)
         {
@@ -101,23 +110,73 @@ public class QueueBusinessEventHandler(
             ? $"D365 Processed. TransactionId={destinationId}"
             : $"D365 {evt.MessageState}. {evt.MessageInfolog}";
 
+        // ── Trace: the correlation key and the status we are about to apply ──
+        logger.LogInformation(
+            "[BusinessEventTrace] Correlating BusinessEventId={eventId} CreatedTransactionId={dest} MessageState={state} -> STATUS={status}",
+            businessEventId, destinationId, evt.MessageState, status);
+
         var connectionString = Environment.GetEnvironmentVariable("EIMDB")
             ?? throw new InvalidOperationException("EIMDB environment variable is not set.");
 
         try
         {
             var controller = new EIMController(connectionString, logger, orchestrations);
-            var rows = controller.UpdateStatusByDestinationId(destinationId, status.Value, log);
 
-            if (rows == 0)
+            // Resolve the awaiting transaction row so reconciliation steps attach to it
+            var messageId = controller.GetMessageIdByDestinationId(destinationId);
+
+            if (messageId is null)
             {
                 logger.LogWarning("Reconciliation event {id}: no MESSAGEQUEUETABLE row matched DESTINATIONID={dest}.",
                     message.MessageId, destinationId);
+                await messageActions.CompleteMessageAsync(message);
+                return;
             }
+
+            var awaiting = controller.GetMessage(messageId);
+
+            // Record major decision steps against the original transaction (visible in Processing Steps)
+            var stepLog = new OrchestrationLogger(connectionString, long.Parse(messageId), logger);
+            stepLog.Log("Reconciling", $"BusinessEvent={businessEventId}, CreatedTransactionId={destinationId}");
+            stepLog.Log("MessageState", $"{evt.MessageState} -> STATUS={status}");
+
+            var rows = controller.UpdateStatusByDestinationId(destinationId, status.Value, log);
+
+            if (status == 2)
+                stepLog.Log("Reconciled", $"D365 Processed. {rows} row(s) updated.");
             else
+                stepLog.LogWarning("Reconciled", $"D365 {evt.MessageState}. {evt.MessageInfolog}");
+
+            logger.LogInformation("Reconciliation event {id}: set STATUS={status} for DESTINATIONID={dest} ({rows} row(s)).",
+                message.MessageId, status, destinationId, rows);
+
+            // On failure, notify the source system on its response queue with the failure detail
+            if (status == 3 && !string.IsNullOrWhiteSpace(awaiting.ResponseQueue))
             {
-                logger.LogInformation("Reconciliation event {id}: set STATUS={status} for DESTINATIONID={dest} ({rows} row(s)).",
-                    message.MessageId, status, destinationId, rows);
+                try
+                {
+                    var sourceConnection = EIMUtilities.GetEnvironment(
+                        awaiting.SourceSystem, awaiting.Environment, connectionString);
+
+                    var responseEnvelope = new OutboundMessageEnvelope<JsonObject>
+                    {
+                        SourceId = awaiting.SourceId,
+                        Entity = "SalesOrder",
+                        Status = "Failed",
+                        StatusMessage = evt.MessageInfolog,
+                        Data = new JsonObject { ["CreatedTransactionId"] = destinationId },
+                    };
+
+                    var responsePayload = JsonSerializer.Serialize(responseEnvelope);
+                    stepLog.Log("SendResponse", $"Queue={awaiting.ResponseQueue}, Status=Failed");
+                    await using var sb = new ServiceBusHelper(sourceConnection);
+                    await sb.SendAsync(awaiting.ResponseQueue, responsePayload);
+                    stepLog.Log("SendResponse", "Succeeded");
+                }
+                catch (Exception responseEx)
+                {
+                    stepLog.LogError("SendResponse", $"Failed to send failure response: {ExceptionHelper.GetMessages(responseEx)}");
+                }
             }
 
             await messageActions.CompleteMessageAsync(message);

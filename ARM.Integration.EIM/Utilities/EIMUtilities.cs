@@ -107,13 +107,15 @@ namespace ARM.Integration.EIM.Utilities
             var data = JsonSerializer.Deserialize<QueueMessageContract>(messages);
 
             const string sqlinsert = @"
+                DECLARE @Out TABLE (ID BIGINT);
                 INSERT INTO MESSAGEQUEUETABLE 
                     (ENVIRONMENT, SOURCEID, SOURCESYSTEM, SOURCEENTITY, DESTINATIONSYSTEM, DESTINATIONENTITY, 
                      TYPE, PAYLOAD, STATUS, WORKFLOWID, ACTIONID, REPONSEQUEUE)
-                OUTPUT INSERTED.ID, INSERTED.ENVIRONMENT, INSERTED.SOURCEID
+                OUTPUT INSERTED.ID INTO @Out
                 VALUES 
                     (@Environment, @SourceId, @SourceSystem, @SourceEntity, @DestinationSystem, @DestinationEntity,
-                     @Type, @Payload, @Status, @WorkflowId, @ActionId, @ResponseQueue)";
+                     @Type, @Payload, @Status, @WorkflowId, @ActionId, @ResponseQueue);
+                SELECT ID FROM @Out;";
 
             var parameters = new SqlParameter[]
             {

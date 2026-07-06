@@ -214,6 +214,27 @@ namespace ARM.Integration.EIM
         }
 
         /// <summary>
+        /// Resolves the most recent MESSAGEQUEUETABLE row ID for a given DESTINATIONID (correlation id).
+        /// Used by asynchronous reconciliation to attach processing steps to the original transaction row.
+        /// </summary>
+        /// <returns>The message ID as a string, or <c>null</c> if no row matches.</returns>
+        public string? GetMessageIdByDestinationId(string destinationId)
+        {
+            if (string.IsNullOrWhiteSpace(destinationId)) return null;
+
+            const string sql = @"SELECT TOP 1 ID FROM MESSAGEQUEUETABLE 
+                WHERE DESTINATIONID = @DESTINATIONID ORDER BY ID DESC";
+
+            string? id = null;
+            new SQLServerHelper(_connectionString).ExecuteReader(
+                sql,
+                r => { id = r["ID"].ToString(); },
+                CommandType.Text,
+                new SqlParameter("@DESTINATIONID", destinationId));
+            return id;
+        }
+
+        /// <summary>
         /// Escalates messages stuck at <paramref name="fromStatus"/> whose last modification is older
         /// than <paramref name="olderThanUtc"/> to <paramref name="toStatus"/>. Used by the safety-net
         /// sweeper for asynchronous messages awaiting D365 confirmation that never arrived.
@@ -222,10 +243,12 @@ namespace ARM.Integration.EIM
         public IReadOnlyList<string> EscalateStuckMessages(
             int fromStatus, int toStatus, DateTime olderThanUtc, string message)
         {
-            const string sql = @"UPDATE MESSAGEQUEUETABLE 
+            const string sql = @"DECLARE @Ids TABLE (ID BIGINT);
+                UPDATE MESSAGEQUEUETABLE 
                 SET STATUS = @TO, MESSAGELOG = @MESSAGELOG, MODIFIEDDATETIME = @MODIFIEDDATETIME 
-                OUTPUT inserted.ID 
-                WHERE STATUS = @FROM AND MODIFIEDDATETIME < @CUTOFF";
+                OUTPUT inserted.ID INTO @Ids 
+                WHERE STATUS = @FROM AND MODIFIEDDATETIME < @CUTOFF;
+                SELECT ID FROM @Ids;";
 
             var ids = new List<string>();
             new SQLServerHelper(_connectionString).ExecuteReader(

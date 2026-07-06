@@ -6,4 +6,5 @@ public interface ISimulationService
 {
     Task<SimulationConfigViewModel> GetConfigAsync(CancellationToken ct = default);
     Task<HttpResponseMessage> RunAsync(object request, CancellationToken ct = default);
+    Task<HttpResponseMessage> ParseSalesOrderAsync(Stream fileStream, string fileName, CancellationToken ct = default);
 }

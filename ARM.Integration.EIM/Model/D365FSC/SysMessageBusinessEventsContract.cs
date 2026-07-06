@@ -8,7 +8,7 @@ namespace ARM.Integration.EIM
     /// submitted asynchronous message, correlated by <see cref="CreatedTransactionId"/>.
     /// Only the fields needed for reconciliation are modeled; the event carries additional fields.
     /// </summary>
-    public class SysMessageBusinessEventContract
+    public class SysMessageBusinessEventsContract
     {
         [JsonPropertyName("BusinessEventId")]
         public string? BusinessEventId { get; set; }
