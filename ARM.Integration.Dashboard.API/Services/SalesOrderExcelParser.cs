@@ -40,14 +40,14 @@ public class SalesOrderExcelParser
         new("PBLId", SalesOrderFieldType.Text, Required: true),
         new("Revision", SalesOrderFieldType.Int),
         new("ModelId", SalesOrderFieldType.Text),
-        new("Responsible", SalesOrderFieldType.Text),
+        new("Responsible", SalesOrderFieldType.Text, Aliases: ["ResponsibleName"]),
         new("UserGroupId", SalesOrderFieldType.Text),
         new("IsBOM", SalesOrderFieldType.Int),
         new("IsUsedTrailer", SalesOrderFieldType.Text),
         new("ExternalId", SalesOrderFieldType.Text),
         new("CustPONumber", SalesOrderFieldType.Text),
         new("Quantity", SalesOrderFieldType.Int),
-        new("RequestDate", SalesOrderFieldType.Date),
+        new("RequestDate", SalesOrderFieldType.Date, Aliases: ["RequestedDate"]),
         new("TotalPrice", SalesOrderFieldType.Decimal),
         new("Msg", SalesOrderFieldType.Text),
         new("CalcFederalTax", SalesOrderFieldType.Decimal),
@@ -89,13 +89,13 @@ public class SalesOrderExcelParser
     [
         new("PBLId", SalesOrderFieldType.Text),
         new("LineNum", SalesOrderFieldType.Int, Required: true),
-        new("Pick", SalesOrderFieldType.Text),
+        new("Pick", SalesOrderFieldType.Text, Aliases: ["ValueString"]),
         new("ObjExcludeFromBOM", SalesOrderFieldType.Int),
-        new("Qty", SalesOrderFieldType.Decimal),
-        new("Name", SalesOrderFieldType.Text, Required: true),
-        new("Price", SalesOrderFieldType.Decimal),
-        new("Weight", SalesOrderFieldType.Decimal),
-        new("Comment", SalesOrderFieldType.Text),
+        new("Qty", SalesOrderFieldType.Decimal, Aliases: ["Quantity", "ValueNumeric"]),
+        new("Name", SalesOrderFieldType.Text, Required: true, Aliases: ["PickName"]),
+        new("Price", SalesOrderFieldType.Decimal, Aliases: ["ValuePrice"]),
+        new("Weight", SalesOrderFieldType.Decimal, Aliases: ["ValueWeight"]),
+        new("Comment", SalesOrderFieldType.Text, Aliases: ["ValueComment"]),
     ];
 
     private static readonly SalesOrderFieldSpec[] TradeInSchema =
@@ -220,7 +220,7 @@ public class SalesOrderExcelParser
         var obj = new JsonObject();
         foreach (var spec in schema)
         {
-            if (headers.TryGetValue(spec.Name, out var col))
+            if (TryResolveColumn(headers, spec, out var col))
             {
                 var cell = ws.Cell(dataRow, col);
                 obj[spec.Name] = CoerceCell(cell, spec, sheet);
@@ -239,6 +239,19 @@ public class SalesOrderExcelParser
         return obj;
     }
 
+    /// <summary>Resolves a schema field to a column by canonical name, then by any alias (case-insensitive).</summary>
+    private static bool TryResolveColumn(Dictionary<string, int> headers, SalesOrderFieldSpec spec, out int col)
+    {
+        if (headers.TryGetValue(spec.Name, out col)) return true;
+        if (spec.Aliases is not null)
+        {
+            foreach (var alias in spec.Aliases)
+                if (headers.TryGetValue(alias, out col)) return true;
+        }
+        col = 0;
+        return false;
+    }
+
     private static JsonNode DefaultFor(SalesOrderFieldType type) => type switch
     {
         SalesOrderFieldType.Int => JsonValue.Create(0),
@@ -250,6 +263,11 @@ public class SalesOrderExcelParser
     {
         var raw = cell.GetString().Trim();
         var address = cell.Address.ToString()!;
+
+        // Treat a literal "NULL" (case-insensitive) as an empty cell
+        if (string.Equals(raw, "NULL", StringComparison.OrdinalIgnoreCase))
+            raw = "";
+
         var empty = raw.Length == 0;
 
         if (spec.Required && empty)

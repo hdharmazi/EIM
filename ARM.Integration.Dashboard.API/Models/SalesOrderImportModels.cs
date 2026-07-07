@@ -11,10 +11,10 @@ public enum SalesOrderFieldType
 
 /// <summary>
 /// One column definition in a block schema: the canonical target JSON name, its type,
-/// and whether a value is required. Header matching against this name is case-insensitive;
-/// output always uses <see cref="Name"/> casing.
+/// and whether a value is required. Header matching against this name (and any aliases) is
+/// case-insensitive; output always uses <see cref="Name"/> casing.
 /// </summary>
-public record SalesOrderFieldSpec(string Name, SalesOrderFieldType Type, bool Required = false);
+public record SalesOrderFieldSpec(string Name, SalesOrderFieldType Type, bool Required = false, string[]? Aliases = null);
 
 /// <summary>A cell-level parse/validation error pointing at the offending sheet and cell.</summary>
 public class SalesOrderParseError
