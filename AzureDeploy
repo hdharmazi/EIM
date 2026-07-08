@@ -104,11 +104,17 @@ az containerapp create `
   --secrets `
     "eimdb-connstring=$EIMDB_CONNECTION_STRING" `
     "api-key=$DASHBOARD_API_KEY" `
+    "simulation-sb-connection=$SERVICEBUS_CONNECTION" `
   --env-vars `
     "ASPNETCORE_ENVIRONMENT=Production" `
     "ASPNETCORE_HTTP_PORTS=8080" `
     "ConnectionStrings__EIMDB=secretref:eimdb-connstring" `
-    "ApiKey=secretref:api-key"
+    "ApiKey=secretref:api-key" `
+    "Simulation__ServiceBusConnectionString=secretref:simulation-sb-connection" `
+    "Simulation__D365Queue=dev-d365fsc-dataevent" `
+    "Simulation__CaptureToD365Queue=dev-capture-to-d365fsc" `
+    "Simulation__CaptureToD365ResponseQueue=dev-capture-to-d365fsc-response" `
+    "Simulation__D365ToCaptureQueue=dev-d365fsc-to-capture"
 
 # Internal FQDN the frontend's nginx will reverse-proxy /api/ to
 $API_FQDN = az containerapp show `

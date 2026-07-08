@@ -13,12 +13,9 @@
     <File Path=".env.example" />
     <File Path="AzureDeploy" />
     <File Path="docker-compose.yml" />
-  </Folder>`n  
+  </Folder>
   
-  
-  
-  
-  
+
   <Project Path="ARM.Integration.Core/ARM.Integration.Core.csproj" />
   <Project Path="ARM.Integration.Dashboard.API/ARM.Integration.Dashboard.API.csproj" />
 
