@@ -135,7 +135,7 @@ public class MessageQueueRepository(IConfiguration config, ILoggerFactory logger
     public async Task<string> ReprocessAsync(long id)
     {
         var logger = loggerFactory.CreateLogger<EIMController>();
-        var controller = new EIMController(_connectionString, logger, new Dictionary<string, IOrchestration>());
+        var controller = new EIMController(_connectionString, logger, OrchestrationRegistry.CreateDefault());
 
         return await controller.ProcessMessageAsync(id.ToString());
     }

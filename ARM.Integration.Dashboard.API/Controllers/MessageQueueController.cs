@@ -65,7 +65,12 @@ public class MessageQueueController(MessageQueueRepository repo) : ControllerBas
         {
             var responseMessage = await repo.ReprocessAsync(id);
 
-            return Ok(new { success = true, message = responseMessage });
+            // ProcessMessageAsync swallows processing errors and returns an "ERROR:..."
+            // string, so treat that as a failure rather than a green success.
+            var succeeded = !responseMessage.TrimStart()
+                .StartsWith("ERROR", StringComparison.OrdinalIgnoreCase);
+
+            return Ok(new { success = succeeded, message = responseMessage });
         }
         catch (Exception ex)
         {
