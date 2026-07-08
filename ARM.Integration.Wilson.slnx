@@ -19,9 +19,7 @@
   
   
   
-  <Folder Name="/_scratch/">
-    <Project Path="_scratch/QtyRepro.csproj" />
-  </Folder><Project Path="ARM.Integration.Core/ARM.Integration.Core.csproj" />
+  <Project Path="ARM.Integration.Core/ARM.Integration.Core.csproj" />
   <Project Path="ARM.Integration.Dashboard.API/ARM.Integration.Dashboard.API.csproj" />
 
   <Project Path="ARM.Integration.EIM.Customer/ARM.Integration.EIM.Customer.csproj" Id="6a04bee9-4029-41b2-b713-247362e7dd14" />
