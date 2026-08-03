@@ -6,6 +6,7 @@ import {
   Trash2,
   FlaskConical,
   Settings2,
+  SlidersHorizontal,
   Users,
   Menu,
   LogOut,
@@ -45,12 +46,12 @@ const SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "Configuration",
-    items: [{ to: "/environments", label: "Environments", icon: Settings2 }],
-  },
-  {
-    title: "Administration",
-    items: [{ to: "/users", label: "Users", icon: Users, adminOnly: true }],
+    title: "System Administration",
+    items: [
+      { to: "/users", label: "Users", icon: Users, adminOnly: true },
+      { to: "/environments", label: "Environments", icon: Settings2, adminOnly: true },
+      { to: "/configuration", label: "Configuration", icon: SlidersHorizontal, adminOnly: true },
+    ],
   },
 ];
 

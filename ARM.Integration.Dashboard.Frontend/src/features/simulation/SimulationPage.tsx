@@ -14,6 +14,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useConfigurations } from "@/features/configuration/api";
+import { useIsAdmin } from "@/auth/useMe";
+import { useNavigate } from "react-router-dom";
 import { SCENARIOS, groupedScenarios } from "./scenarios";
 import {
   parseSalesOrder,
@@ -58,6 +61,10 @@ function formatLine(evt: SimEvent): string {
 
 export function SimulationPage() {
   const { data: config } = useSimulationConfig();
+  const { data: environments } = useConfigurations("SimulationEnvironment");
+  const isAdmin = useIsAdmin();
+  const navigate = useNavigate();
+  const [environment, setEnvironment] = React.useState("");
   const [scenarioId, setScenarioId] = React.useState("");
   const [fields, setFields] = React.useState<Record<string, string>>({});
   const [events, setEvents] = React.useState<SimEvent[]>([]);
@@ -74,6 +81,8 @@ export function SimulationPage() {
   const scenario = scenarioId ? SCENARIOS[scenarioId] : undefined;
   const isImport = scenario?.custom === "salesorder-import";
   const groups = React.useMemo(() => groupedScenarios(), []);
+  const selectedEnv = environments?.find((e) => e.name === environment);
+  const hasEnvironments = (environments?.length ?? 0) > 0;
 
   React.useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
@@ -111,10 +120,10 @@ export function SimulationPage() {
   }
 
   const canRun = React.useMemo(() => {
-    if (running || !scenario) return false;
+    if (running || !scenario || !environment) return false;
     if (isImport) return !!selectedSheet;
     return true;
-  }, [running, scenario, isImport, selectedSheet]);
+  }, [running, scenario, environment, isImport, selectedSheet]);
 
   async function onRun() {
     if (!scenario) return;
@@ -136,7 +145,7 @@ export function SimulationPage() {
     ]);
     setRunning(true);
     try {
-      await runSimulation(scenarioId, payload, (evt) => {
+      await runSimulation(scenarioId, payload, environment, (evt) => {
         setEvents((prev) => [...prev, evt]);
       });
     } catch (err) {
@@ -158,27 +167,67 @@ export function SimulationPage() {
 
       <Card className="mb-4">
         <CardHeader className="flex-row items-center justify-between py-3">
-          <CardTitle className="text-sm">Simulation Configuration</CardTitle>
+          <CardTitle className="text-sm">Simulation Environment</CardTitle>
           {config?.isServiceBusConfigured ? (
             <Badge variant="success">Service Bus: Configured</Badge>
           ) : (
             <Badge variant="warning">Service Bus: Not configured</Badge>
           )}
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-          {(
-            [
-              ["D365Queue", config?.d365Queue],
-              ["CaptureToD365Queue", config?.captureToD365Queue],
-              ["CaptureToD365ResponseQueue", config?.captureToD365ResponseQueue],
-              ["D365ToCaptureQueue", config?.d365ToCaptureQueue],
-            ] as const
-          ).map(([label, value]) => (
-            <div key={label}>
-              <div className="text-muted-foreground">{label}</div>
-              <div className="font-medium">{value || "Not configured"}</div>
+        <CardContent className="space-y-4">
+          {!hasEnvironments ? (
+            <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+              No simulation environments are configured yet.{" "}
+              {isAdmin ? (
+                <Button
+                  variant="link"
+                  className="h-auto p-0 text-sm"
+                  onClick={() => navigate("/configuration/new?category=SimulationEnvironment")}
+                >
+                  Create one
+                </Button>
+              ) : (
+                "Ask an administrator to create one"
+              )}{" "}
+              before running a simulation.
             </div>
-          ))}
+          ) : (
+            <>
+              <div className="max-w-sm space-y-2">
+                <Label>Environment</Label>
+                <Select value={environment} onValueChange={setEnvironment}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="— select an environment —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {environments!.map((e) => (
+                      <SelectItem key={e.name} value={e.name}>
+                        {e.displayName ? `${e.name} — ${e.displayName}` : e.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedEnv && (
+                <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+                  {(
+                    [
+                      "D365Queue",
+                      "CaptureToD365Queue",
+                      "CaptureToD365ResponseQueue",
+                      "D365ToCaptureQueue",
+                    ] as const
+                  ).map((key) => (
+                    <div key={key}>
+                      <div className="text-muted-foreground">{key}</div>
+                      <div className="font-medium">{selectedEnv.fields[key] || "Not configured"}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 

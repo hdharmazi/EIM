@@ -7,16 +7,22 @@ using System.Text.Json.Nodes;
 
 namespace ARM.Integration.Dashboard.API.Services;
 
-public class SimulationService(IConfiguration config)
+public class SimulationService(IConfiguration config, ConfigurationRepository configRepo)
 {
     private static readonly JsonSerializerOptions _indented = new() { WriteIndented = true };
     private static readonly JsonSerializerOptions _compact  = new() { WriteIndented = false };
 
-    private string SbConn          => config["Simulation:ServiceBusConnectionString"] ?? "";
-    private string D365Queue        => config["Simulation:D365Queue"]                  ?? "";
-    private string CaptureQueue     => config["Simulation:CaptureToD365Queue"]         ?? "";
-    private string CaptureRespQueue => config["Simulation:CaptureToD365ResponseQueue"] ?? "";
-    private string CaptureOutQueue  => config["Simulation:D365ToCaptureQueue"]         ?? "";
+    private string SbConn           => config["Simulation:ServiceBusConnectionString"] ?? "";
+
+    // Queue names default to appsettings but are resolved per-run from the selected
+    // SimulationEnvironment configuration (see RunAsync).
+    private string D365Queue        = config["Simulation:D365Queue"]                  ?? "";
+    private string CaptureQueue     = config["Simulation:CaptureToD365Queue"]         ?? "";
+    private string CaptureRespQueue = config["Simulation:CaptureToD365ResponseQueue"] ?? "";
+    private string CaptureOutQueue  = config["Simulation:D365ToCaptureQueue"]         ?? "";
+
+    private static readonly string[] RequiredQueueFields =
+        ["D365Queue", "CaptureToD365Queue", "CaptureToD365ResponseQueue", "D365ToCaptureQueue"];
 
     public async IAsyncEnumerable<SimulationEvent> RunAsync(
         SimulationRequest request,
@@ -27,6 +33,37 @@ public class SimulationService(IConfiguration config)
             yield return Err("Simulation:ServiceBusConnectionString is not configured in appsettings.");
             yield return Done();
             yield break;
+        }
+
+        // Resolve target queues from the selected simulation environment configuration.
+        if (!string.IsNullOrWhiteSpace(request.Environment))
+        {
+            var cfg = await configRepo.GetByKeyAsync(
+                ConfigurationCategories.SimulationEnvironment, request.Environment);
+
+            if (cfg is null)
+            {
+                yield return Err($"Simulation environment '{request.Environment}' was not found.");
+                yield return Done();
+                yield break;
+            }
+
+            var missing = RequiredQueueFields
+                .Where(k => !cfg.Fields.TryGetValue(k, out var v) || string.IsNullOrWhiteSpace(v))
+                .ToList();
+            if (missing.Count > 0)
+            {
+                yield return Err($"Simulation environment '{request.Environment}' is missing queue field(s): {string.Join(", ", missing)}.");
+                yield return Done();
+                yield break;
+            }
+
+            D365Queue        = cfg.Fields["D365Queue"];
+            CaptureQueue     = cfg.Fields["CaptureToD365Queue"];
+            CaptureRespQueue = cfg.Fields["CaptureToD365ResponseQueue"];
+            CaptureOutQueue  = cfg.Fields["D365ToCaptureQueue"];
+
+            yield return Info($"Environment: {request.Environment}");
         }
 
         yield return Info($"Scenario: {request.Scenario}");

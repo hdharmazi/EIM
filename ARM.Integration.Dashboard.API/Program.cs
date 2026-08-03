@@ -10,6 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddScoped<MessageQueueRepository>();
 builder.Services.AddScoped<EnvironmentRepository>();
+builder.Services.AddScoped<ConfigurationRepository>();
 builder.Services.AddScoped<UserRepository>();
 builder.Services.AddScoped<SimulationService>();
 builder.Services.AddScoped<SalesOrderExcelParser>();

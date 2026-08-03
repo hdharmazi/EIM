@@ -1,11 +1,13 @@
 using ARM.Integration.Dashboard.API.Models;
 using ARM.Integration.Dashboard.API.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ARM.Integration.Dashboard.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = "Admin")]
 public class EnvironmentController(EnvironmentRepository repo) : ControllerBase
 {
     [HttpGet]

@@ -4,6 +4,9 @@ public class SimulationRequest
 {
     public string Scenario { get; set; } = "";
     public Dictionary<string, string> Fields { get; set; } = [];
+
+    /// <summary>Name of the selected <c>SimulationEnvironment</c> configuration whose queue names this run targets.</summary>
+    public string Environment { get; set; } = "";
 }
 
 public record SimulationEvent(string Level, string Text);

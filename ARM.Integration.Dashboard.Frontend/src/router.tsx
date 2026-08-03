@@ -7,6 +7,8 @@ import { MessageDetailPage } from "@/features/messagequeue/MessageDetailPage";
 import { CleanupPage } from "@/features/messagequeue/CleanupPage";
 import { EnvironmentListPage } from "@/features/environment/EnvironmentListPage";
 import { EnvironmentFormPage } from "@/features/environment/EnvironmentFormPage";
+import { ConfigurationListPage } from "@/features/configuration/ConfigurationListPage";
+import { ConfigurationFormPage } from "@/features/configuration/ConfigurationFormPage";
 import { UserListPage } from "@/features/users/UserListPage";
 import { UserFormPage } from "@/features/users/UserFormPage";
 import { SimulationPage } from "@/features/simulation/SimulationPage";
@@ -21,9 +23,54 @@ export const router = createBrowserRouter([
       { path: "messages/:id", element: <MessageDetailPage /> },
       { path: "cleanup", element: <CleanupPage /> },
       { path: "simulation", element: <SimulationPage /> },
-      { path: "environments", element: <EnvironmentListPage /> },
-      { path: "environments/new", element: <EnvironmentFormPage /> },
-      { path: "environments/:system/:environment/edit", element: <EnvironmentFormPage /> },
+      {
+        path: "environments",
+        element: (
+          <RequireAdmin>
+            <EnvironmentListPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: "environments/new",
+        element: (
+          <RequireAdmin>
+            <EnvironmentFormPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: "environments/:system/:environment/edit",
+        element: (
+          <RequireAdmin>
+            <EnvironmentFormPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: "configuration",
+        element: (
+          <RequireAdmin>
+            <ConfigurationListPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: "configuration/new",
+        element: (
+          <RequireAdmin>
+            <ConfigurationFormPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: "configuration/:category/:name/edit",
+        element: (
+          <RequireAdmin>
+            <ConfigurationFormPage />
+          </RequireAdmin>
+        ),
+      },
       {
         path: "users",
         element: (

@@ -194,4 +194,5 @@ az containerapp create `
     "PollSchedule=0 */1 * * * *" `
     "AwaitingD365SweepSchedule=0 */15 * * * *" `
     "AwaitingD365StuckTimeoutHours=4" `
-    "DefaultEnvironment=dev"
+    "DefaultEnvironment=dev" `
+    "ExcludedUsers=51E452DB-CF29-4EDA-951C-50332FBB11AA;991452DB-CF29-4EDA-951C-50332FBB1322"

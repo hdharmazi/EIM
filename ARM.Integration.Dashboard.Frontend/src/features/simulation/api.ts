@@ -66,6 +66,7 @@ export async function parseSalesOrder(file: File): Promise<SalesOrderParseRespon
 export async function runSimulation(
   scenario: string,
   fields: Record<string, string>,
+  environment: string,
   onEvent: (evt: SimEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -76,7 +77,7 @@ export async function runSimulation(
       Accept: "text/event-stream",
       ...(await authHeader()),
     },
-    body: JSON.stringify({ scenario, fields }),
+    body: JSON.stringify({ scenario, fields, environment }),
     signal,
   });
 
