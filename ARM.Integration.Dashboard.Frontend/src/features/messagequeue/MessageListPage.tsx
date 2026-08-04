@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Search, Eye } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -24,17 +24,18 @@ import { cn } from "@/lib/utils";
 import { MESSAGE_STATUSES, isErrorStatus, statusBadgeVariant, statusLabel } from "@/lib/status";
 import { formatDateTime } from "@/lib/format";
 import { useMessages } from "./api";
+import { MessageLogDrawer } from "./MessageLogDrawer";
 
 const ALL = "all";
 
 export function MessageListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
+  const [selectedId, setSelectedId] = React.useState<number | null>(null);
 
   const statusParam = searchParams.get("status");
   const status = statusParam !== null ? Number(statusParam) : undefined;
-  const [search, setSearch] = React.useState(searchParams.get("search") ?? "");
-  const [activeSearch, setActiveSearch] = React.useState(search);
+  const activeSearch = searchParams.get("search") ?? "";
+  const [search, setSearch] = React.useState(activeSearch);
 
   const { data, isLoading } = useMessages({ status, search: activeSearch });
 
@@ -47,12 +48,14 @@ export function MessageListPage() {
 
   function applySearch(e: React.FormEvent) {
     e.preventDefault();
-    setActiveSearch(search);
+    const next = new URLSearchParams(searchParams);
+    if (search) next.set("search", search);
+    else next.delete("search");
+    setSearchParams(next);
   }
 
   function clearFilters() {
     setSearch("");
-    setActiveSearch("");
     setSearchParams({});
   }
 
@@ -143,7 +146,7 @@ export function MessageListPage() {
                     {formatDateTime(m.modifiedDateTime)}
                   </TableCell>
                   <TableCell>
-                    <Button variant="outline" size="sm" onClick={() => navigate(`/messages/${m.id}`)}>
+                    <Button variant="outline" size="sm" onClick={() => setSelectedId(m.id)}>
                       <Eye /> View
                     </Button>
                   </TableCell>
@@ -153,6 +156,13 @@ export function MessageListPage() {
           </TableBody>
         </Table>
       </div>
+
+      <MessageLogDrawer
+        messageId={selectedId}
+        onOpenChange={(open) => {
+          if (!open) setSelectedId(null);
+        }}
+      />
     </div>
   );
 }
