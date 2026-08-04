@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/.verify-yesno/">
+    <Project Path=".verify-yesno/verify-yesno.csproj" />
+  </Folder>
   <Folder Name="/Script/">
     <File Path="Script/Bicep/Firewall" />
     <File Path="Script/Bicep/main-addqueue.bicep" />

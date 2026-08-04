@@ -6,7 +6,8 @@ public enum SalesOrderFieldType
     Text,
     Int,
     Decimal,
-    Date
+    Date,
+    YesNo
 }
 
 /// <summary>

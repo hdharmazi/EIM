@@ -68,13 +68,13 @@ public class SalesOrderExcelParser
         new("BU", SalesOrderFieldType.Text),
         new("CustAccount", SalesOrderFieldType.Text),
         new("CustName", SalesOrderFieldType.Text),
-        new("FreightTaxable", SalesOrderFieldType.Int),
-        new("DrawingRequired", SalesOrderFieldType.Int),
-        new("DepositReqd", SalesOrderFieldType.Int),
+        new("FreightTaxable", SalesOrderFieldType.YesNo),
+        new("DrawingRequired", SalesOrderFieldType.YesNo),
+        new("DepositReqd", SalesOrderFieldType.YesNo),
         new("DepositAmt", SalesOrderFieldType.Decimal),
-        new("PaintSign", SalesOrderFieldType.Int),
-        new("CustSuppTires", SalesOrderFieldType.Int),
-        new("PriceLock", SalesOrderFieldType.Int),
+        new("PaintSign", SalesOrderFieldType.YesNo),
+        new("CustSuppTires", SalesOrderFieldType.YesNo),
+        new("PriceLock", SalesOrderFieldType.YesNo),
         // UsedTrailer fields (1:1, merged into root; blank for new trailers)
         new("VIN", SalesOrderFieldType.Text),
         new("ProductLine", SalesOrderFieldType.Text),
@@ -256,6 +256,7 @@ public class SalesOrderExcelParser
     {
         SalesOrderFieldType.Int => JsonValue.Create(0),
         SalesOrderFieldType.Decimal => JsonValue.Create(0m),
+        SalesOrderFieldType.YesNo => JsonValue.Create("No"),
         _ => JsonValue.Create("")!, // Text and Date default to empty string
     };
 
@@ -293,6 +294,19 @@ public class SalesOrderExcelParser
                     return JsonValue.Create(d);
                 throw new SalesOrderCellException(sheet, address,
                     $"Field '{spec.Name}' expected a number but got '{raw}'.");
+
+            case SalesOrderFieldType.YesNo:
+                if (empty) return JsonValue.Create("No");
+                if (string.Equals(raw, "Yes", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(raw, "True", StringComparison.OrdinalIgnoreCase) ||
+                    raw == "1")
+                    return JsonValue.Create("Yes");
+                if (string.Equals(raw, "No", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(raw, "False", StringComparison.OrdinalIgnoreCase) ||
+                    raw == "0")
+                    return JsonValue.Create("No");
+                throw new SalesOrderCellException(sheet, address,
+                    $"Field '{spec.Name}' expected Yes/No but got '{raw}'.");
 
             case SalesOrderFieldType.Date:
                 if (empty) return JsonValue.Create("")!;
