@@ -1,5 +1,6 @@
 using ARM.Integration.Core.Helpers;
 using ARM.Integration.Core.Model;
+using ARM.Integration.EIM.Utilities;
 using System.Text.Json;
 
 namespace ARM.Integration.EIM.Orchestration;
@@ -40,10 +41,17 @@ public abstract class D365CrudOrchestration<TSource, TD365> : BaseCrudOrchestrat
         }
         else if (action.Equals("Update", StringComparison.OrdinalIgnoreCase))
         {
+            // Build the key from the unmodified entity — only the request body is filtered.
             var key = BuildEntityKey(target);
             stepLog.Log($"Update{ResponseEntityName}", $"Keys: {key}");
-            await d365Client.UpdateRawAsync(
-                D365EntityName, key, JsonSerializer.Serialize(target), ct);
+
+            var (payload, removedFields) = D365UpdatePayloadBuilder.BuildUpdatePayload(target);
+            stepLog.Log($"Update{ResponseEntityName}",
+                removedFields.Count == 0
+                    ? "Excluded fields: none"
+                    : $"Excluded fields: {string.Join(", ", removedFields)}");
+
+            await d365Client.UpdateRawAsync(D365EntityName, key, payload, ct);
             stepLog.Log($"Update{ResponseEntityName}", "Succeeded");
 
             return null;
