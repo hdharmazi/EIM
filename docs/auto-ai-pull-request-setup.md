@@ -1,7 +1,7 @@
 # Automatic AI-generated pull requests
 
 The pipeline `.azure-pipelines/workflows/auto-ai-pull-request.yml` runs whenever a `feature/*` branch is pushed. It checks for an existing active PR, asks the `gpt-5.6-sol` Microsoft Foundry deployment for a title and description, and creates one draft PR to `main`.
-
+--add testing
 ## Security model
 
 - Azure DevOps authentication uses the short-lived `System.AccessToken`; no personal access token is stored.
