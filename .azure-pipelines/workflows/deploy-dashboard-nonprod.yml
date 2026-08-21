@@ -1,0 +1,164 @@
+# Manual, code-only deployment of the shared non-production Dashboard.
+trigger: none
+pr: none
+
+parameters:
+  - name: component
+    displayName: Component to deploy
+    type: string
+    default: both
+    values:
+      - both
+      - api
+      - frontend
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  DOTNET_VERSION: 10.0.x
+  NODE_VERSION: 22.x
+  CONFIGURATION: Release
+  API_PROJECT: ARM.Integration.Dashboard.API/ARM.Integration.Dashboard.API.csproj
+  FRONTEND_DIRECTORY: ARM.Integration.Dashboard.Frontend
+  API_APP_NAME: wtc-dashboard-api-dev
+  SWA_NAME: wtc-dashboard-frontend-dev
+
+stages:
+  - stage: Build
+    displayName: Build shared non-production Dashboard
+    jobs:
+      - job: Build
+        steps:
+          - checkout: self
+
+          - ${{ if or(eq(parameters.component, 'both'), eq(parameters.component, 'api')) }}:
+            - task: UseDotNet@2
+              displayName: Use .NET SDK $(DOTNET_VERSION)
+              inputs:
+                packageType: sdk
+                version: $(DOTNET_VERSION)
+
+            - task: DotNetCoreCLI@2
+              displayName: Restore Dashboard API
+              inputs:
+                command: restore
+                projects: $(API_PROJECT)
+
+            - task: DotNetCoreCLI@2
+              displayName: Publish Dashboard API
+              inputs:
+                command: publish
+                publishWebProjects: false
+                projects: $(API_PROJECT)
+                arguments: --configuration $(CONFIGURATION) --output $(Build.ArtifactStagingDirectory)/api-publish --no-restore
+                zipAfterPublish: false
+                modifyOutputPath: false
+
+            - task: ArchiveFiles@2
+              displayName: Package Dashboard API ZIP
+              inputs:
+                rootFolderOrFile: $(Build.ArtifactStagingDirectory)/api-publish
+                includeRootFolder: false
+                archiveType: zip
+                archiveFile: $(Build.ArtifactStagingDirectory)/dashboard-api-$(Build.BuildId).zip
+                replaceExistingArchive: true
+
+            - task: PublishPipelineArtifact@1
+              displayName: Publish Dashboard API artifact
+              inputs:
+                targetPath: $(Build.ArtifactStagingDirectory)/dashboard-api-$(Build.BuildId).zip
+                artifact: dashboard-api
+
+          - ${{ if or(eq(parameters.component, 'both'), eq(parameters.component, 'frontend')) }}:
+            - task: NodeTool@0
+              displayName: Use Node.js $(NODE_VERSION)
+              inputs:
+                versionSpec: $(NODE_VERSION)
+
+            - task: PowerShell@2
+              displayName: Build Dashboard frontend
+              env:
+                VITE_ENTRA_TENANT_ID: $(VITE_ENTRA_TENANT_ID)
+                VITE_ENTRA_CLIENT_ID: $(VITE_ENTRA_CLIENT_ID)
+                VITE_API_SCOPE: $(VITE_API_SCOPE)
+                VITE_API_BASE_URL: ''
+              inputs:
+                targetType: inline
+                pwsh: true
+                script: |
+                  npm --prefix "$(FRONTEND_DIRECTORY)" ci
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                  npm --prefix "$(FRONTEND_DIRECTORY)" run build
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+            - task: PublishPipelineArtifact@1
+              displayName: Publish Dashboard frontend artifact
+              inputs:
+                targetPath: $(FRONTEND_DIRECTORY)/dist
+                artifact: dashboard-frontend
+
+  - ${{ if or(eq(parameters.component, 'both'), eq(parameters.component, 'api')) }}:
+    - stage: DeployApi
+      displayName: Deploy shared non-production API
+      dependsOn: Build
+      jobs:
+        - deployment: DeployApi
+          environment: dashboard-nonprod-api
+          strategy:
+            runOnce:
+              deploy:
+                steps:
+                  - checkout: self
+                  - download: current
+                    artifact: dashboard-api
+
+                  - task: PowerShell@2
+                    displayName: ZIP deploy $(API_APP_NAME)
+                    env:
+                      NONPROD_API_PUBLISH_PROFILE: $(NONPROD_API_PUBLISH_PROFILE)
+                    inputs:
+                      targetType: filePath
+                      pwsh: true
+                      filePath: Script/Deploy-ZipWithPublishProfile.ps1
+                      arguments: >-
+                        -PackagePath "$(Pipeline.Workspace)/dashboard-api/dashboard-api-$(Build.BuildId).zip"
+                        -PublishProfileEnvironmentVariable "NONPROD_API_PUBLISH_PROFILE"
+
+  - ${{ if or(eq(parameters.component, 'both'), eq(parameters.component, 'frontend')) }}:
+    - stage: DeployFrontend
+      displayName: Deploy shared non-production frontend
+      dependsOn:
+        - Build
+        - ${{ if eq(parameters.component, 'both') }}:
+          - DeployApi
+      jobs:
+        - deployment: DeployFrontend
+          environment: dashboard-nonprod-frontend
+          strategy:
+            runOnce:
+              deploy:
+                steps:
+                  - download: current
+                    artifact: dashboard-frontend
+
+                  - task: NodeTool@0
+                    displayName: Use Node.js $(NODE_VERSION)
+                    inputs:
+                      versionSpec: $(NODE_VERSION)
+
+                  - task: PowerShell@2
+                    displayName: Deploy $(SWA_NAME)
+                    env:
+                      NONPROD_SWA_DEPLOYMENT_TOKEN: $(NONPROD_SWA_DEPLOYMENT_TOKEN)
+                    inputs:
+                      targetType: inline
+                      pwsh: true
+                      script: |
+                        if ([string]::IsNullOrWhiteSpace($env:NONPROD_SWA_DEPLOYMENT_TOKEN)) {
+                          throw "Secret variable NONPROD_SWA_DEPLOYMENT_TOKEN is not set."
+                        }
+                        npx --yes @azure/static-web-apps-cli deploy "$(Pipeline.Workspace)/dashboard-frontend" `
+                          --deployment-token $env:NONPROD_SWA_DEPLOYMENT_TOKEN `
+                          --env production
+                        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

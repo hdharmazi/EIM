@@ -1,0 +1,121 @@
+# Manual, code-only deployment of EIM.Customer to an environment-specific Function App.
+trigger: none
+pr: none
+
+parameters:
+  - name: environment
+    displayName: Target environment
+    type: string
+    default: dev1
+    values:
+      - dev1
+      - test
+      - bat
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  DOTNET_VERSION: 10.0.x
+  CONFIGURATION: Release
+  FUNCTION_PROJECT: ARM.Integration.EIM.Customer/ARM.Integration.EIM.Customer.csproj
+  TEST_PROJECT: ARM.Integration.EIM.Tests/ARM.Integration.EIM.Tests.csproj
+
+stages:
+  - stage: Build
+    displayName: Build and package EIM.Customer
+    jobs:
+      - job: Build
+        steps:
+          - checkout: self
+
+          - task: UseDotNet@2
+            displayName: Use .NET SDK $(DOTNET_VERSION)
+            inputs:
+              packageType: sdk
+              version: $(DOTNET_VERSION)
+
+          - task: DotNetCoreCLI@2
+            displayName: Restore Function project
+            inputs:
+              command: restore
+              projects: $(FUNCTION_PROJECT)
+
+          - task: DotNetCoreCLI@2
+            displayName: Run EIM tests
+            inputs:
+              command: test
+              projects: $(TEST_PROJECT)
+              arguments: --configuration $(CONFIGURATION)
+
+          - task: DotNetCoreCLI@2
+            displayName: Publish Function
+            inputs:
+              command: publish
+              publishWebProjects: false
+              projects: $(FUNCTION_PROJECT)
+              arguments: --configuration $(CONFIGURATION) --output $(Build.ArtifactStagingDirectory)/function-publish --no-restore
+              zipAfterPublish: false
+              modifyOutputPath: false
+
+          - task: ArchiveFiles@2
+            displayName: Package Function ZIP
+            inputs:
+              rootFolderOrFile: $(Build.ArtifactStagingDirectory)/function-publish
+              includeRootFolder: false
+              archiveType: zip
+              archiveFile: $(Build.ArtifactStagingDirectory)/eim-customer-$(Build.BuildId).zip
+              replaceExistingArchive: true
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish Function artifact
+            inputs:
+              targetPath: $(Build.ArtifactStagingDirectory)/eim-customer-$(Build.BuildId).zip
+              artifact: eim-customer
+
+  - stage: Deploy
+    displayName: Deploy EIM.Customer to ${{ parameters.environment }}
+    dependsOn: Build
+    jobs:
+      - deployment: DeployFunction
+        displayName: Deploy environment-specific Function
+        environment: eim-customer-${{ parameters.environment }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - download: current
+                  artifact: eim-customer
+
+                - task: PowerShell@2
+                  displayName: Select target Function
+                  inputs:
+                    targetType: inline
+                    pwsh: true
+                    script: |
+                      $environment = '${{ parameters.environment }}'
+                      $targets = @{
+                        dev1 = @{ App = 'azf-eim-customer-wtc-dev1'; Secret = 'DEV1_FUNCTION_PUBLISH_PROFILE' }
+                        test = @{ App = 'azf-eim-customer-wtc-test'; Secret = 'TEST_FUNCTION_PUBLISH_PROFILE' }
+                        bat  = @{ App = 'azf-eim-customer-wtc-bat';  Secret = 'BAT_FUNCTION_PUBLISH_PROFILE' }
+                      }
+                      $target = $targets[$environment]
+                      Write-Host "Deploying to $($target.App)"
+                      Write-Host "##vso[task.setvariable variable=TARGET_FUNCTION_APP]$($target.App)"
+                      Write-Host "##vso[task.setvariable variable=PUBLISH_PROFILE_VARIABLE]$($target.Secret)"
+
+                - task: PowerShell@2
+                  displayName: ZIP deploy $(TARGET_FUNCTION_APP)
+                  env:
+                    DEV1_FUNCTION_PUBLISH_PROFILE: $(DEV1_FUNCTION_PUBLISH_PROFILE)
+                    TEST_FUNCTION_PUBLISH_PROFILE: $(TEST_FUNCTION_PUBLISH_PROFILE)
+                    BAT_FUNCTION_PUBLISH_PROFILE: $(BAT_FUNCTION_PUBLISH_PROFILE)
+                  inputs:
+                    targetType: filePath
+                    pwsh: true
+                    filePath: Script/Deploy-ZipWithPublishProfile.ps1
+                    arguments: >-
+                      -PackagePath "$(Pipeline.Workspace)/eim-customer/eim-customer-$(Build.BuildId).zip"
+                      -PublishProfileEnvironmentVariable "$(PUBLISH_PROFILE_VARIABLE)"
