@@ -1,0 +1,42 @@
+# Creates one draft pull request to main whenever a feature/* branch is pushed.
+# The Microsoft Foundry model generates the title and description.
+# See docs/auto-ai-pull-request-setup.md for required permissions and setup.
+
+trigger:
+  branches:
+    include:
+      - feature/*
+
+pr: none
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  FOUNDRY_ENDPOINT: https://arm-foundry-east02-resource.openai.azure.com
+  FOUNDRY_MODEL_DEPLOYMENT: gpt-5.6-sol
+  FOUNDRY_API_VERSION: 2025-01-01-preview
+  TARGET_BRANCH: main
+
+steps:
+  - checkout: self
+    displayName: Checkout full branch history
+    fetchDepth: 0
+    persistCredentials: false
+
+  - task: PowerShell@2
+    displayName: Generate metadata and create draft PR
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      FOUNDRY_API_KEY: $(FOUNDRY_API_KEY)
+    inputs:
+      targetType: filePath
+      pwsh: true
+      filePath: Script/Create-AiPullRequest.ps1
+      arguments: >-
+        -SourceBranch "$(Build.SourceBranch)"
+        -TargetBranch "$(TARGET_BRANCH)"
+        -FoundryEndpoint "$(FOUNDRY_ENDPOINT)"
+        -ModelDeployment "$(FOUNDRY_MODEL_DEPLOYMENT)"
+        -ApiVersion "$(FOUNDRY_API_VERSION)"
+        -Draft $true
