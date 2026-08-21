@@ -12,7 +12,16 @@ The pipeline `.azure-pipelines/workflows/auto-ai-pull-request.yml` runs whenever
 
 ## One-time setup
 
-### 1. Add the Foundry API key as a secret
+### 1. Create the pipeline
+
+1. Open **Pipelines** → **New pipeline**.
+2. Choose **Azure Repos Git** and repository `ARM.Integration.Wilson`.
+3. Choose **Existing Azure Pipelines YAML file**.
+4. Select the branch containing the automation and path:
+   `.azure-pipelines/workflows/auto-ai-pull-request.yml`
+5. Save the pipeline without running it yet, if Azure DevOps offers that option.
+
+### 2. Add the Foundry API key as a secret
 
 In Azure DevOps:
 
@@ -24,7 +33,7 @@ In Azure DevOps:
 
 Do not put the key in YAML, a variable-group YAML file, scripts, local settings, or Git history. Restrict permission to edit/use the pipeline, rotate the key periodically, and replace API-key authentication with workload identity when available.
 
-### 2. Permit the pipeline to create pull requests
+### 3. Permit the pipeline to create pull requests
 
 In Azure DevOps:
 
@@ -36,16 +45,6 @@ In Azure DevOps:
 4. If your organization requires it for PR creation, also allow **Contribute**. Do not grant force-push or bypass-policy permissions.
 
 `System.AccessToken` is mapped explicitly into the script by the YAML pipeline. No PAT variable is required.
-
-### 3. Create the pipeline
-
-1. Open **Pipelines** → **New pipeline**.
-2. Choose **Azure Repos Git** and repository `ARM.Integration.Wilson`.
-3. Choose **Existing Azure Pipelines YAML file**.
-4. Select the branch containing the automation and path:
-   `.azure-pipelines/workflows/auto-ai-pull-request.yml`
-5. Save the pipeline.
-6. Add the secret `FOUNDRY_API_KEY` variable as described above before the first feature-branch push.
 
 ### 4. Merge the automation into `main`
 
@@ -80,5 +79,6 @@ To create active rather than draft PRs, change `-Draft $true` to `-Draft $false`
 - **`FOUNDRY_API_KEY` is not set:** add the pipeline variable and mark it secret.
 - **401 or 403 from Foundry:** confirm the key belongs to `arm-foundry-east02-resource`, then rotate and replace it if necessary.
 - **403 from Azure DevOps:** grant the project Build Service identity **Contribute to pull requests** on the repository.
+- **`Unable to fetch origin/main` or `terminal prompts disabled`:** confirm the YAML checkout has `persistCredentials: true` and the project Build Service has repository **Read** permission.
 - **No pipeline run:** confirm the branch begins with `feature/` and contains the YAML file.
 - **PR already exists:** expected behavior; the script intentionally avoids duplicates.

@@ -22,7 +22,9 @@ steps:
   - checkout: self
     displayName: Checkout full branch history
     fetchDepth: 0
-    persistCredentials: false
+    # Required by Create-AiPullRequest.ps1 to fetch origin/main. Azure Pipelines
+    # stores the job-scoped System.AccessToken in Git's authorization header.
+    persistCredentials: true
 
   - task: PowerShell@2
     displayName: Generate metadata and create draft PR
