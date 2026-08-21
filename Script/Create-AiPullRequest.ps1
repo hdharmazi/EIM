@@ -42,7 +42,16 @@ function Invoke-AzureDevOpsRestMethod {
         $parameters.Body = $Body | ConvertTo-Json -Depth 10
     }
 
-    Invoke-RestMethod @parameters
+    try {
+        Invoke-RestMethod @parameters
+    } catch {
+        $responseText = $_.ErrorDetails.Message
+        if ($responseText -match "PullRequestContribute") {
+            throw "The pipeline Build Service lacks 'Contribute to pull requests' on this repository. Grant that permission under Project settings > Repositories > Security, then rerun the pipeline."
+        }
+
+        throw
+    }
 }
 
 $script:DevOpsToken = Get-RequiredEnvironmentVariable "SYSTEM_ACCESSTOKEN"

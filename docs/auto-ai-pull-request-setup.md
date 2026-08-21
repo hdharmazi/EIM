@@ -38,7 +38,7 @@ Do not put the key in YAML, a variable-group YAML file, scripts, local settings,
 In Azure DevOps:
 
 1. Open **Project settings** → **Repositories** → `ARM.Integration.Wilson` → **Security**.
-2. Locate `<Project Name> Build Service (WTC365)` (the exact prefix may vary).
+2. Locate **D365 Implementation Build Service (WTC365)**. The error may identify the same account internally as `Build\0663fdce-40ac-49d1-90d3-f9846725a29e`.
 3. Set these permissions to **Allow**:
    - **Contribute to pull requests**
    - **Read**
@@ -78,7 +78,7 @@ To create active rather than draft PRs, change `-Draft $true` to `-Draft $false`
 
 - **`FOUNDRY_API_KEY` is not set:** add the pipeline variable and mark it secret.
 - **401 or 403 from Foundry:** confirm the key belongs to `arm-foundry-east02-resource`, then rotate and replace it if necessary.
-- **403 from Azure DevOps:** grant the project Build Service identity **Contribute to pull requests** on the repository.
+- **TF401027 / `PullRequestContribute`:** under **Project settings** → **Repositories** → `ARM.Integration.Wilson` → **Security**, grant **D365 Implementation Build Service (WTC365)** the **Contribute to pull requests** permission. If the identity is not listed, search for `D365 Implementation Build Service` or ask a Project Administrator to grant it. Do not grant bypass-policy permissions.
 - **`Unable to fetch origin/main` or `terminal prompts disabled`:** confirm the YAML checkout has `persistCredentials: true` and the project Build Service has repository **Read** permission.
 - **No pipeline run:** confirm the branch begins with `feature/` and contains the YAML file.
 - **PR already exists:** expected behavior; the script intentionally avoids duplicates.
