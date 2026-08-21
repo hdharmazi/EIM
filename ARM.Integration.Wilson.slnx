@@ -1,7 +1,4 @@
 <Solution>
-  <Folder Name="/.verify-yesno/">
-    <Project Path=".verify-yesno/verify-yesno.csproj" />
-  </Folder>
   <Folder Name="/Script/">
     <File Path="Script/Bicep/Firewall" />
     <File Path="Script/Bicep/main-addqueue.bicep" />
@@ -23,6 +20,7 @@
   <Project Path="ARM.Integration.Dashboard.API/ARM.Integration.Dashboard.API.csproj" />
 
   <Project Path="ARM.Integration.EIM.Customer/ARM.Integration.EIM.Customer.csproj" Id="6a04bee9-4029-41b2-b713-247362e7dd14" />
+  <Project Path="ARM.Integration.EIM.Tests/ARM.Integration.EIM.Tests.csproj" />
   <Project Path="ARM.Integration.EIM/ARM.Integration.EIM.csproj" Id="4b1aa9d1-aad8-4d23-8e17-ad58b6234e5e" />
   <Project Path="ARM.Integration.Test/ARM.Integration.Test.csproj" Id="82cef1e8-85a5-475b-a7c9-ab8e3249fad2" />
   <Properties Name="CRMSolutionProperties">

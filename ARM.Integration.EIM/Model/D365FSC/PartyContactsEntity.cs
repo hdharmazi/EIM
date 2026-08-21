@@ -6,10 +6,12 @@ namespace ARM.Integration.EIM
     {
         [JsonPropertyName("PartyNumber")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [D365ExcludeOnUpdate("OData key — supplied in the request URL.")]
         public string PartyNumber { get; set; }
 
         [JsonPropertyName("ElectronicAddressId")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [D365ExcludeOnUpdate("OData key — supplied in the request URL.")]
         public string ElectronicAddressId { get; set; }
 
         [JsonPropertyName("Locator")]
@@ -30,6 +32,7 @@ namespace ARM.Integration.EIM
 
         [JsonPropertyName("Type")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [D365ExcludeOnUpdate("Set on creation and not patchable in D365 PartyContactsV3.")]
         public string Type { get; set; }
 
         [JsonPropertyName("IsInstantMessage")]

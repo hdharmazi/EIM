@@ -42,29 +42,6 @@ namespace ARM.Integration.EIM.Orchestration
                 .Add("ElectronicAddressId", d365Entity.ElectronicAddressId);
         }
 
-        // Type is set on creation and cannot be changed via PATCH in D365 PartyContactsV3.
-        // Override to send a Type-free payload for Update operations.
-        protected override Task<PartyContactsEntity?> ExecuteActionAsync(
-            string action, PartyContactsEntity target, string destinationConnection,
-            IOrchestrationLogger stepLog, CancellationToken ct)
-        {
-            if (action.Equals("Update", StringComparison.OrdinalIgnoreCase))
-            {
-                var updateTarget = new PartyContactsEntity
-                {
-                    PartyNumber = target.PartyNumber,
-                    ElectronicAddressId = target.ElectronicAddressId,
-                    Locator = target.Locator,
-                    LocatorExtension = target.LocatorExtension,
-                    IsPrimary = target.IsPrimary,
-                    Description = target.Description,
-                    // Type intentionally excluded — not patchable in D365 PartyContactsV3
-                };
-                return base.ExecuteActionAsync(action, updateTarget, destinationConnection, stepLog, ct);
-            }
-            return base.ExecuteActionAsync(action, target, destinationConnection, stepLog, ct);
-        }
-
         protected override CapturePartyContactMessageContract BuildResponseData(
             CapturePartyContactMessageContract source, PartyContactsEntity? d365Result, string action)
         {

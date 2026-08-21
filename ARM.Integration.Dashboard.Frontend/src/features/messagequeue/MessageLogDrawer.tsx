@@ -10,7 +10,13 @@ import {
 } from "@/components/ui/sheet";
 import { statusBadgeVariant, statusLabel } from "@/lib/status";
 import { useLogDetails, useMessage } from "./api";
-import { MessageLogCard, ProcessingStepsCard } from "./MessageDetailSections";
+import {
+  MessageDetailsCard,
+  MessageLogCard,
+  MessagePayloadCard,
+  ProcessingStepsCard,
+  ReprocessMessageButton,
+} from "./MessageDetailSections";
 
 export interface MessageLogDrawerProps {
   messageId: number | null;
@@ -25,8 +31,12 @@ export function MessageLogDrawer({ messageId, onOpenChange }: MessageLogDrawerPr
   const location = useLocation();
   const id = messageId ?? Number.NaN;
 
-  const { data: message, isLoading } = useMessage(id);
-  const { data: logDetails } = useLogDetails(id);
+  const { data: message, isLoading, isError: isMessageError } = useMessage(id);
+  const {
+    data: logDetails,
+    isLoading: areLogDetailsLoading,
+    isError: isLogDetailsError,
+  } = useLogDetails(id);
 
   return (
     <Sheet open={messageId !== null} onOpenChange={onOpenChange}>
@@ -45,27 +55,45 @@ export function MessageLogDrawer({ messageId, onOpenChange }: MessageLogDrawerPr
             )}
           </SheetTitle>
           {message && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-fit"
-              onClick={() =>
-                navigate(`/messages/${message.id}`, {
-                  state: { from: `${location.pathname}${location.search}` },
-                })
-              }
-            >
-              <ExternalLink /> Open full details
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <ReprocessMessageButton messageId={message.id} />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  navigate(`/messages/${message.id}`, {
+                    state: { from: `${location.pathname}${location.search}` },
+                  })
+                }
+              >
+                <ExternalLink /> Open full details
+              </Button>
+            </div>
           )}
         </SheetHeader>
 
-        {isLoading || !message ? (
+        {isLoading ? (
           <div className="text-muted-foreground">Loading…</div>
+        ) : isMessageError || !message ? (
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+            Unable to load this message.
+          </div>
         ) : (
           <div className="grid gap-4">
+            <MessageDetailsCard message={message} />
             <MessageLogCard message={message} />
-            <ProcessingStepsCard logDetails={logDetails} />
+            <MessagePayloadCard message={message} />
+            {areLogDetailsLoading ? (
+              <div className="rounded-md border p-4 text-sm text-muted-foreground">
+                Loading processing steps…
+              </div>
+            ) : isLogDetailsError ? (
+              <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+                Unable to load processing steps. Open full details to try again.
+              </div>
+            ) : (
+              <ProcessingStepsCard logDetails={logDetails} />
+            )}
           </div>
         )}
       </SheetContent>

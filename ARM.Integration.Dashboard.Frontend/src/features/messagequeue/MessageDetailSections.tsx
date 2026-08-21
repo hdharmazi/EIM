@@ -1,5 +1,10 @@
+import * as React from "react";
+import { Copy, Pencil, RefreshCw, Save, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/toast";
 import {
   Table,
   TableBody,
@@ -11,7 +16,12 @@ import {
 import { cn } from "@/lib/utils";
 import { isErrorStatus } from "@/lib/status";
 import { formatDateTime, prettyJson } from "@/lib/format";
-import type { MessageLogDetail, MessageQueueRecord } from "./api";
+import {
+  useReprocess,
+  useUpdatePayload,
+  type MessageLogDetail,
+  type MessageQueueRecord,
+} from "./api";
 
 /** Shared read-only sections of a message's details, used by both the full
  * detail page and the list's log-preview drawer. */
@@ -69,46 +79,160 @@ export function MessageLogCard({ message }: { message: MessageQueueRecord }) {
   );
 }
 
+export function MessagePayloadCard({ message }: { message: MessageQueueRecord }) {
+  const { toast } = useToast();
+  const updatePayload = useUpdatePayload(message.id);
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState("");
+
+  function startEdit() {
+    setDraft(prettyJson(message.payload));
+    setEditing(true);
+  }
+
+  async function savePayload() {
+    try {
+      await updatePayload.mutateAsync(draft);
+      setEditing(false);
+      toast({ variant: "success", title: "Payload saved" });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Save failed", description: String(err) });
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 py-3">
+        <CardTitle className="text-sm">Payload</CardTitle>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              navigator.clipboard.writeText(message.payload);
+              toast({ title: "Payload copied" });
+            }}
+          >
+            <Copy /> Copy
+          </Button>
+          {!editing ? (
+            <Button variant="outline" size="sm" onClick={startEdit}>
+              <Pencil /> Edit
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="success"
+                size="sm"
+                onClick={savePayload}
+                disabled={updatePayload.isPending}
+              >
+                <Save /> Save
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
+                <X /> Cancel
+              </Button>
+            </>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {editing ? (
+          <Textarea
+            className="min-h-[320px] font-mono text-xs"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+        ) : (
+          <pre className="max-h-[400px] overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-3 text-xs">
+            {prettyJson(message.payload)}
+          </pre>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function ReprocessMessageButton({ messageId }: { messageId: number }) {
+  const { toast } = useToast();
+  const reprocess = useReprocess(messageId);
+
+  async function onReprocess() {
+    if (!window.confirm(`Reprocess message #${messageId}?`)) return;
+    try {
+      const result = await reprocess.mutateAsync();
+      toast({
+        variant: result.success ? "success" : "destructive",
+        title: result.success ? "Reprocess succeeded" : "Reprocess failed",
+        description: result.message,
+      });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Reprocess failed", description: String(err) });
+    }
+  }
+
+  return (
+    <Button variant="warning" size="sm" onClick={onReprocess} disabled={reprocess.isPending}>
+      <RefreshCw /> Reprocess
+    </Button>
+  );
+}
+
 export function ProcessingStepsCard({ logDetails }: { logDetails: MessageLogDetail[] | undefined }) {
-  if (!logDetails || logDetails.length === 0) return null;
+  const steps = logDetails ?? [];
+
   return (
     <Card>
       <CardHeader className="py-3">
         <CardTitle className="text-sm">
-          Processing Steps <Badge variant="secondary">{logDetails.length}</Badge>
+          Processing Steps <Badge variant="secondary">{steps.length}</Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-0">
-        <Table>
+      {steps.length === 0 ? (
+        <CardContent className="text-sm text-muted-foreground">
+          No processing steps recorded.
+        </CardContent>
+      ) : (
+        <CardContent className="p-0">
+          <Table className="table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-12">#</TableHead>
-              <TableHead className="w-48">Name</TableHead>
+              <TableHead className="w-10 sm:w-12">#</TableHead>
+              <TableHead className="w-28 sm:w-40">Name</TableHead>
               <TableHead>Detail</TableHead>
-              <TableHead className="w-48">Timestamp</TableHead>
+              <TableHead className="w-32 sm:w-44">Timestamp</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {logDetails.map((log, i) => {
+            {steps.map((log, i) => {
               const isError =
                 log.name.toLowerCase() === "error" ||
                 (log.detail?.toUpperCase().startsWith("FAILED") ?? false);
               return (
                 <TableRow key={log.id} className={cn(isError && "bg-destructive/5")}>
                   <TableCell className="text-muted-foreground">{i + 1}</TableCell>
-                  <TableCell className="font-medium">{log.name}</TableCell>
-                  <TableCell className="text-xs">
-                    {log.detail && <code className="whitespace-pre-wrap">{log.detail}</code>}
+                  <TableCell className={cn("break-words font-medium", isError && "text-destructive")}>
+                    {log.name}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                  <TableCell className="min-w-0 text-xs">
+                    {log.detail ? (
+                      <code className="block whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                        {log.detail}
+                      </code>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="break-words text-xs text-muted-foreground">
                     {formatDateTime(log.createdDateTime)}
                   </TableCell>
                 </TableRow>
               );
             })}
           </TableBody>
-        </Table>
-      </CardContent>
+          </Table>
+        </CardContent>
+      )}
     </Card>
   );
 }

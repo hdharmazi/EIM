@@ -6,10 +6,12 @@ namespace ARM.Integration.EIM
     {
         [JsonPropertyName("dataAreaId")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [D365ExcludeOnUpdate("OData key — supplied in the request URL.")]
         public string DataAreaId { get; set; }
 
         [JsonPropertyName("ContactPersonId")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        [D365ExcludeOnUpdate("OData key — supplied in the request URL.")]
         public string ContactPersonId { get; set; }
 
         [JsonPropertyName("FirstName")]
