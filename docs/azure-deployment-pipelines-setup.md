@@ -31,6 +31,8 @@ Download each Function App's publish profile from Azure Portal and add these Azu
 
 The pipeline asks for `dev1`, `test`, or `bat` when manually run. It builds one code artifact and deploys it without changing Function App settings.
 
+Publish-profile ZIP deployment requires **SCM Basic Auth Publishing Credentials** on each target Function App. In Azure Portal, open the Function App → **Configuration** → **General settings**, enable **SCM Basic Auth Publishing Credentials**, save, then download a fresh publish profile. If the setting was previously disabled, an older profile may not authenticate; replace the corresponding secret pipeline variable with the newly downloaded XML.
+
 ## Dashboard pipeline variables
 
 Add these variables to the Dashboard pipeline:
@@ -96,3 +98,8 @@ Runtime settings such as SQL, Service Bus, queue names, schedules, and API keys 
 ## Rollback
 
 Pipeline artifacts are retained according to Azure DevOps retention policy. To roll back, run the pipeline from the previous known-good commit or redeploy its retained artifact. The deployment does not modify runtime settings.
+
+## Troubleshooting
+
+- **Kudu ZIP deploy returns HTTP 401:** SCM Basic Auth Publishing Credentials are disabled or the stored publish profile is stale. Enable SCM basic authentication on the exact target app, save, download a new publish profile, replace the environment-specific secret variable, and rerun.
+- **Publish-profile download is disabled:** enable SCM Basic Auth Publishing Credentials first or ask an Azure resource administrator to do so.

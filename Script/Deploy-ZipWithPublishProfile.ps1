@@ -44,13 +44,21 @@ $basicToken = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${userN
 $headers = @{ Authorization = "Basic $basicToken" }
 
 Write-Host "Uploading package '$($package.Path)' to $hostName"
-$response = Invoke-WebRequest `
-    -Uri $deployUri `
-    -Method POST `
-    -Headers $headers `
-    -ContentType "application/zip" `
-    -InFile $package.Path `
-    -UseBasicParsing
+try {
+    $response = Invoke-WebRequest `
+        -Uri $deployUri `
+        -Method POST `
+        -Headers $headers `
+        -ContentType "application/zip" `
+        -InFile $package.Path `
+        -UseBasicParsing
+} catch {
+    if ($_.Exception.Response.StatusCode -eq [Net.HttpStatusCode]::Unauthorized) {
+        throw "Kudu rejected the publish profile with HTTP 401. Confirm SCM Basic Auth Publishing Credentials are enabled for the target App Service/Function App, download a fresh publish profile, and update the secret pipeline variable."
+    }
+
+    throw
+}
 
 $statusUri = [string] $response.Headers.Location
 if ([string]::IsNullOrWhiteSpace($statusUri)) {
