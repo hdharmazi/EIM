@@ -34,6 +34,8 @@ Headers are matched **case-insensitively** (`ROUTEID` = `RouteId`), but these co
 | `RequestedDate` | `RequestDate` |
 | `ResponsibleName` | `Responsible` |
 
+`ResponsibleParty` is supported as-is and does not need to be renamed.
+
 **Line block**
 
 | Current header | Rename to |
@@ -48,7 +50,7 @@ Headers are matched **case-insensitively** (`ROUTEID` = `RouteId`), but these co
 **Trade-in block** — name the header cells exactly:
 `PBLId, ItemId, LineId, ProductLine, Make, Model, MfgYear, VinNumber, Amount, Warehouse, LocationId`
 
-Unknown/extra columns (e.g. `ResponsibleParty`) are ignored.
+Unknown/extra columns are ignored.
 
 ## Cell formatting rules
 

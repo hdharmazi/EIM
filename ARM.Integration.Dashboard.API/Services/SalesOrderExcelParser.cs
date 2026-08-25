@@ -41,6 +41,7 @@ public class SalesOrderExcelParser
         new("Revision", SalesOrderFieldType.Int),
         new("ModelId", SalesOrderFieldType.Text),
         new("Responsible", SalesOrderFieldType.Text, Aliases: ["ResponsibleName"]),
+        new("ResponsibleParty", SalesOrderFieldType.Text),
         new("UserGroupId", SalesOrderFieldType.Text),
         new("IsBOM", SalesOrderFieldType.Int),
         new("IsUsedTrailer", SalesOrderFieldType.Text),
