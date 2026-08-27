@@ -1,5 +1,7 @@
+using ARM.Integration.Dashboard.API.Auth;
 using ARM.Integration.Dashboard.API.Models;
 using ARM.Integration.Dashboard.API.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 
@@ -7,6 +9,7 @@ namespace ARM.Integration.Dashboard.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Policy = AuthorizationPolicies.DashboardUser)]
 public class SimulationController(
     SimulationService service,
     SalesOrderExcelParser salesOrderParser,
@@ -59,7 +62,7 @@ public class SimulationController(
 
         return Ok(new SimulationConfigResponse
         {
-            D365Queue = configuration["Simulation:D365Queue"] ?? "",
+            D365FscDataEventQueue = configuration["Simulation:D365FscDataEventQueue"] ?? "",
             CaptureToD365Queue = configuration["Simulation:CaptureToD365Queue"] ?? "",
             CaptureToD365ResponseQueue = configuration["Simulation:CaptureToD365ResponseQueue"] ?? "",
             D365ToCaptureQueue = configuration["Simulation:D365ToCaptureQueue"] ?? "",

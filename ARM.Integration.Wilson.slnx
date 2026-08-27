@@ -9,17 +9,20 @@
   </Folder>
   <Folder Name="/Script/SQL/" />
   <Folder Name="/Solution Items/">
-    <File Path=".env" />
-    <File Path=".env.example" />
-    <File Path="AzureDeploy" />
-    <File Path="docker-compose.yml" />
+    <File Path="Script/Docs/deployment.md" />
+    <File Path="Script/Docs/database-migrations.md" />
   </Folder>
+  
+
   <Project Path="ARM.Integration.Core/ARM.Integration.Core.csproj" />
   <Project Path="ARM.Integration.Dashboard.API/ARM.Integration.Dashboard.API.csproj" />
+  <Project Path="ARM.Integration.DbMigrator/ARM.Integration.DbMigrator.csproj" />
+
   <Project Path="ARM.Integration.EIM.Customer/ARM.Integration.EIM.Customer.csproj" Id="6a04bee9-4029-41b2-b713-247362e7dd14" />
   <Project Path="ARM.Integration.EIM.Tests/ARM.Integration.EIM.Tests.csproj" />
   <Project Path="ARM.Integration.EIM/ARM.Integration.EIM.csproj" Id="4b1aa9d1-aad8-4d23-8e17-ad58b6234e5e" />
   <Project Path="ARM.Integration.Test/ARM.Integration.Test.csproj" Id="82cef1e8-85a5-475b-a7c9-ab8e3249fad2" />
+  <Project Path="Wilson.Integration.Orchestrations/Wilson.Integration.Orchestrations.csproj" />
   <Properties Name="CRMSolutionProperties">
     <Property Name="SolutionIsBoundToCRM" Value="True" />
   </Properties>

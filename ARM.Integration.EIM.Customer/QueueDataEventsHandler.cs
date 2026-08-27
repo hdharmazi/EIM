@@ -1,5 +1,7 @@
 using ARM.Integration.EIM;
 using ARM.Integration.EIM.Orchestration;
+using ARM.Integration.EIM.Retry;
+using ARM.Integration.EIM.Routing;
 using ARM.Integration.EIM.Utilities;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Azure.Functions.Worker;
@@ -15,7 +17,10 @@ namespace ARM.Integration.EIM.Customer;
 /// </summary>
 public class QueueDataEventsHandler(
     ILoggerFactory loggerFactory,
-    IReadOnlyDictionary<string, IOrchestration> orchestrations)
+    IReadOnlyDictionary<string, IOrchestration> orchestrations,
+    IngestGate gate,
+    IFailureClassifier failureClassifier,
+    RetryScheduleCalculator retrySchedule)
 {
     private readonly ILogger logger = loggerFactory.CreateLogger<QueueDataEventsHandler>();
 
@@ -101,7 +106,7 @@ public class QueueDataEventsHandler(
 
     [Function(nameof(QueueDataEventsHandler))]
     public async Task Run(
-        [ServiceBusTrigger("%D365DataEventQueue%", Connection = "ServiceBus")]
+        [ServiceBusTrigger("%D365FscDataEventQueue%", Connection = "ServiceBus")]
         ServiceBusReceivedMessage message,
         ServiceBusMessageActions messageActions)
     {
@@ -207,26 +212,41 @@ public class QueueDataEventsHandler(
         var targetAttrs = D365FSCEventParser.GetTargetAttributes(context.InputParameters);
         var businessKey = BusinessKeyResolver.GetBusinessKey(context.PrimaryEntityName, targetAttrs);
 
-        var controller = new EIMController(connectionString, logger, orchestrations);
+        var controller = new EIMController(connectionString, logger, orchestrations, failureClassifier, retrySchedule);
 
-        var messageId = controller.InsertMessage(new MessageRequest
+        var request = new MessageRequest
         {
             SourceId = businessKey ?? context.OperationId,
-            Environment = Environment.GetEnvironmentVariable("DefaultEnvironment"),
+            Environment = Environment.GetEnvironmentVariable("DefaultEnvironment") ?? "",
             DestinationSystem = "CAPTURE",
             SourceSystem = "D365FSC",
             Payload = payload,
-            Type = route.Type,
+            // Replaced by the route's orchestration type; the gate resolves it.
+            Type = "",
             SourceEntity = context.PrimaryEntityName,
             DestinationEntity = "",
             Queue = queue,
-        });
-        logger.LogInformation("Inserted Events: {id}", message.MessageId);
+            // The D365 operation, not the record: a second change to the same customer is a new
+            // operation, while a redelivery of this one repeats it.
+            DedupeKey = context.OperationId,
+        };
 
         try
         {
-            await controller.ProcessMessageAsync(messageId);
+            var (messageId, decision) = await controller.InsertAndProcessAsync(request, gate);
+
+            logger.LogInformation("Message {id}: Entity={entity}, {reason}, EIM id {messageId}",
+                message.MessageId, context.PrimaryEntityName, decision.Reason, messageId);
+
             await messageActions.CompleteMessageAsync(message);
+        }
+        catch (RouteNotFoundException ex)
+        {
+            // Dead-lettered rather than completed: an unroutable message means a seeding gap.
+            logger.LogError(ex, "Message {id} has no route for entity '{entity}'.",
+                message.MessageId, context.PrimaryEntityName);
+            await messageActions.DeadLetterMessageAsync(
+                message, deadLetterReason: "NoRoute", deadLetterErrorDescription: ex.Message);
         }
         catch (Exception ex)
         {

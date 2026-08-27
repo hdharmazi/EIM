@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ARM.Integration.EIM\ARM.Integration.EIM.csproj" />
+    <ProjectReference Include="..\Wilson.Integration.Orchestrations\Wilson.Integration.Orchestrations.csproj" />
   </ItemGroup>
 
 </Project>

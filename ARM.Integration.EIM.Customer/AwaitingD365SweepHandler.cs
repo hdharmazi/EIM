@@ -21,8 +21,8 @@ public class AwaitingD365SweepHandler(ILoggerFactory loggerFactory)
 {
     private readonly ILogger logger = loggerFactory.CreateLogger<AwaitingD365SweepHandler>();
 
-    private const int AwaitingStatus = 5;
-    private const int DeadLetterStatus = 4;
+    private const int AwaitingStatus = MessageStatus.AwaitingD365;
+    private const int DeadLetterStatus = MessageStatus.DeadLetter;
 
     [Function(nameof(AwaitingD365SweepHandler))]
     public void Run([TimerTrigger("%AwaitingD365SweepSchedule%")] TimerInfo timer)

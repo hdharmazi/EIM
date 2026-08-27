@@ -17,4 +17,9 @@ public class MessageQueueRecord
     public int Status { get; set; }
     public DateTime? CreatedAt { get; set; }
     public DateTime? ModifiedDateTime { get; set; }
+
+    /// <summary>Attempts made so far. Only meaningful at Retry Scheduled or Dead Letter.</summary>
+    public int RetryCount { get; set; }
+
+    public DateTime? NextAttemptDateTime { get; set; }
 }

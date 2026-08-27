@@ -12,6 +12,7 @@ import { ConfigurationFormPage } from "@/features/configuration/ConfigurationFor
 import { UserListPage } from "@/features/users/UserListPage";
 import { UserFormPage } from "@/features/users/UserFormPage";
 import { SimulationPage } from "@/features/simulation/SimulationPage";
+import { RouteControlPage } from "@/features/routes/RouteControlPage";
 
 export const router = createBrowserRouter([
   {
@@ -23,6 +24,15 @@ export const router = createBrowserRouter([
       { path: "messages/:id", element: <MessageDetailPage /> },
       { path: "cleanup", element: <CleanupPage /> },
       { path: "simulation", element: <SimulationPage /> },
+      {
+        // Pausing a route stops production traffic, so it sits with the other admin screens.
+        path: "routes",
+        element: (
+          <RequireAdmin>
+            <RouteControlPage />
+          </RequireAdmin>
+        ),
+      },
       {
         path: "environments",
         element: (

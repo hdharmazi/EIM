@@ -8,7 +8,7 @@ import {
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID;
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID;
 
-/** Scope(s) requested for the Dashboard API access token (e.g. api://<api-id>/access_as_user). */
+/** Scope(s) requested for the Dashboard API access token (e.g. api://<api-id>/user_impersonation). */
 export const apiScopes: string[] = [import.meta.env.VITE_API_SCOPE].filter(Boolean);
 
 const msalConfig: Configuration = {

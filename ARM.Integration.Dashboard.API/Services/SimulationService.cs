@@ -1,3 +1,4 @@
+using Wilson.Integration.Orchestrations;
 using ARM.Integration.Dashboard.API.Models;
 using ARM.Integration.EIM;
 using Azure.Messaging.ServiceBus;
@@ -16,13 +17,13 @@ public class SimulationService(IConfiguration config, ConfigurationRepository co
 
     // Queue names default to appsettings but are resolved per-run from the selected
     // SimulationEnvironment configuration (see RunAsync).
-    private string D365Queue        = config["Simulation:D365Queue"]                  ?? "";
+    private string D365Queue        = config["Simulation:D365FscDataEventQueue"]      ?? "";
     private string CaptureQueue     = config["Simulation:CaptureToD365Queue"]         ?? "";
     private string CaptureRespQueue = config["Simulation:CaptureToD365ResponseQueue"] ?? "";
     private string CaptureOutQueue  = config["Simulation:D365ToCaptureQueue"]         ?? "";
 
     private static readonly string[] RequiredQueueFields =
-        ["D365Queue", "CaptureToD365Queue", "CaptureToD365ResponseQueue", "D365ToCaptureQueue"];
+        ["D365FscDataEventQueue", "CaptureToD365Queue", "CaptureToD365ResponseQueue", "D365ToCaptureQueue"];
 
     public async IAsyncEnumerable<SimulationEvent> RunAsync(
         SimulationRequest request,
@@ -58,7 +59,7 @@ public class SimulationService(IConfiguration config, ConfigurationRepository co
                 yield break;
             }
 
-            D365Queue        = cfg.Fields["D365Queue"];
+            D365Queue        = cfg.Fields["D365FscDataEventQueue"];
             CaptureQueue     = cfg.Fields["CaptureToD365Queue"];
             CaptureRespQueue = cfg.Fields["CaptureToD365ResponseQueue"];
             CaptureOutQueue  = cfg.Fields["D365ToCaptureQueue"];

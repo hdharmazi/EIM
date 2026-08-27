@@ -370,3 +370,14 @@ FodyWeavers.xsd
 # Deploy scripts containing real connection strings / keys (do not commit)
 AzureDeploy
 AzureDeploy.AppService.ps1
+
+# Per-environment deployment configuration. These carry the SQL and Service Bus
+# credentials; only the placeholder example is committed.
+Script/config/deploy.*.json
+!Script/config/deploy.example.json
+
+# Azurite local emulator state. The __azurite_db_* metadata and the __blobstorage__ data must be
+# deleted together: metadata surviving without its data makes every blob write return HTTP 500.
+*_azurite*
+__blobstorage__/
+__queuestorage__/

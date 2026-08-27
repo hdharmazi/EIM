@@ -23,7 +23,7 @@ const SIMULATION_ENVIRONMENT = "SimulationEnvironment";
 /** Empty template of the four queue fields when creating a SimulationEnvironment config. */
 const SIM_ENV_TEMPLATE = JSON.stringify(
   {
-    D365Queue: "",
+    D365FscDataEventQueue: "",
     CaptureToD365Queue: "",
     CaptureToD365ResponseQueue: "",
     D365ToCaptureQueue: "",

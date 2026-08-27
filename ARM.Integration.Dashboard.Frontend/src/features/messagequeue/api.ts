@@ -17,6 +17,8 @@ export interface MessageQueueRecord {
   status: number;
   createdAt: string | null;
   modifiedDateTime: string | null;
+  retryCount: number;
+  nextAttemptDateTime: string | null;
 }
 
 export interface MessageLogDetail {

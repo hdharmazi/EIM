@@ -1,0 +1,58 @@
+{
+  "//": "Copy to deploy.<environment>.json and fill in. Those copies are gitignored because they carry credentials. Every key below is required unless marked optional.",
+
+  "environment": "dev1",
+  "subscriptionId": "<subscription id or name>",
+
+  "//resourceGroup": "Configuration rather than a constant, so an environment in another region can be added without reworking naming.",
+  "resourceGroup": "d365fsc-integration-nonprod",
+  "location": "centralus",
+
+  "//appServicePlan": "Shared deliberately: the dashboard API and every environment's Function App run on one plan. Not derived per environment.",
+  "appServicePlan": "asp-appservice-p0v3-linux-dev",
+
+  "serviceBusNamespace": "asb-eim-wtc-nonprod",
+
+  "//names": "Optional. Omit or null to derive from the environment. Set only for resources that do not follow the pattern.",
+  "names": {
+    "functionApp": null,
+    "storageAccount": null,
+    "queuePrefix": null
+  },
+
+  "//secrets": "Never commit these. This file is the reason deploy.*.json is gitignored.",
+  "secrets": {
+    "eimdbConnectionString": "<sql connection string>",
+    "serviceBusConnectionString": "<service bus connection string>"
+  },
+
+  "//dashboard": "The dashboard is shared across non-production environments. Exactly one environment should set hostsDashboard true; api and frontend are refused against the others.",
+  "dashboard": {
+    "hostsDashboard": false,
+    "apiAppName": "wtc-dashboard-api-dev",
+    "frontendAppName": "wtc-dashboard-frontend-dev"
+  },
+
+  "//entra": "One registration applied to both the SPA build and the API. Mixing two is what broke login before.",
+  "entra": {
+    "tenantId": "<deployed tenant id>",
+    "clientId": "<deployed client id>",
+    "audience": "<api://... or client id>",
+    "scope": "user_impersonation"
+  },
+
+  "//function": "Timer schedules must be present. A timer trigger whose schedule setting is missing fails to bind and takes the whole host down.",
+  "function": {
+    "excludedUsers": "<semicolon separated guids>",
+    "pollSchedule": "0 */1 * * * *",
+    "awaitingD365SweepSchedule": "0 */15 * * * *",
+    "awaitingD365StuckTimeoutHours": "4",
+    "releaseSweepSchedule": "0 */1 * * * *",
+    "releaseSweepBatchSize": "100",
+    "retrySweepSchedule": "0 */1 * * * *",
+    "retrySweepBatchSize": "100",
+    "retryMaxAttempts": "5",
+    "retryBaseDelaySeconds": "30",
+    "retryMaxDelaySeconds": "1800"
+  }
+}

@@ -1,3 +1,4 @@
+using ARM.Integration.Dashboard.API.Auth;
 using ARM.Integration.Dashboard.API.Models;
 using ARM.Integration.Dashboard.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -7,6 +8,7 @@ namespace ARM.Integration.Dashboard.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Policy = AuthorizationPolicies.DashboardUser)]
 public class ConfigurationController(ConfigurationRepository repo) : ControllerBase
 {
     /// <summary>Lists active configurations in a category. Available to any validated user (used by selection UIs).</summary>

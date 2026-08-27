@@ -2,6 +2,8 @@ using Azure.Messaging.ServiceBus;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using ARM.Integration.EIM.Orchestration;
+using ARM.Integration.EIM.Retry;
+using ARM.Integration.EIM.Routing;
 using System.Text.Json;
 
 namespace ARM.Integration.EIM.Customer;
@@ -13,33 +15,16 @@ namespace ARM.Integration.EIM.Customer;
 /// </summary>
 public static class QueueCaptureHandler
 {
-    /// <summary>
-    /// Maps the envelope "Entity" value to the orchestration type name.
-    /// Add new entities here as integrations are added.
-    /// </summary>
-    private static readonly Dictionary<string, string> EntityToOrchestration = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["Customer"] = "Customer_To_D365FSC",
-        ["Contact"] = "Contact_To_D365FSC",
-        ["PartyContact"] = "PartyContact_To_D365FSC",
-        ["CustomerAddress"] = "CustomerAddress_To_D365FSC",
-        ["SalesOrderQueue"] = "SalesOrder_To_D365FSC",
-    };
-
     public static async Task ProcessAsync(
         ServiceBusReceivedMessage message,
         ServiceBusMessageActions messageActions,
         ILogger logger,
         IReadOnlyDictionary<string, IOrchestration> orchestrations,
-        string activeFlag,
+        IngestGate gate,
+        IFailureClassifier failureClassifier,
+        RetryScheduleCalculator retrySchedule,
         string responseQueueSetting)
     {
-        var active = Environment.GetEnvironmentVariable(activeFlag);
-        if (string.IsNullOrEmpty(active) || string.Equals(active, "False", StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
         var connectionString = Environment.GetEnvironmentVariable("EIMDB")
             ?? throw new InvalidOperationException("EIMDB environment variable is not set.");
         var defaultEnvironment = Environment.GetEnvironmentVariable("DefaultEnvironment");
@@ -68,35 +53,41 @@ public static class QueueCaptureHandler
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(entity) || !EntityToOrchestration.TryGetValue(entity, out var orchestrationType))
-        {
-            logger.LogWarning("Message {id} has unsupported Entity '{entity}', skipping.", message.MessageId, entity);
-            await messageActions.CompleteMessageAsync(message);
-            return;
-        }
+        var controller = new EIMController(connectionString, logger, orchestrations, failureClassifier, retrySchedule);
 
-        logger.LogInformation("Message {id}: Entity={entity}, Orchestration={type}", message.MessageId, entity, orchestrationType);
-
-        var controller = new EIMController(connectionString, logger, orchestrations);
-
-        var messageId = controller.InsertMessage(new MessageRequest
+        var request = new MessageRequest
         {
             SourceId = sourceId ?? message.MessageId,
-            Environment = defaultEnvironment,
+            Environment = defaultEnvironment ?? "",
             DestinationSystem = "D365FSC",
             SourceSystem = "CAPTURE",
             Payload = body,
-            Type = orchestrationType,
+            // Replaced by the route's orchestration type; the gate resolves it.
+            Type = "",
             ResponseQueue = responsequeue,
             SourceEntity = entity,
             DestinationEntity = "",
-        });
-        logger.LogInformation("Inserted Events: {id}", message.MessageId);
+            // Service Bus redelivers a message under the same id, so this catches redelivery
+            // without treating a second change to the same record as a duplicate.
+            DedupeKey = message.MessageId,
+        };
 
         try
         {
-            await controller.ProcessMessageAsync(messageId);
+            var (messageId, decision) = await controller.InsertAndProcessAsync(request, gate);
+
+            logger.LogInformation("Message {id}: Entity={entity}, {reason}, EIM id {messageId}",
+                message.MessageId, entity, decision.Reason, messageId);
+
             await messageActions.CompleteMessageAsync(message);
+        }
+        catch (RouteNotFoundException ex)
+        {
+            // Dead-lettered rather than completed. Routes are seeded from live traffic, so an
+            // unroutable message means a seeding gap - which must be visible, not discarded.
+            logger.LogError(ex, "Message {id} has no route for entity '{entity}'.", message.MessageId, entity);
+            await messageActions.DeadLetterMessageAsync(
+                message, deadLetterReason: "NoRoute", deadLetterErrorDescription: ex.Message);
         }
         catch (Exception ex)
         {

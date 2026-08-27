@@ -1,5 +1,7 @@
 using ARM.Integration.Dashboard.API.Auth;
+using ARM.Integration.Dashboard.API.Middleware;
 using ARM.Integration.Dashboard.API.Services;
+using ARM.Integration.EIM.Routing;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -14,38 +16,41 @@ builder.Services.AddScoped<ConfigurationRepository>();
 builder.Services.AddScoped<UserRepository>();
 builder.Services.AddScoped<SimulationService>();
 builder.Services.AddScoped<SalesOrderExcelParser>();
+builder.Services.AddScoped<RouteRepository>();
+builder.Services.AddScoped<StatusRepository>();
 
-// Dual authentication: Entra JWT bearer for the SPA, X-Api-Key for service callers.
-// A policy scheme routes each request to the right handler based on its headers.
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultScheme = "SmartAuth";
-    options.DefaultChallengeScheme = "SmartAuth";
-})
-.AddPolicyScheme("SmartAuth", "ApiKey or Bearer", options =>
-{
-    options.ForwardDefaultSelector = context =>
-        context.Request.Headers.ContainsKey("X-Api-Key")
-            ? ApiKeyAuthenticationHandler.SchemeName
-            : JwtBearerDefaults.AuthenticationScheme;
-})
-.AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
-    ApiKeyAuthenticationHandler.SchemeName, null)
-.AddMicrosoftIdentityWebApi(builder.Configuration, "AzureAd");
+// Singleton so pause and resume can invalidate the cache the API itself reads through.
+builder.Services.AddSingleton<IRouteRepository>(_ => new SqlRouteRepository(
+    builder.Configuration.GetConnectionString("EIMDB")
+    ?? throw new InvalidOperationException("ConnectionStrings:EIMDB is not configured.")));
+builder.Services.AddSingleton<IRouteResolver>(sp => new CachingRouteResolver(
+    sp.GetRequiredService<IRouteRepository>(),
+    logger: sp.GetService<ILogger<CachingRouteResolver>>()));
+
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
+// Entra JWT bearer is the only authentication mechanism. Every caller is resolved to a
+// dashboard user; there is no credential that bypasses Entra.
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddMicrosoftIdentityWebApi(builder.Configuration, "AzureAd");
 
 // Resolves the bearer caller to a dashboard user (role + DbUserValidated).
 builder.Services.AddScoped<IClaimsTransformation, DbUserClaimsTransformation>();
 
 builder.Services.AddAuthorization(options =>
 {
-    // Every request must be authenticated AND be either a trusted service caller
-    // or a DB-validated user.
-    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+    // Every request must be authenticated and resolve to an active dashboard user.
+    var dashboardUser = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
-        .RequireAssertion(ctx =>
-            ctx.User.HasClaim("IsService", "true") ||
-            ctx.User.HasClaim("DbUserValidated", "true"))
+        .RequireClaim("DbUserValidated", "true")
         .Build();
+
+    options.FallbackPolicy = dashboardUser;
+    options.AddPolicy(AuthorizationPolicies.DashboardUser, dashboardUser);
+
+    // DefaultPolicy stays authentication-only so GET /api/me remains reachable for a
+    // caller who is not DB-validated; the SPA reads it to show the access-denied view.
 });
 
 var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
@@ -57,6 +62,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+app.UseExceptionHandler();
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();

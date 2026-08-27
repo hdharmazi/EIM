@@ -1,3 +1,4 @@
+using Wilson.Integration.Orchestrations;
 using ARM.Integration.Dashboard.API.Models;
 using ARM.Integration.EIM;
 using ARM.Integration.EIM.Orchestration;
@@ -72,7 +73,7 @@ public class MessageQueueRepository(IConfiguration config, ILoggerFactory logger
                 QUEUE, RESPONSEQUEUE, PAYLOAD, MESSAGELOG, STATUS,
                 CREATEDDATETIME, MODIFIEDDATETIME
             FROM MESSAGEQUEUETABLE
-            WHERE STATUS IN (3, 4)
+            WHERE STATUS IN ({MessageStatus.Failed}, {MessageStatus.DeadLetter})
             ORDER BY ID DESC
             """;
 
@@ -95,7 +96,7 @@ public class MessageQueueRepository(IConfiguration config, ILoggerFactory logger
                 ID, SOURCEID, SOURCESYSTEM, SOURCEENTITY,
                 DESTINATIONSYSTEM, DESTINATIONENTITY, TYPE, ENVIRONMENT,
                 QUEUE, RESPONSEQUEUE, PAYLOAD, MESSAGELOG, STATUS,
-                CREATEDDATETIME, MODIFIEDDATETIME
+                CREATEDDATETIME, MODIFIEDDATETIME, RETRYCOUNT, NEXTATTEMPTDATETIME
             FROM MESSAGEQUEUETABLE
             WHERE ID = @ID
             """;
@@ -128,8 +129,22 @@ public class MessageQueueRepository(IConfiguration config, ILoggerFactory logger
             MessageLog        = reader["MESSAGELOG"]?.ToString() ?? string.Empty,
             Status            = Convert.ToInt32(reader["STATUS"]),
             CreatedAt         = reader["CREATEDDATETIME"] as DateTime?,
-            ModifiedDateTime  = reader["MODIFIEDDATETIME"] as DateTime?
+            ModifiedDateTime  = reader["MODIFIEDDATETIME"] as DateTime?,
+            // Absent from the list queries, which do not select them.
+            RetryCount        = HasColumn(reader, "RETRYCOUNT") ? Convert.ToInt32(reader["RETRYCOUNT"]) : 0,
+            NextAttemptDateTime = HasColumn(reader, "NEXTATTEMPTDATETIME")
+                ? reader["NEXTATTEMPTDATETIME"] as DateTime?
+                : null
         };
+    }
+
+    private static bool HasColumn(SqlDataReader reader, string name)
+    {
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            if (string.Equals(reader.GetName(i), name, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
     }
 
     public async Task<string> ReprocessAsync(long id)

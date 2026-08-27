@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { isErrorStatus } from "@/lib/status";
+import { isErrorStatus, STATUS_RETRY_SCHEDULED } from "@/lib/status";
 import { formatDateTime, prettyJson } from "@/lib/format";
 import {
   useReprocess,
@@ -55,6 +55,12 @@ export function MessageDetailsCard({ message }: { message: MessageQueueRecord })
           <Detail label="Environment" value={message.environment} />
           <Detail label="Created" value={formatDateTime(message.createdAt)} />
           <Detail label="Modified" value={formatDateTime(message.modifiedDateTime)} />
+          {message.status === STATUS_RETRY_SCHEDULED && (
+            <>
+              <Detail label="Attempts" value={String(message.retryCount)} />
+              <Detail label="Next attempt" value={formatDateTime(message.nextAttemptDateTime)} />
+            </>
+          )}
         </dl>
       </CardContent>
     </Card>

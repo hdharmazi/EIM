@@ -1,11 +1,18 @@
+using System.Diagnostics;
+using ARM.Integration.Dashboard.API.Auth;
 using ARM.Integration.Dashboard.API.Services;
+using ARM.Integration.EIM;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ARM.Integration.Dashboard.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class MessageQueueController(MessageQueueRepository repo) : ControllerBase
+[Authorize(Policy = AuthorizationPolicies.DashboardUser)]
+public class MessageQueueController(
+    MessageQueueRepository repo,
+    ILogger<MessageQueueController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll(
@@ -61,6 +68,18 @@ public class MessageQueueController(MessageQueueRepository repo) : ControllerBas
         var record = await repo.GetByIdAsync(id);
         if (record is null) return NotFound();
 
+        // Previously ungated: reprocessing a Completed message re-sent it to the destination.
+        // Held is included so an operator can canary one message while its route stays paused.
+        if (!MessageStatus.Reprocessable.Contains(record.Status))
+        {
+            return Conflict(new
+            {
+                success = false,
+                message = $"Message {id} is at status {record.Status} and cannot be reprocessed. "
+                          + $"Reprocess is allowed from status {string.Join(", ", MessageStatus.Reprocessable)}."
+            });
+        }
+
         try
         {
             var responseMessage = await repo.ReprocessAsync(id);
@@ -74,7 +93,7 @@ public class MessageQueueController(MessageQueueRepository repo) : ControllerBas
         }
         catch (Exception ex)
         {
-            return BadRequest(new { success = false, message = $"ERROR: {ex.Message}" });
+            return Fault(ex, "Reprocess failed for message {Id}.", id);
         }
     }
 
@@ -89,9 +108,28 @@ public class MessageQueueController(MessageQueueRepository repo) : ControllerBas
             var deleted = await repo.CleanupAsync(status, olderThanDays);
             return Ok(new { success = true, deleted, message = $"Deleted {deleted} record(s)." });
         }
+        catch (InvalidOperationException ex)
+        {
+            // Authored validation message, safe to surface.
+            return BadRequest(new { success = false, message = ex.Message });
+        }
         catch (Exception ex)
         {
-            return BadRequest(new { success = false, message = $"ERROR: {ex.Message}" });
+            return Fault(ex, "Cleanup failed for status {Status}, olderThanDays {Days}.", status, olderThanDays);
         }
+    }
+
+    /// <summary>Logs the detail and returns a safe response carrying the correlation id.</summary>
+    private IActionResult Fault(Exception ex, string logMessage, params object?[] args)
+    {
+        var correlationId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        logger.LogError(ex, logMessage + " CorrelationId={CorrelationId}", [.. args, correlationId]);
+
+        return BadRequest(new
+        {
+            success = false,
+            message = "The operation failed. Quote the correlation id when reporting this.",
+            correlationId,
+        });
     }
 }

@@ -213,7 +213,7 @@ export function SimulationPage() {
                 <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
                   {(
                     [
-                      "D365Queue",
+                      "D365FscDataEventQueue",
                       "CaptureToD365Queue",
                       "CaptureToD365ResponseQueue",
                       "D365ToCaptureQueue",

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch, apiUrl, authHeader, ApiError } from "@/lib/api";
 
 export interface SimulationConfig {
-  d365Queue: string;
+  d365FscDataEventQueue: string;
   captureToD365Queue: string;
   captureToD365ResponseQueue: string;
   d365ToCaptureQueue: string;

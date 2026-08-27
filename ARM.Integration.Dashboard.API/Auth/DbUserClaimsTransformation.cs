@@ -16,10 +16,6 @@ public class DbUserClaimsTransformation(UserRepository users) : IClaimsTransform
         if (principal.Identity is not ClaimsIdentity identity || !identity.IsAuthenticated)
             return principal;
 
-        // Service (API key) principals are already trusted and validated.
-        if (identity.HasClaim("IsService", "true"))
-            return principal;
-
         if (identity.HasClaim(c => c.Type == "DbUserValidated"))
             return principal;
 

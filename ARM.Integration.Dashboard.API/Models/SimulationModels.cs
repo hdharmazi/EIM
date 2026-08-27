@@ -13,7 +13,7 @@ public record SimulationEvent(string Level, string Text);
 
 public class SimulationConfigResponse
 {
-    public string D365Queue { get; set; } = "";
+    public string D365FscDataEventQueue { get; set; } = "";
     public string CaptureToD365Queue { get; set; } = "";
     public string CaptureToD365ResponseQueue { get; set; } = "";
     public string D365ToCaptureQueue { get; set; } = "";

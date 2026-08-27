@@ -2,5 +2,11 @@
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": ["/assets/*", "/api/*", "/*.{png,jpg,jpeg,gif,svg,ico,css,js,json,txt,woff,woff2}"]
+  },
+  "globalHeaders": {
+    "Strict-Transport-Security": "max-age=86400",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin"
   }
 }
