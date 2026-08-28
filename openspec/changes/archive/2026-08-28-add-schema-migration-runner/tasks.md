@@ -186,7 +186,7 @@
 
 - [x] 5.1 Add the migration step to the authoritative deployment path
 - [x] 5.2 Run migrations before application deployment
-- [ ] 5.3 Gate the production migration behind explicit approval
+- [x] 5.3 Gate the production migration behind explicit approval
 - [x] 5.4 Supply the existing SQL administrator connection string to the runner at execution time, sourced from a gitignored configuration file or pipeline variable rather than being hardcoded in the script
 - [x] 5.5 Confirm no application process attempts schema changes at startup
 

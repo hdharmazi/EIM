@@ -3,9 +3,7 @@
 ## Purpose
 
 Define the standalone React SPA shell: no-.NET static hosting, MSAL.js browser authentication, API-side bearer token validation and user resolution, the identity endpoint, and the application navigation shell.
-
 ## Requirements
-
 ### Requirement: Standalone SPA with no .NET frontend
 The system SHALL deliver the dashboard as a standalone React + Vite single-page application containing no .NET. The SPA SHALL be served as static assets (nginx container) with client-side routing fallback to `index.html`, and SHALL call `ARM.Integration.Dashboard.API` directly over HTTPS.
 
@@ -37,7 +35,7 @@ The SPA SHALL authenticate users with Entra ID using MSAL.js, acquiring an acces
 - **THEN** the SPA shows an access-denied view
 
 ### Requirement: API validates bearer tokens and resolves the user
-`ARM.Integration.Dashboard.API` SHALL validate Entra JWT bearer tokens, resolve the caller to a dashboard user (by email), and expose their roles and validation status. It SHALL retain `X-Api-Key` authentication for non-interactive service callers. Inactive or unknown users SHALL be denied.
+`ARM.Integration.Dashboard.API` SHALL validate Entra JWT bearer tokens, resolve the caller to a dashboard user (by email), and expose their roles and validation status. Bearer token validation SHALL be the only supported authentication mechanism; the API SHALL NOT accept an API key or any other credential that bypasses Entra. Inactive or unknown users SHALL be denied.
 
 #### Scenario: Valid token accepted
 - **WHEN** a request carries a valid Entra bearer token for an active dashboard user
@@ -47,9 +45,13 @@ The SPA SHALL authenticate users with Entra ID using MSAL.js, acquiring an acces
 - **WHEN** a request carries a valid token for a user who is inactive or not present in the users table
 - **THEN** the API responds 403
 
-#### Scenario: Service caller uses API key
-- **WHEN** a non-interactive caller sends a valid `X-Api-Key`
-- **THEN** the API authorizes the request for service-to-service access
+#### Scenario: API key is no longer accepted
+- **WHEN** a caller sends a request carrying an `X-Api-Key` header and no bearer token
+- **THEN** the API rejects the request as unauthenticated
+
+#### Scenario: Every caller resolves to a dashboard user
+- **WHEN** any request is authorized
+- **THEN** the caller has been resolved to an active row in the users table, with no authorization path that skips that resolution
 
 ### Requirement: Identity endpoint
 The API SHALL expose `GET /api/me` returning the current user's display name, roles, and `dbUserValidated` status derived from the validated token/user, for the SPA to adapt its UI.
@@ -68,3 +70,4 @@ The SPA SHALL provide a consistent shell with a sidebar and topbar, client-side 
 #### Scenario: Admin-only Users navigation
 - **WHEN** the signed-in user has the Admin role
 - **THEN** the Users navigation entry is shown; otherwise it is hidden and the API still enforces authorization on user endpoints
+

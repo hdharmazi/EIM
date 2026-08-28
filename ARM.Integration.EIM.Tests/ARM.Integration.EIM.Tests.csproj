@@ -20,4 +20,8 @@
     <ProjectReference Include="..\Wilson.Integration.Orchestrations\Wilson.Integration.Orchestrations.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="TestData\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

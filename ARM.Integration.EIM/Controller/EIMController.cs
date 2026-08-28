@@ -386,24 +386,34 @@ namespace ARM.Integration.EIM
         }
 
         /// <summary>
-        /// Updates the status and log of the message correlated by DESTINATIONID.
-        /// Used by asynchronous reconciliation (e.g., D365 business events) to finalize a
-        /// previously submitted message. Idempotent and not gated on the current status,
-        /// so late or duplicate events still reconcile correctly.
+        /// Applies a business-event reconciliation outcome to the row correlated by
+        /// <paramref name="destinationId"/>. The transition is guarded in SQL rather than by a
+        /// read-then-write, because this can run concurrently with the stuck-message sweep and with
+        /// a second event for the same transaction id.
         /// </summary>
-        /// <returns>The number of rows updated.</returns>
-        public int UpdateStatusByDestinationId(string destinationId, int status, string message)
+        /// <param name="responseKey">
+        /// Optional D365 business key (e.g. "SalesId=200007") appended to the message log so an
+        /// operator can find the record in D365 without decoding the correlation id.
+        /// </param>
+        /// <returns>Rows affected. Zero means the row was already terminal, and is not an error.</returns>
+        public int UpdateStatusByDestinationId(
+            string destinationId, int status, string message, string? responseKey = null)
         {
             if (string.IsNullOrWhiteSpace(destinationId))
                 throw new ArgumentException("DestinationId is required.", nameof(destinationId));
 
-            const string sql = @"UPDATE MESSAGEQUEUETABLE 
+            // Reconciliation is monotonic: Completed and Failed are terminal and a later or
+            // duplicate event must never rewrite them.
+            var sql = $@"UPDATE MESSAGEQUEUETABLE 
                 SET STATUS = @STATUS, MESSAGELOG = @MESSAGELOG, MODIFIEDDATETIME = @MODIFIEDDATETIME 
-                WHERE DESTINATIONID = @DESTINATIONID";
+                WHERE DESTINATIONID = @DESTINATIONID 
+                  AND STATUS NOT IN ({MessageStatus.Completed}, {MessageStatus.Failed})";
+
+            var log = string.IsNullOrWhiteSpace(responseKey) ? message : $"{message} {responseKey}";
 
             return new SQLServerHelper(_connectionString).ExecuteNonQuery(sql, CommandType.Text,
                 new SqlParameter("@STATUS", status),
-                new SqlParameter("@MESSAGELOG", message),
+                new SqlParameter("@MESSAGELOG", log),
                 new SqlParameter("@MODIFIEDDATETIME", DateTime.UtcNow),
                 new SqlParameter("@DESTINATIONID", destinationId));
         }

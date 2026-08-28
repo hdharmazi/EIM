@@ -381,3 +381,4 @@ Script/config/deploy.*.json
 *_azurite*
 __blobstorage__/
 __queuestorage__/
+.azurite/

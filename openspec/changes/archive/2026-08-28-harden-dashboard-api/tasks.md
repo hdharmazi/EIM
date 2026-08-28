@@ -64,7 +64,7 @@
 - [x] 6.1 Remove `"ApiKey"` from `ARM.Integration.Dashboard.API/appsettings.json`
 - [x] 6.2 Remove `ApiKey=${DASHBOARD_API_KEY}` from `docker-compose.yml`, if that file still exists
 - [x] 6.3 Remove the `ApiKey` app setting and the `api-key` secret reference from the deployment scripts, coordinating with `consolidate-deployment-scripts`
-- [ ] 6.4 Remove the `ApiKey` app setting from deployed environments
+- [x] 6.4 Remove the `ApiKey` app setting from deployed environments
 - [x] 6.5 Confirm no committed file still references `DASHBOARD_API_KEY` or an API key value
 
 > Removed from `AzureDeploy.AppService.ps1` (variable and app setting) and `AzureDeploy`
