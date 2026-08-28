@@ -142,4 +142,51 @@ public class FailureClassifierTests
         Assert.Equal(FailureDisposition.Retryable,
             configured.Classify(D365(HttpStatusCode.BadRequest, "sometransientcode")));
     }
+
+    [Fact]
+    public void A_destination_rejection_is_terminal_and_positively_matched()
+    {
+        var verdict = Classifier().ClassifyVerdict(D365(HttpStatusCode.BadRequest));
+
+        Assert.True(verdict.IsTerminal);
+        Assert.Equal(TerminalReason.Rejected, verdict.Reason);
+    }
+
+    [Fact]
+    public void A_server_error_carries_no_terminal_reason()
+    {
+        var verdict = Classifier().ClassifyVerdict(D365(HttpStatusCode.ServiceUnavailable));
+
+        Assert.False(verdict.IsTerminal);
+        Assert.Equal(TerminalReason.None, verdict.Reason);
+    }
+
+    [Fact]
+    public void A_deserialization_failure_is_positively_matched()
+    {
+        var verdict = Classifier().ClassifyVerdict(new JsonException("'E' is an invalid start of a value."));
+
+        Assert.True(verdict.IsTerminal);
+        Assert.Equal(TerminalReason.Rejected, verdict.Reason);
+    }
+
+    [Fact]
+    public void An_unrecognised_failure_is_terminal_but_unclassified()
+    {
+        var verdict = Classifier().ClassifyVerdict(new NullReferenceException("mapper bug"));
+
+        Assert.True(verdict.IsTerminal);
+        Assert.Equal(TerminalReason.Unclassified, verdict.Reason);
+    }
+
+    [Fact]
+    public void Wrapping_does_not_lose_a_positively_matched_rejection()
+    {
+        var wrapped = new InvalidOperationException("orchestration failed", D365(HttpStatusCode.BadRequest));
+
+        var verdict = Classifier().ClassifyVerdict(wrapped);
+
+        Assert.True(verdict.IsTerminal);
+        Assert.Equal(TerminalReason.Rejected, verdict.Reason);
+    }
 }

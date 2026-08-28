@@ -6,9 +6,9 @@ namespace ARM.Integration.EIM.Retry;
 public enum FailureDisposition
 {
     /// <summary>
-    /// The failure is not expected to resolve itself. The message takes the existing
-    /// <see cref="MessageStatus.Failed"/> / <see cref="MessageStatus.DeadLetter"/> path and an
-    /// operator has to act. This is the default for anything unrecognised.
+    /// The failure is not expected to resolve itself. The message is recorded at
+    /// <see cref="MessageStatus.Failed"/> and an operator has to act. This is the default for
+    /// anything unrecognised.
     /// </summary>
     Terminal = 0,
 

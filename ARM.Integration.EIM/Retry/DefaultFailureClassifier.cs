@@ -31,7 +31,9 @@ public sealed class DefaultFailureClassifier(
     private readonly RetryOptions _options = options
         ?? throw new ArgumentNullException(nameof(options));
 
-    public FailureDisposition Classify(Exception exception)
+    public FailureDisposition Classify(Exception exception) => ClassifyVerdict(exception).Disposition;
+
+    public FailureVerdict ClassifyVerdict(Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
 
@@ -45,7 +47,7 @@ public sealed class DefaultFailureClassifier(
                 // answer, and no transport detail underneath it changes that.
                 case FailureDisposition.Terminal when IsPositivelyTerminal(link):
                     Log(exception, link, FailureDisposition.Terminal);
-                    return FailureDisposition.Terminal;
+                    return FailureVerdict.Rejected;
 
                 case FailureDisposition.Retryable:
                     sawRetryable = true;
@@ -53,9 +55,9 @@ public sealed class DefaultFailureClassifier(
             }
         }
 
-        var disposition = sawRetryable ? FailureDisposition.Retryable : FailureDisposition.Terminal;
-        Log(exception, exception, disposition);
-        return disposition;
+        var verdict = sawRetryable ? FailureVerdict.Retryable : FailureVerdict.Unclassified;
+        Log(exception, exception, verdict.Disposition);
+        return verdict;
     }
 
     private FailureDisposition ClassifySingle(Exception exception) => exception switch
