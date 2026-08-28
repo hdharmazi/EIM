@@ -12,4 +12,10 @@ public interface IFailureClassifier
     /// whereas failing terminally is visible and recoverable.
     /// </summary>
     FailureDisposition Classify(Exception exception);
+
+    /// <summary>
+    /// Classifies <paramref name="exception"/> and, when the verdict is terminal, reports whether
+    /// it positively matched a known terminal condition or matched nothing at all.
+    /// </summary>
+    FailureVerdict ClassifyVerdict(Exception exception);
 }

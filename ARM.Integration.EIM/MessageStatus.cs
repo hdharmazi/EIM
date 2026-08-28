@@ -12,10 +12,17 @@ public static class MessageStatus
     public const int Processing = 1;
     public const int Completed = 2;
 
-    /// <summary>Business error. Terminal; requires an operator to act.</summary>
+    /// <summary>
+    /// The destination gave a definite negative answer, or the message could not be understood.
+    /// Terminal; reprocessing it unchanged cannot succeed, so the source data or configuration
+    /// has to change first.
+    /// </summary>
     public const int Failed = 3;
 
-    /// <summary>Terminal failure. Requires an operator to act.</summary>
+    /// <summary>
+    /// No definite answer was ever obtained and the system stopped trying. Terminal; unlike
+    /// <see cref="Failed"/>, reprocessing it unchanged is plausible once the destination recovers.
+    /// </summary>
     public const int DeadLetter = 4;
 
     /// <summary>Submitted to the destination, awaiting asynchronous confirmation.</summary>

@@ -19,16 +19,19 @@ namespace ARM.Integration.EIM
         private readonly string _connectionString;
         private readonly ILogger _logger;
         private readonly IReadOnlyDictionary<string, IOrchestration> _orchestrations;
-        private readonly IFailureClassifier? _failureClassifier;
+        private readonly IFailureClassifier _failureClassifier;
         private readonly RetryScheduleCalculator? _retrySchedule;
 
         /// <summary>
         /// Creates a new EIMController with DI-resolved orchestrations.
         /// </summary>
         /// <param name="failureClassifier">
-        /// Supplied together with <paramref name="retrySchedule"/> to enable automatic retry. Left
-        /// null by operator-initiated reprocess, which wants a definite answer rather than a
-        /// scheduled retry.
+        /// Defaults to <see cref="DefaultFailureClassifier"/> when omitted. Classification always
+        /// happens, because it selects the status a failure is recorded at.
+        /// </param>
+        /// <param name="retrySchedule">
+        /// Omitted by operator-initiated reprocess, which wants a definite answer rather than a
+        /// scheduled retry. Without it a retryable failure is recorded as Dead Letter.
         /// </param>
         public EIMController(
             string connectionString,
@@ -41,15 +44,15 @@ namespace ARM.Integration.EIM
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _orchestrations = orchestrations ?? throw new ArgumentNullException(nameof(orchestrations));
 
-            // Both or neither: a classifier with no schedule cannot say when to try again.
-            if ((failureClassifier is null) != (retrySchedule is null))
+            // A schedule cannot decide on its own which failures are worth another attempt.
+            if (retrySchedule is not null && failureClassifier is null)
             {
                 throw new ArgumentException(
-                    "Supply both a failure classifier and a retry schedule, or neither.",
+                    "A retry schedule requires a failure classifier.",
                     nameof(failureClassifier));
             }
 
-            _failureClassifier = failureClassifier;
+            _failureClassifier = failureClassifier ?? new DefaultFailureClassifier(new RetryOptions());
             _retrySchedule = retrySchedule;
         }
 
@@ -169,54 +172,55 @@ namespace ARM.Integration.EIM
                 responseMessage = result.Message;
                 UpdateMessageStatus(messageId, result.Message, result.Status, result.DestinationId);
             }
-            catch (ApplicationException exception)
-            {
-                responseMessage = $"ERROR:{ExceptionHelper.GetMessages(exception)}";
-                RecordFailure(messageId, responseMessage, exception, MessageStatus.Failed);
-            }
             catch (Exception exception)
             {
                 responseMessage = $"ERROR:{ExceptionHelper.GetMessages(exception)}";
-                RecordFailure(messageId, responseMessage, exception, MessageStatus.DeadLetter);
+                RecordFailure(messageId, responseMessage, exception);
             }
 
             return responseMessage;
         }
 
         /// <summary>
-        /// Records a failure, scheduling another attempt when the failure looks transient.
+        /// Records a failure at the status its classification calls for.
         /// </summary>
-        /// <param name="terminalStatus">
-        /// The status to use when the failure is not retryable, preserving the existing split
-        /// between a business error and everything else.
-        /// </param>
-        private void RecordFailure(string messageId, string responseMessage, Exception exception, int terminalStatus)
+        private void RecordFailure(string messageId, string responseMessage, Exception exception)
         {
-            if (_failureClassifier is null || _retrySchedule is null
-                || _failureClassifier.Classify(exception) == FailureDisposition.Terminal)
+            var verdict = _failureClassifier.ClassifyVerdict(exception);
+
+            int? attempt = null;
+            var attemptsRemain = false;
+
+            if (!verdict.IsTerminal && _retrySchedule is not null)
             {
-                UpdateMessageStatus(messageId, responseMessage, terminalStatus);
+                attempt = IncrementRetryCount(messageId);
+                attemptsRemain = _retrySchedule.AttemptsRemain(attempt.Value);
+            }
+
+            var outcome = FailureOutcomeSelector.Select(verdict, responseMessage, attempt, attemptsRemain);
+
+            if (outcome.Status == MessageStatus.RetryScheduled)
+            {
+                var nextAttemptUtc = _retrySchedule!.NextAttemptUtc(attempt!.Value, DateTime.UtcNow);
+                ScheduleRetry(messageId, outcome.Message, nextAttemptUtc);
+
+                _logger.LogWarning("Message {MessageId} failed retryably; attempt {Attempt} due at {NextAttempt:o}.",
+                    messageId, attempt, nextAttemptUtc);
                 return;
             }
 
-            var attempt = IncrementRetryCount(messageId);
+            UpdateMessageStatus(messageId, outcome.Message, outcome.Status);
 
-            if (!_retrySchedule.AttemptsRemain(attempt))
+            if (outcome.LogAsError)
             {
-                // Dead Letter, not Failed: attempts were exhausted rather than the data being wrong.
-                UpdateMessageStatus(messageId,
-                    $"{responseMessage} (retry attempts exhausted after {attempt})",
-                    MessageStatus.DeadLetter);
-
-                _logger.LogError("Message {MessageId} exhausted {Attempt} retry attempts.", messageId, attempt);
-                return;
+                _logger.LogError("Message {MessageId} recorded at status {Status}: {Message}",
+                    messageId, outcome.Status, outcome.Message);
             }
-
-            var nextAttemptUtc = _retrySchedule.NextAttemptUtc(attempt, DateTime.UtcNow);
-            ScheduleRetry(messageId, $"{responseMessage} (attempt {attempt}, retrying)", nextAttemptUtc);
-
-            _logger.LogWarning("Message {MessageId} failed retryably; attempt {Attempt} due at {NextAttempt:o}.",
-                messageId, attempt, nextAttemptUtc);
+            else
+            {
+                _logger.LogWarning("Message {MessageId} recorded at status {Status}.",
+                    messageId, outcome.Status);
+            }
         }
 
         /// <summary>Increments the attempt counter and returns its new value.</summary>
