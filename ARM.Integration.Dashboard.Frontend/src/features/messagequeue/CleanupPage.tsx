@@ -45,10 +45,13 @@ export function CleanupPage() {
         status: status === ALL ? undefined : Number(status),
         olderThanDays: olderThanDays.trim() ? Number(olderThanDays) : undefined,
       });
+      const noMatches = result.success && result.deleted === 0;
       toast({
-        variant: result.success ? "success" : "destructive",
-        title: result.success ? "Cleanup complete" : "Cleanup failed",
-        description: result.message,
+        variant: !result.success ? "destructive" : noMatches ? "warning" : "success",
+        title: !result.success ? "Cleanup failed" : noMatches ? "No records matched" : "Cleanup complete",
+        description: noMatches
+          ? "No records matched the selected filter(s). Nothing was deleted."
+          : result.message,
       });
       counts.refetch();
     } catch (err) {
@@ -113,7 +116,8 @@ export function CleanupPage() {
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
               This permanently deletes matching records and their log details. This cannot be undone.
-              At least one filter is required.
+              At least one filter is required. If both a status and an age are set, records matching
+              either one are deleted (not only records matching both).
             </span>
           </div>
 
@@ -129,6 +133,12 @@ export function CleanupPage() {
             <DialogTitle>Confirm Cleanup</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete matching records? This action cannot be undone.
+              {status !== ALL && olderThanDays.trim() !== "" && (
+                <>
+                  {" "}This deletes records with the selected status, or older than{" "}
+                  {olderThanDays} day(s) — not only records that match both.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

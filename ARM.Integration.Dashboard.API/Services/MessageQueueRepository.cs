@@ -212,7 +212,9 @@ public class MessageQueueRepository(IConfiguration config, ILoggerFactory logger
         if (conditions.Count == 0)
             throw new InvalidOperationException("At least one filter (status or olderThanDays) is required.");
 
-        var where = string.Join(" AND ", conditions);
+        // OR, not AND: with both filters set this is a broad purge (this status, or anything
+        // older than the cutoff), not a narrow intersection that usually matches nothing.
+        var where = string.Join(" OR ", conditions);
 
         // Delete log details first (child records)
         var deleteLogsSql = $"DELETE FROM MESSAGELOGDETAIL WHERE MESSAGEID IN (SELECT ID FROM MESSAGEQUEUETABLE WHERE {where})";
