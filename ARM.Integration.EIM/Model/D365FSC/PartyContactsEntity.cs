@@ -9,6 +9,14 @@ namespace ARM.Integration.EIM
         [D365ExcludeOnUpdate("OData key — supplied in the request URL.")]
         public string PartyNumber { get; set; }
 
+        [JsonPropertyName("WTC_ContactPartyNumber")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string WTC_ContactPartyNumber { get; set; }
+
+        [JsonPropertyName("WTC_CustomerPartyNumber")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string WTC_CustomerPartyNumber { get; set; }
+
         [JsonPropertyName("ElectronicAddressId")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         [D365ExcludeOnUpdate("OData key — supplied in the request URL.")]
