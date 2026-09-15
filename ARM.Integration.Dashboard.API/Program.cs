@@ -18,6 +18,9 @@ builder.Services.AddScoped<SimulationService>();
 builder.Services.AddScoped<SalesOrderExcelParser>();
 builder.Services.AddScoped<RouteRepository>();
 builder.Services.AddScoped<StatusRepository>();
+builder.Services.AddScoped<GatewayConsumerRepository>();
+builder.Services.AddScoped<GatewayPermissionRepository>();
+builder.Services.AddScoped<D365EntityCatalog>();
 
 // Singleton so pause and resume can invalidate the cache the API itself reads through.
 builder.Services.AddSingleton<IRouteRepository>(_ => new SqlRouteRepository(

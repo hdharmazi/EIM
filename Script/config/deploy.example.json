@@ -17,7 +17,29 @@
   "names": {
     "functionApp": null,
     "storageAccount": null,
+    "gatewayApp": null,
+    "gatewayStorage": null,
     "queuePrefix": null
+  },
+
+  "//gateway": "The D365 F&SC pass-through gateway. Required only when deploying the 'gateway' component.",
+  "gateway": {
+    "//baseUrl": "This gateway's own public URL. Used to rewrite @odata.nextLink and Location so callers can follow them. Read from configuration rather than request headers, which are caller-controlled.",
+    "baseUrl": "https://azf-d365fsc-gateway-wtc-dev.azurewebsites.net",
+
+    "//alwaysReadyInstances": "Removes cold start for a synchronous caller. Set 0 to scale fully to zero and accept it.",
+    "alwaysReadyInstances": 1,
+
+    "//maximumInstanceCount": "The only rate limiter in this design. The gateway and the capture pipeline share one D365 tenant, so an unbounded burst here throttles both. Start low; raising it is trivial.",
+    "maximumInstanceCount": 10,
+
+    "instanceMemoryMB": 2048,
+    "maxRequestBytes": 4194304,
+    "idempotencyRetention": "24:00:00",
+    "idempotencyPurgeSchedule": "0 15 * * * *",
+
+    "//appInsightsName": "Optional. Omit or null to derive as appins-d365fsc-gateway-wtc-<env>. Flex Consumption does not auto-provision Application Insights, and without it authorization denials leave no diagnosable record.",
+    "appInsightsName": null
   },
 
   "//secrets": "Never commit these. This file is the reason deploy.*.json is gitignored.",

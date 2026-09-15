@@ -13,6 +13,9 @@ import { UserListPage } from "@/features/users/UserListPage";
 import { UserFormPage } from "@/features/users/UserFormPage";
 import { SimulationPage } from "@/features/simulation/SimulationPage";
 import { RouteControlPage } from "@/features/routes/RouteControlPage";
+import { GatewayConsumerListPage } from "@/features/gateway/GatewayConsumerListPage";
+import { GatewayConsumerFormPage } from "@/features/gateway/GatewayConsumerFormPage";
+import { GatewayPermissionsPage } from "@/features/gateway/GatewayPermissionsPage";
 
 export const router = createBrowserRouter([
   {
@@ -30,6 +33,38 @@ export const router = createBrowserRouter([
         element: (
           <RequireAdmin>
             <RouteControlPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: "gateway/consumers",
+        element: (
+          <RequireAdmin>
+            <GatewayConsumerListPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: "gateway/consumers/new",
+        element: (
+          <RequireAdmin>
+            <GatewayConsumerFormPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: "gateway/consumers/:consumerId/edit",
+        element: (
+          <RequireAdmin>
+            <GatewayConsumerFormPage />
+          </RequireAdmin>
+        ),
+      },
+      {
+        path: "gateway/consumers/:consumerId/permissions",
+        element: (
+          <RequireAdmin>
+            <GatewayPermissionsPage />
           </RequireAdmin>
         ),
       },

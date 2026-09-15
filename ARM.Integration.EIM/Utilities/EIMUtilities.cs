@@ -8,28 +8,14 @@ namespace ARM.Integration.EIM.Utilities
 {
     public class EIMUtilities
     {
-        public static string GetEnvironment(string system = "", string environment = "", string connectionString = null)
-        {
-            var conn = connectionString ?? Environment.GetEnvironmentVariable("EIMDB");
-
-            string sql = "SELECT * FROM ENVIRONMENTTABLE WHERE SYSTEM = @SYSTEM AND ENVIRONMENT = @ENVIRONMENT";
-
-            string value = "";
-
-            new SQLServerHelper(conn).ExecuteReader(sql, reader =>
-            {
-                value = reader["VALUE"].ToString();
-            }, CommandType.Text,
-                new SqlParameter("@SYSTEM", system),
-                new SqlParameter("@ENVIRONMENT", environment));
-
-            if (string.IsNullOrEmpty(value))
-            {
-                throw new ApplicationException($"No ENVIRONMENTTABLE record could be found for environment '{environment}' and SYSTEM '{system}'.");
-            }
-
-            return value;
-        }
+        /// <summary>
+        /// Retained for existing callers. The implementation now lives in
+        /// <see cref="EnvironmentStore"/> so that projects outside this assembly — notably the
+        /// pass-through gateway, which needs an asynchronous overload — can read the same table
+        /// without taking a dependency on the orchestration stack.
+        /// </summary>
+        public static string GetEnvironment(string system = "", string environment = "", string? connectionString = null)
+            => EnvironmentStore.GetValue(system, environment, connectionString);
 
         public static string GetEnvironments(string system = "", string environment = "")
         {

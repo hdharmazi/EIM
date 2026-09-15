@@ -36,7 +36,7 @@ param(
     [string]$Environment,
 
     [Parameter(Mandatory = $true)]
-    [ValidateSet('queues', 'schema', 'api', 'function', 'frontend', 'all')]
+    [ValidateSet('queues', 'schema', 'api', 'function', 'gateway', 'frontend', 'all')]
     [string[]]$Component,
 
     [string]$ConfigPath
@@ -48,7 +48,7 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 # Queues before schema before code: a Function App that starts against a missing queue or an
 # un-migrated database fails on its first trigger rather than at deploy time, which is far harder
 # to diagnose. Dashboard last because it only reads what the rest produces.
-$ComponentOrder = @('queues', 'schema', 'api', 'function', 'frontend')
+$ComponentOrder = @('queues', 'schema', 'api', 'function', 'gateway', 'frontend')
 
 # --------------------------------------------------------------------------------------------
 # Configuration
@@ -126,6 +126,10 @@ function Get-ResourceNames {
         ServiceBus      = $Config.serviceBusNamespace
         FunctionApp     = Resolve-Name $names.functionApp    "azf-eim-customer-wtc-$env"
         StorageAccount  = Resolve-Name $names.storageAccount "stwtceimcustomer$env"
+        # The gateway is internet-facing and scales on request volume, so it gets its own app,
+        # plan and storage rather than sharing the capture pipeline's.
+        GatewayApp      = Resolve-Name $names.gatewayApp     "azf-d365fsc-gateway-wtc-$env"
+        GatewayStorage  = Resolve-Name $names.gatewayStorage "stwtcd365gw$env"
         QueuePrefix     = Resolve-Name $names.queuePrefix    $env
         ApiAppName      = $Config.dashboard.apiAppName
         FrontendAppName = $Config.dashboard.frontendAppName
@@ -310,6 +314,126 @@ function Invoke-FunctionComponent {
     Write-Host "  function host: https://$hostName"
 }
 
+function Invoke-GatewayComponent {
+    param($Config, $Names, [switch]$Preview)
+
+    if ($Preview) {
+        Write-Host "  would ensure storage  $($Names.GatewayStorage)"
+        Write-Host "  would ensure flex app $($Names.GatewayApp)"
+        Write-Host "  would ensure insights appins-d365fsc-gateway-wtc-$($Names.Environment)"
+        Write-Host "  would apply settings, publish, zip and deploy ARM.Integration.D365FSC.Gateway"
+        return
+    }
+
+    $gw = $Config.gateway
+    if (-not $gw) {
+        throw "Configuration section 'gateway' is missing. The gateway component needs baseUrl and scale settings."
+    }
+
+    $rg = $Names.ResourceGroup
+
+    if (-not (az storage account show --name $Names.GatewayStorage --resource-group $rg --query "name" -o tsv 2>$null)) {
+        az storage account create --name $Names.GatewayStorage --resource-group $rg `
+            --location $Names.Location --sku Standard_LRS | Out-Null
+    }
+
+    # Flex Consumption, not the plan-based path used by the capture Function App. The create verb
+    # takes a different shape: no --plan, and instance size and count are app properties rather
+    # than plan properties. Always-ready instances matter here because a synchronous caller feels a
+    # cold start, and the maximum instance count is the only rate limiter this design has - without
+    # it a third party's traffic burst can throttle the shared D365 tenant and take the capture
+    # pipeline down with it.
+    if (-not (az functionapp show --name $Names.GatewayApp --resource-group $rg --query "name" -o tsv 2>$null)) {
+        az functionapp create --resource-group $rg --name $Names.GatewayApp `
+            --storage-account $Names.GatewayStorage --flexconsumption-location $Names.Location `
+            --runtime dotnet-isolated --runtime-version 10 `
+            --instance-memory $gw.instanceMemoryMB `
+            --always-ready-instances "http=$($gw.alwaysReadyInstances)" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Flex Consumption create failed. Confirm the region supports it." }
+    }
+
+    # Scale bounds are re-applied on every deploy so a configuration change takes effect on an
+    # existing app, where the create arguments above no longer run. Note --max-replicas belongs to
+    # Container Apps, not Flex Consumption; the maximum instance count is set here instead.
+    az functionapp scale config set --name $Names.GatewayApp --resource-group $rg `
+        --maximum-instance-count $gw.maximumInstanceCount | Out-Null
+
+    az functionapp scale config always-ready set --name $Names.GatewayApp --resource-group $rg `
+        --settings "http=$($gw.alwaysReadyInstances)" | Out-Null
+
+    # Flex Consumption does not auto-provision Application Insights, and the gateway is unusable
+    # without it: authorization denials are the only intrusion signal this design has, and a 403
+    # with no telemetry record cannot be told apart from a mis-typed grant.
+    $insightsName = if ([string]::IsNullOrWhiteSpace($gw.appInsightsName)) {
+        "appins-d365fsc-gateway-wtc-$($Names.Environment)"
+    } else { $gw.appInsightsName }
+    # Created through the generic resource API rather than `az monitor app-insights`, which lives in
+    # an optional CLI extension and prompts to install itself - an interactive prompt that hangs an
+    # unattended deploy.
+    if (-not (az resource show --resource-group $rg --name $insightsName `
+                --resource-type Microsoft.Insights/components --query "name" -o tsv 2>$null)) {
+        az resource create --resource-group $rg --name $insightsName `
+            --resource-type Microsoft.Insights/components --location $Names.Location `
+            --properties '{\"Application_Type\":\"web\"}' | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Could not create Application Insights component '$insightsName'." }
+    }
+
+    $insightsConnection = az resource show --resource-group $rg --name $insightsName `
+        --resource-type Microsoft.Insights/components --query properties.ConnectionString -o tsv
+    if ([string]::IsNullOrWhiteSpace($insightsConnection)) { throw "Could not read the Application Insights connection string." }
+
+    # No FUNCTIONS_WORKER_RUNTIME here. Flex Consumption carries the runtime as an app property set
+    # at create time and rejects it as an app setting, failing the whole batch if present.
+    $settings = @(
+        @{ name = 'EIMDB';                               value = $Config.secrets.eimdbConnectionString }
+        @{ name = 'APPLICATIONINSIGHTS_CONNECTION_STRING'; value = $insightsConnection }
+        @{ name = 'Gateway__BaseUrl';                    value = $gw.baseUrl }
+        @{ name = 'Gateway__MaxRequestBytes';            value = $gw.maxRequestBytes }
+        @{ name = 'Gateway__IdempotencyRetention';       value = $gw.idempotencyRetention }
+        @{ name = 'Gateway__IdempotencyPurgeSchedule';   value = $gw.idempotencyPurgeSchedule }
+    )
+
+    foreach ($setting in $settings) {
+        if ([string]::IsNullOrWhiteSpace($setting.value)) {
+            throw "Gateway app setting '$($setting.name)' resolved to empty. Deploying without it would produce an app that answers requests but cannot serve followable paging links."
+        }
+    }
+
+    $settingsFile = Join-Path $RepoRoot "artifacts/gateway-appsettings-$($Names.Environment).json"
+    New-Item -ItemType Directory -Force -Path (Split-Path $settingsFile) | Out-Null
+    try {
+        $settings | ConvertTo-Json -AsArray | Set-Content -Path $settingsFile -Encoding utf8
+        az functionapp config appsettings set --name $Names.GatewayApp --resource-group $rg `
+            --settings "@$settingsFile" | Out-Null
+        # Without this the batch can fail and the deploy still reports success, leaving an app that
+        # starts and then cannot read its own configuration.
+        if ($LASTEXITCODE -ne 0) { throw "Applying gateway app settings failed." }
+    }
+    finally {
+        Remove-Item $settingsFile -ErrorAction SilentlyContinue
+    }
+
+    $publishDir = Join-Path $RepoRoot "artifacts/gateway-publish-$($Names.Environment)"
+    $zipPath    = Join-Path $RepoRoot "artifacts/gateway-$($Names.Environment).zip"
+
+    dotnet publish (Join-Path $RepoRoot 'ARM.Integration.D365FSC.Gateway/ARM.Integration.D365FSC.Gateway.csproj') `
+        --configuration Release --output $publishDir
+    if ($LASTEXITCODE -ne 0) { throw "Publish failed." }
+
+    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+    Compress-Archive -Path "$publishDir/*" -DestinationPath $zipPath -Force
+
+    az functionapp deployment source config-zip --resource-group $rg --name $Names.GatewayApp --src $zipPath | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Zip deploy failed." }
+
+    # az functionapp show returns empty projections for Flex Consumption sites, so the site
+    # properties are read through the generic resource API instead.
+    $site = az resource show --resource-group $rg --name $Names.GatewayApp `
+        --resource-type Microsoft.Web/sites -o json | ConvertFrom-Json
+    Write-Host "  gateway host: https://$($site.properties.defaultHostName)  [$($site.properties.sku), $($site.properties.state)]"
+    Write-Host "  NOTE: issue a function-level key per consumer. Never hand out the master key."
+}
+
 function Invoke-ApiComponent {
     param($Config, $Names, [switch]$Preview)
 
@@ -468,6 +592,7 @@ $handlers = @{
     schema   = ${function:Invoke-SchemaComponent}
     api      = ${function:Invoke-ApiComponent}
     function = ${function:Invoke-FunctionComponent}
+    gateway  = ${function:Invoke-GatewayComponent}
     frontend = ${function:Invoke-FrontendComponent}
 }
 
