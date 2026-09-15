@@ -9,6 +9,7 @@ import {
   SlidersHorizontal,
   Users,
   PauseCircle,
+  KeyRound,
   Menu,
   LogOut,
   Zap,
@@ -50,6 +51,7 @@ const SECTIONS: NavSection[] = [
     title: "System Administration",
     items: [
       { to: "/routes", label: "Route Control", icon: PauseCircle, adminOnly: true },
+      { to: "/gateway/consumers", label: "Gateway Consumers", icon: KeyRound, adminOnly: true },
       { to: "/users", label: "Users", icon: Users, adminOnly: true },
       { to: "/environments", label: "Environments", icon: Settings2, adminOnly: true },
       { to: "/configuration", label: "Configuration", icon: SlidersHorizontal, adminOnly: true },
