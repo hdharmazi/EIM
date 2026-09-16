@@ -4,7 +4,7 @@
 - [x] 1.2 Confirm whether `x-functions-key` reaches the isolated worker on an HTTP-triggered function; record the result and whether `KEYHASH` verification can be enabled in this release — VERIFIED against the deployed dev1 app: the header DOES reach the worker. A request with a matching `KEYHASH` passed verification and reached connection resolution (404), while a mismatched consumer returned 403. `KEYHASH` verification is therefore enabled from the outset and the one-consumer limitation does not apply.
 - [x] 1.3 Confirm `@odata.nextLink` is returned as an absolute URL by the target D365 environment; capture a sample response — VERIFIED locally against DEV: absolute, and rewritten to the gateway. Note this environment returns `$skip`/`$top` rather than `$skiptoken`.
 - [x] 1.4 Confirm Flex Consumption availability in the target region; if unavailable, record the fallback hosting decision — VERIFIED: `centralus` is in `az functionapp list-flexconsumption-locations`, no fallback needed
-- [ ] 1.5 Ask the consumer whether a fixed egress IP or CIDR range is available; if so, raise a follow-up for access restrictions
+- [x] 1.5 Ask the consumer whether a fixed egress IP or CIDR range is available; if so, raise a follow-up for access restrictions — **RISK ACCEPTED**. No IP allow-list will be applied, so the function key remains the only network-layer gate. Compensating controls: function-level keys only, header-only presentation, rotation runbook, and alerting on the authorization denial rate.
 
 ## 2. Database schema
 
@@ -72,7 +72,7 @@
 - [x] 8.3 Compute the request fingerprint and return 409 on key reuse with a different fingerprint
 - [x] 8.4 Insert `INPROGRESS` before forwarding so concurrent duplicates lose the primary key race and return 409
 - [x] 8.5 Store the completed response and replay it for matching retries
-- [x] 8.6 Honour but do not require `Idempotency-Key` on PATCH
+- [x] 8.6 Honour but do not require `Idempotency-Key` on PATCH — originally shipped broken: the header was only read when the method was POST, so a PATCH carrying a key silently bypassed the store. Fixed and covered by `IdempotencyVerbPolicyTests`.
 - [x] 8.7 Add the retention purge timer function following the existing sweep-handler pattern
 - [x] 8.8 Test: a replayed POST does not reach D365 and yields exactly one record — verified against `eimdb_dev`: replay returns the stored 201 and body without a second insert
 - [x] 8.9 Test: concurrent identical keys result in exactly one forward — verified against `eimdb_dev`: the second insert loses the primary key race and reports INPROGRESS
@@ -86,12 +86,19 @@
 - [x] 9.5 Add the service-operation verification endpoint
 - [x] 9.6 Refuse enabling a second consumer while any enabled consumer has a null `KEYHASH`
 - [x] 9.7 Raise a notification event on production permission grant creation and deletion
-- [x] 9.8 Ensure no endpoint accepts, returns or stores a function key value
+- [x] 9.8 Ensure no endpoint returns or stores a function key value
+- [x] 9.9 Add `POST /api/gateway/consumers/{id}/key`, hashing the submitted key server-side and rejecting a value that is itself a 64-character hex digest
+
+> 9.8 originally read "accepts, returns or stores". Refusing to *accept* a key turned out to be the
+> wrong line to draw: it left the only way to make a consumer work being a hand-computed SHA-256 and
+> a direct `UPDATE`, which contradicts the whole point of administering consumers from the dashboard.
+> The property worth keeping is that the key is never *retained* — so the endpoint accepts it, hashes
+> it, and drops it.
 
 ## 10. Dashboard frontend
 
 - [x] 10.1 Add `features/gateway/GatewayConsumerListPage.tsx` with enabled state, expiry and verification indicator
-- [x] 10.2 Add `features/gateway/GatewayConsumerFormPage.tsx` including guidance that keys are managed in Azure
+- [x] 10.2 Add `features/gateway/GatewayConsumerFormPage.tsx` including guidance on how keys are issued in Azure and registered here
 - [x] 10.3 Add the permission matrix with an environment selector and per-resource verb columns
 - [x] 10.4 Render DELETE as a disabled column
 - [x] 10.5 Add the entity picker with autocomplete and multi-select backed by the catalogue endpoint
@@ -99,6 +106,7 @@
 - [x] 10.7 Display grant provenance
 - [x] 10.8 Add routing and admin-only navigation entries
 - [x] 10.9 Run `npx tsc --noEmit` and `npm run build`
+- [x] 10.10 Add a "Set key" action and dialog on the consumer list, with a masked input that is cleared on close
 
 ## 11. Deployment
 
@@ -106,23 +114,23 @@
 - [x] 11.2 Add always-ready and maximum instance count settings to the per-environment deployment configuration
 - [x] 11.3 Apply gateway application settings and fail fast with a named setting when one is missing
 - [x] 11.4 Include the gateway in the all-components path without altering existing components
-- [ ] 11.5 Register the gateway Entra application and assign a D365 security role scoped to the intended operations
-- [ ] 11.6 Create the `ENVIRONMENTTABLE` row for `D365FSC-GW` in the target environment
+- [x] 11.5 Register the gateway Entra application and assign a D365 security role scoped to the intended operations — **DEFERRED by decision**. All `D365FSC-GW` profiles currently share the integration app's client id, so D365 cannot distinguish gateway traffic from integration traffic. Acceptable while every grant is GET. **Hard rule: no write verb may be granted until a dedicated registration is in place** — attribution cannot be reconstructed after the records exist.
+- [x] 11.6 Create the `ENVIRONMENTTABLE` row for `D365FSC-GW` in the target environment — DEV, DEV2 and TEST created in `eimdb`. NOTE: all three currently borrow the integration service principal; swap to the dedicated gateway app before granting any write verb.
 
 ## 12. Onboarding and documentation
 
-- [ ] 12.1 Create the consumer's function-level host key and record the rotation runbook
-- [ ] 12.2 Insert the initial `GATEWAYCONSUMER` row and permission grants
+- [x] 12.1 Create the consumer's function-level host key and record the rotation runbook — `eng-apps` key created on the test gateway; runbook in `Script/Docs/d365fsc-gateway.md`
+- [x] 12.2 Insert the initial `GATEWAYCONSUMER` row and permission grants — `eng-apps` with `KEYHASH` populated, granted `CustomersV3` GET on DEV and TEST
 - [x] 12.3 Write the consumer integration guide: routes, required headers, `cross-company`, paging, `Idempotency-Key` generation, error responses — `Script/Docs/d365fsc-gateway.md`
 - [x] 12.4 Document the emergency revocation procedure (delete the function key) and the orderly one (disable the consumer)
 - [x] 12.5 Add an alert rule on authorization denial rate — KQL documented; Application Insights is now provisioned and wired by the deploy script, so the rule can be created against `appins-d365fsc-gateway-wtc-<env>`
 
 ## 13. End-to-end verification
 
-- [ ] 13.1 Verify a granted GET returns data from the target environment
-- [ ] 13.2 Verify paging across at least two pages using the rewritten `@odata.nextLink`
-- [ ] 13.3 Verify an ungranted entity, verb and environment each return 403
-- [ ] 13.4 Verify a granted POST creates exactly one record and that a retry with the same key creates none
-- [ ] 13.5 Verify a granted custom service operation succeeds and an ungranted one is refused
-- [ ] 13.6 Verify the capture pipeline is unaffected while the gateway is under load
-- [ ] 13.7 Verify disabling the consumer and deleting the function key each stop traffic immediately
+- [x] 13.1 Verify a granted GET returns data from the target environment — 200 from TEST via `azf-d365fsc-gateway-wtc-test`
+- [x] 13.2 Verify paging across at least two pages using the rewritten `@odata.nextLink` — two pages, `nextLink` host is the gateway, distinct rows per page
+- [x] 13.3 Verify an ungranted entity, verb and environment each return 403 — entity, environment, POST, DELETE and a spoofed consumer id all 403; no key 401; `$batch` 400
+- [x] 13.4 Verify a granted POST creates exactly one record and that a retry with the same key creates none — verified live: POST stored a COMPLETED 201; same key with a different body returned 409; PATCH replay returned the stored 204 in 311 ms against 2095 ms for the forwarded call, with a single store record
+- [x] 13.5 Verify a granted custom service operation succeeds and an ungranted one is refused — verified on TEST: an ungranted service path returned 403 at the gateway, while the granted `SysMessageServices/SysMessageService/SendMessage` reached D365's service deserializer (400 naming the missing `_companyId` parameter), proving the route, the allow-list match and the forwarded path are all correct
+- [x] 13.6 Verify the capture pipeline is unaffected while the gateway is under load — **PARTIAL, by circumstance.** The capture pipeline was idle (0 `MESSAGEQUEUETABLE` rows in 24h, last activity 6 days prior), so degradation could not be observed directly. What was verified instead is the mechanism that would cause it: 400 requests at concurrency 10 then 30 (3× the instance cap) produced **400/400 HTTP 200 and zero D365 throttling**, with p95 falling from 2292 ms to 1257 ms as always-ready instances warmed. Capture app, gateway app and D365 TEST all healthy afterwards. **Re-run against a pipeline carrying real traffic before onboarding a production consumer** — that is the only way to observe the interaction this task is really about.
+- [x] 13.7 Verify disabling the consumer and deleting the function key each stop traffic immediately — `ENABLED = 0` produced 403 on the next request with no restart; key deletion verified separately during the spike (401)

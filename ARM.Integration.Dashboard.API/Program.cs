@@ -22,6 +22,20 @@ builder.Services.AddScoped<GatewayConsumerRepository>();
 builder.Services.AddScoped<GatewayPermissionRepository>();
 builder.Services.AddScoped<D365EntityCatalog>();
 
+// Named client so the handler is pooled rather than rebuilt per request, and so the probe cannot
+// inherit a redirect that would send a function key to somewhere other than the gateway.
+builder.Services.AddHttpClient(nameof(GatewayKeyVerifier))
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+    });
+
+builder.Services.AddScoped(sp => new GatewayKeyVerifier(
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(GatewayKeyVerifier)),
+    builder.Configuration.GetSection("Gateway").Get<GatewayKeyVerifierOptions>() ?? new(),
+    sp.GetService<ILogger<GatewayKeyVerifier>>()));
+
 // Singleton so pause and resume can invalidate the cache the API itself reads through.
 builder.Services.AddSingleton<IRouteRepository>(_ => new SqlRouteRepository(
     builder.Configuration.GetConnectionString("EIMDB")

@@ -85,6 +85,12 @@ limiting, request payload auditing.
   the shared helper, which is on the hot path of the live capture pipeline.
 
 **Accepted risks**
+- The gateway currently **borrows the integration service principal**: every `D365FSC-GW` profile holds
+  the same client id as its `D365FSC` counterpart, so the separate-attribution benefit described above
+  is not yet realised. Harmless while all grants are GET, since reads create nothing. It stops being
+  harmless the moment a write verb is granted, because D365 records the creating principal and that
+  cannot be corrected retrospectively. No write grant may be issued until a dedicated registration
+  exists.
 - D365 client secrets remain in plaintext in `ENVIRONMENTTABLE.VALUE`, and `environment-management`
   deliberately allows any validated dashboard user to reveal them. This change adds a second,
   internet-reachable credential to that table without changing that policy. Key Vault references are

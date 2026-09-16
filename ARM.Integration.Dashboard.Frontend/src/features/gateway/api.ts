@@ -16,6 +16,12 @@ export interface GatewayConsumer {
   description?: string | null;
   /** True when a key hash is recorded. The hash itself is never sent to the client. */
   identityVerified: boolean;
+  /** The gateway app that accepted the key. Null means unknown, never "no app". */
+  verifiedApp?: string | null;
+  /** When the key was verified. A point in time, not a continuing guarantee. */
+  verifiedOn?: string | null;
+  /** The gateway base address this consumer calls. Null falls back to the dashboard's own gateway. */
+  gatewayUrl?: string | null;
   createdBy?: string | null;
   createdOn?: string | null;
   modifiedBy?: string | null;
@@ -28,6 +34,8 @@ export interface GatewayConsumerInput {
   enabled: boolean;
   expiresOn?: string | null;
   description?: string | null;
+  /** Blank uses the dashboard's configured gateway. Rejected by the server if the host is not allowed. */
+  gatewayUrl?: string | null;
 }
 
 export interface GatewayPermission {
@@ -88,6 +96,52 @@ export function useDeleteGatewayConsumer() {
   return useMutation({
     mutationFn: (consumerId: string) =>
       apiFetch<void>(`/api/gateway/consumers/${encodeURIComponent(consumerId)}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["gateway-consumers"] }),
+  });
+}
+
+export interface GatewayTarget {
+  name: string;
+  baseUrl: string;
+}
+
+/** The gateways a key can be verified against. Server-configured; the client only chooses. */
+export function useGatewayTargets() {
+  return useQuery({
+    queryKey: ["gateway-targets"],
+    queryFn: () => apiFetch<GatewayTarget[]>("/api/gateway/gateways"),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export interface GatewayKeyResult {
+  /** False when the key was stored without being checked, e.g. against a local gateway. */
+  verified: boolean;
+  detail: string;
+  gatewayApp?: string | null;
+}
+
+/**
+ * Registers a function key. The value is hashed server-side and never stored, returned or logged.
+ * The server probes the chosen gateway first and refuses a key it will not accept, so this can fail
+ * with a rejection (bad key) or a 503 (gateway unreachable) — which are not the same thing.
+ */
+export function useSetGatewayConsumerKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      consumerId,
+      key,
+      gatewayApp,
+    }: {
+      consumerId: string;
+      key: string;
+      gatewayApp?: string;
+    }) =>
+      apiFetch<GatewayKeyResult>(`/api/gateway/consumers/${encodeURIComponent(consumerId)}/key`, {
+        method: "POST",
+        body: { key, gatewayApp },
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["gateway-consumers"] }),
   });
 }
