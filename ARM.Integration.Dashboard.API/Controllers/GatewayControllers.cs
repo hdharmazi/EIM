@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using ARM.Integration.Dashboard.API.Models;
 using ARM.Integration.Dashboard.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -11,10 +13,23 @@ namespace ARM.Integration.Dashboard.API.Controllers;
 [Authorize(Roles = "Admin")]
 public class GatewayConsumerController(
     GatewayConsumerRepository repo,
+    GatewayKeyVerifier verifier,
     ILogger<GatewayConsumerController> logger) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await repo.GetAllAsync());
+
+    /// <summary>
+    /// The gateways a key may be verified against, so the dashboard can show where a key will be
+    /// checked and offer a choice when more than one exists. Addresses only; no key material.
+    /// </summary>
+    /// <remarks>
+    /// Absolute route rather than "gateways" relative to this controller, which would sit under the
+    /// same path as <c>{consumerId}</c> and make a consumer named "gateways" unreachable.
+    /// </remarks>
+    [HttpGet("/api/gateway/gateways")]
+    public IActionResult GetGateways() =>
+        Ok(verifier.Targets.Select(t => new { name = t.Name, baseUrl = t.BaseUrl }));
 
     [HttpGet("{consumerId}")]
     public async Task<IActionResult> Get(string consumerId)
@@ -36,24 +51,49 @@ public class GatewayConsumerController(
             return Conflict("A consumer with this id already exists.");
         }
 
+        var (checkedInput, addressError) = WithCheckedAddress(input);
+        if (addressError is not null) return BadRequest(addressError);
+
         if (input.Enabled && await BlockedByUnverifiedIdentity(input.ConsumerId))
         {
             return Conflict(UnverifiedIdentityMessage);
         }
 
-        await repo.CreateAsync(input, CallerIdentity());
+        await repo.CreateAsync(checkedInput, CallerIdentity());
         return CreatedAtAction(nameof(Get), new { consumerId = input.ConsumerId }, await repo.GetAsync(input.ConsumerId));
     }
 
     [HttpPut("{consumerId}")]
     public async Task<IActionResult> Update(string consumerId, [FromBody] GatewayConsumerInput input)
     {
+        var (checkedInput, addressError) = WithCheckedAddress(input);
+        if (addressError is not null) return BadRequest(addressError);
+
         if (input.Enabled && await BlockedByUnverifiedIdentity(consumerId))
         {
             return Conflict(UnverifiedIdentityMessage);
         }
 
-        return await repo.UpdateAsync(consumerId, input, CallerIdentity()) ? NoContent() : NotFound();
+        return await repo.UpdateAsync(consumerId, checkedInput, CallerIdentity()) ? NoContent() : NotFound();
+    }
+
+    /// <summary>
+    /// Applies the gateway address policy and normalises the address, so what is stored is what will
+    /// later be probed. Rejecting at save time means a bad address is reported while the
+    /// administrator is still looking at the field, rather than as a failed key registration later.
+    /// </summary>
+    private (GatewayConsumerInput Input, string? Error) WithCheckedAddress(GatewayConsumerInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.GatewayUrl))
+        {
+            return (input with { GatewayUrl = null }, null);
+        }
+
+        var check = verifier.CheckAddress(input.GatewayUrl);
+
+        return check.Target is null
+            ? (input, check.Error)
+            : (input with { GatewayUrl = check.Target.BaseUrl }, null);
     }
 
     [HttpDelete("{consumerId}")]
@@ -68,6 +108,77 @@ public class GatewayConsumerController(
         }
 
         return deleted ? NoContent() : NotFound();
+    }
+
+    /// <summary>
+    /// Registers a consumer's function key by storing its hash.
+    /// </summary>
+    /// <remarks>
+    /// Without this, enabling identity verification needs a SHA-256 computed by hand and direct SQL,
+    /// which defeats the point of administering consumers from the dashboard. The key is hashed here
+    /// and the raw value is never persisted, echoed or written to a log; the only observable effect
+    /// is that the consumer starts reporting as verified.
+    /// </remarks>
+    [HttpPost("{consumerId}/key")]
+    public async Task<IActionResult> SetKey(string consumerId, [FromBody] GatewayConsumerKeyInput input)
+    {
+        var key = input.Key?.Trim();
+
+        if (string.IsNullOrEmpty(key)) return BadRequest("A function key is required.");
+
+        // A 64-character hex string is a digest, not a key. Accepting it would store the hash of a
+        // hash, which fails closed but only at the first real request, with a misleading 403.
+        if (key.Length == 64 && key.All(Uri.IsHexDigit))
+        {
+            return BadRequest("That looks like a hash rather than a function key. Paste the key itself.");
+        }
+
+        // Verified before hashing. Storing first and checking later would leave a consumer holding a
+        // hash that matches nothing, which presents as a 403 on their next real request.
+        var consumer = await repo.GetAsync(consumerId);
+        if (consumer is null) return NotFound();
+
+        // The consumer's own address wins over the caller's choice from the configured list. It was
+        // validated when it was saved, and it is the address that consumer's traffic actually uses,
+        // so verifying anywhere else would prove the key against a gateway they never call.
+        var verification = string.IsNullOrWhiteSpace(consumer.GatewayUrl)
+            ? await verifier.VerifyAsync(key, input.GatewayApp, HttpContext.RequestAborted)
+            : await verifier.VerifyAtAsync(key, consumer.GatewayUrl, HttpContext.RequestAborted);
+
+        switch (verification.Verdict)
+        {
+            case GatewayKeyVerdict.Rejected:
+                logger.LogWarning(
+                    "GatewayConsumerKeyRejected: consumer={ConsumerId} app={App} by={Actor}",
+                    consumerId, verification.GatewayApp, CallerIdentity());
+                return BadRequest(verification.Detail);
+
+            case GatewayKeyVerdict.Unreachable:
+                // Deliberately not a rejection. Telling an administrator their good key is bad
+                // during a gateway outage sends them looking for a fault in the key.
+                logger.LogWarning(
+                    "GatewayConsumerKeyUnchecked: consumer={ConsumerId} app={App} by={Actor}",
+                    consumerId, verification.GatewayApp, CallerIdentity());
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, verification.Detail);
+        }
+
+        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
+        var verified = verification.Verdict == GatewayKeyVerdict.Accepted;
+
+        var stored = await repo.SetKeyHashAsync(
+            consumerId,
+            hash,
+            CallerIdentity(),
+            verified ? verification.GatewayApp : null,
+            verified ? DateTime.UtcNow : null);
+
+        if (!stored) return NotFound();
+
+        logger.LogInformation(
+            "GatewayConsumerKeyRegistered: consumer={ConsumerId} verdict={Verdict} app={App} by={Actor}",
+            consumerId, verification.Verdict, verification.GatewayApp, CallerIdentity());
+
+        return Ok(new { verified, detail = verification.Detail, gatewayApp = verification.GatewayApp });
     }
 
     private const string UnverifiedIdentityMessage =

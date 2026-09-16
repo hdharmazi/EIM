@@ -1,5 +1,8 @@
-## ADDED Requirements
+# gateway-consumer-console Specification
 
+## Purpose
+TBD - created by archiving change add-d365fsc-passthrough-gateway. Update Purpose after archive.
+## Requirements
 ### Requirement: Gateway consumer list
 The dashboard SHALL provide a screen listing gateway consumers, showing the consumer identifier,
 description, system profile, enabled state, expiry and whether key verification is active.
@@ -14,8 +17,7 @@ description, system profile, enabled state, expiry and whether key verification 
 
 ### Requirement: Gateway consumer management
 The dashboard SHALL allow creating, editing and deleting gateway consumers, including toggling
-enabled state and setting an expiry date. The function key itself SHALL NOT be created, displayed or
-stored by the dashboard.
+enabled state and setting an expiry date.
 
 #### Scenario: Consumer created
 - **WHEN** an administrator submits a new consumer with an identifier and system profile
@@ -25,9 +27,23 @@ stored by the dashboard.
 - **WHEN** an administrator toggles a consumer to disabled
 - **THEN** the change is persisted and subsequent gateway requests for that consumer are refused
 
-#### Scenario: Key never handled by the dashboard
-- **WHEN** an administrator views or edits a consumer
-- **THEN** no function key value is shown, entered or stored, and the screen directs key management to Azure
+### Requirement: Function key registered without being stored
+The dashboard SHALL allow an administrator to register a consumer's function key so that identity
+verification can be enabled without database access. The submitted value SHALL be hashed on the
+server, only the hash SHALL be persisted, and the raw value SHALL NOT be stored, logged or returned
+by any endpoint.
+
+#### Scenario: Key registered
+- **WHEN** an administrator submits a function key for a consumer
+- **THEN** its hash is stored, the consumer is reported as verified, and the response contains no key material
+
+#### Scenario: Key is never readable afterwards
+- **WHEN** an administrator views a consumer after registering a key
+- **THEN** the screen reports only whether identity is verified, and no endpoint returns the key or its hash
+
+#### Scenario: A hash submitted in place of a key is rejected
+- **WHEN** an administrator submits a value that is already a hexadecimal digest rather than a key
+- **THEN** the request is refused, because storing the hash of a hash would silently never match
 
 ### Requirement: Permission matrix per environment
 The dashboard SHALL present permissions for a selected consumer and environment as a matrix of
@@ -115,3 +131,4 @@ event, without blocking the operation.
 #### Scenario: Non-production grant not notified
 - **WHEN** an administrator grants a verb in a non-production environment
 - **THEN** the grant is applied and no notification event is raised
+

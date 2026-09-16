@@ -1,0 +1,7 @@
+{
+  "profiles": {
+    "ARM.Integration.D365FSC.Gateway": {
+      "commandName": "Project"
+    }
+  }
+}

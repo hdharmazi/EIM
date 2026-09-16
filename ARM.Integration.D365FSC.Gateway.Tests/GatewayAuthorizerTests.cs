@@ -209,6 +209,22 @@ public class GatewayAuthorizerTests
         Assert.True(result.IdentityVerified);
     }
 
+    /// <summary>
+    /// The dashboard records which application verified a consumer's key and when. None of that may
+    /// reach the request path: if it did, a dashboard-side defect or a stale verification record
+    /// would start refusing live traffic. The runtime model is deliberately limited to the five
+    /// fields the decision actually needs.
+    /// </summary>
+    [Fact]
+    public void Runtime_consumer_model_carries_no_verification_metadata()
+    {
+        var properties = typeof(GatewayConsumer).GetProperties().Select(p => p.Name).ToArray();
+
+        Assert.Equal(
+            ["ConsumerId", "KeyHash", "SystemProfile", "Enabled", "ExpiresOn"],
+            properties);
+    }
+
     [Fact]
     public async Task Spoofed_consumer_id_is_caught_once_the_key_hash_is_set()
     {

@@ -66,11 +66,26 @@ public sealed class GatewayPipeline(
         var consumer = decision.Consumer!;
         var normalisedEnvironment = GatewayAuthorizer.Normalise(environment);
 
-        string? idempotencyKey = null;
-        if (HttpMethods.IsPost(request.Method))
+        // A body without a content type reaches D365 as application/octet-stream, which it answers
+        // with a deserialiser stack trace that buries the cause. Not defaulted to JSON: binary
+        // payloads are a legitimate case, so guessing would trade one silent failure for another.
+        if (request.ContentLength is > 0 && string.IsNullOrWhiteSpace(request.ContentType))
         {
-            idempotencyKey = request.Headers[IdempotencyHeader].FirstOrDefault();
-            if (string.IsNullOrWhiteSpace(idempotencyKey))
+            logger.LogWarning(
+                "Rejected {Method} with a body and no Content-Type ({CorrelationId}).",
+                request.Method, correlationId);
+            return Error(StatusCodes.Status400BadRequest, "content_type_required", correlationId);
+        }
+
+        // Read the header for any verb. POST must carry one; PATCH may, and is honoured when it
+        // does, because an entity's X++ update logic can have side effects that a replayed request
+        // must not repeat.
+        var idempotencyKey = request.Headers[IdempotencyHeader].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            idempotencyKey = null;
+
+            if (HttpMethods.IsPost(request.Method))
             {
                 return Error(StatusCodes.Status400BadRequest, "idempotency_key_required", correlationId);
             }

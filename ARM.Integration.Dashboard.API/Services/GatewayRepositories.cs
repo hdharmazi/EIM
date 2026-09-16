@@ -13,7 +13,7 @@ public class GatewayConsumerRepository(IConfiguration config)
     private const string Projection = """
         SELECT CONSUMERID, SYSTEMPROFILE, ENABLED, EXPIRESON, DESCRIPTION,
                CAST(CASE WHEN KEYHASH IS NULL THEN 0 ELSE 1 END AS bit) AS IDENTITYVERIFIED,
-               CREATEDBY, CREATEDON, MODIFIEDBY, MODIFIEDON
+               CREATEDBY, CREATEDON, MODIFIEDBY, MODIFIEDON, VERIFIEDAPP, VERIFIEDON, GATEWAYURL
         FROM dbo.GATEWAYCONSUMER
         """;
 
@@ -66,8 +66,8 @@ public class GatewayConsumerRepository(IConfiguration config)
     {
         const string sql = """
             INSERT INTO dbo.GATEWAYCONSUMER
-                (CONSUMERID, SYSTEMPROFILE, ENABLED, EXPIRESON, DESCRIPTION, CREATEDBY, CREATEDON)
-            VALUES (@ID, @PROFILE, @ENABLED, @EXPIRES, @DESCRIPTION, @BY, SYSUTCDATETIME())
+                (CONSUMERID, SYSTEMPROFILE, ENABLED, EXPIRESON, DESCRIPTION, GATEWAYURL, CREATEDBY, CREATEDON)
+            VALUES (@ID, @PROFILE, @ENABLED, @EXPIRES, @DESCRIPTION, @URL, @BY, SYSUTCDATETIME())
             """;
 
         await using var conn = new SqlConnection(_connectionString);
@@ -84,7 +84,8 @@ public class GatewayConsumerRepository(IConfiguration config)
         const string sql = """
             UPDATE dbo.GATEWAYCONSUMER
             SET SYSTEMPROFILE = @PROFILE, ENABLED = @ENABLED, EXPIRESON = @EXPIRES,
-                DESCRIPTION = @DESCRIPTION, MODIFIEDBY = @BY, MODIFIEDON = SYSUTCDATETIME()
+                DESCRIPTION = @DESCRIPTION, GATEWAYURL = @URL,
+                MODIFIEDBY = @BY, MODIFIEDON = SYSUTCDATETIME()
             WHERE CONSUMERID = @ID
             """;
 
@@ -107,6 +108,36 @@ public class GatewayConsumerRepository(IConfiguration config)
         return await cmd.ExecuteNonQueryAsync() > 0;
     }
 
+    /// <summary>
+    /// Stores a key's hash together with what it was verified against. The caller is responsible for
+    /// never retaining the key itself.
+    /// </summary>
+    /// <remarks>
+    /// Hash and verification are written in one statement so a row can never claim to be verified
+    /// against an application while holding a different key's hash.
+    /// </remarks>
+    public async Task<bool> SetKeyHashAsync(
+        string consumerId, string keyHash, string modifiedBy, string? verifiedApp, DateTime? verifiedOn)
+    {
+        const string sql = """
+            UPDATE dbo.GATEWAYCONSUMER
+            SET KEYHASH = @HASH, VERIFIEDAPP = @APP, VERIFIEDON = @ON,
+                MODIFIEDBY = @BY, MODIFIEDON = SYSUTCDATETIME()
+            WHERE CONSUMERID = @ID
+            """;
+
+        await using var conn = new SqlConnection(_connectionString);
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.Add("@ID", SqlDbType.NVarChar, 50).Value = consumerId;
+        cmd.Parameters.Add("@HASH", SqlDbType.Char, 64).Value = keyHash;
+        cmd.Parameters.Add("@APP", SqlDbType.NVarChar, 100).Value = (object?)verifiedApp ?? DBNull.Value;
+        cmd.Parameters.Add("@ON", SqlDbType.DateTime2).Value = (object?)verifiedOn ?? DBNull.Value;
+        cmd.Parameters.Add("@BY", SqlDbType.NVarChar, 100).Value = modifiedBy;
+
+        await conn.OpenAsync();
+        return await cmd.ExecuteNonQueryAsync() > 0;
+    }
+
     private static void Bind(SqlCommand cmd, GatewayConsumerInput input)
     {
         cmd.Parameters.Add("@ID", SqlDbType.NVarChar, 50).Value = input.ConsumerId;
@@ -114,6 +145,8 @@ public class GatewayConsumerRepository(IConfiguration config)
         cmd.Parameters.Add("@ENABLED", SqlDbType.Bit).Value = input.Enabled;
         cmd.Parameters.Add("@EXPIRES", SqlDbType.DateTime2).Value = (object?)input.ExpiresOn ?? DBNull.Value;
         cmd.Parameters.Add("@DESCRIPTION", SqlDbType.NVarChar, 200).Value = (object?)input.Description ?? DBNull.Value;
+        cmd.Parameters.Add("@URL", SqlDbType.NVarChar, 200).Value =
+            string.IsNullOrWhiteSpace(input.GatewayUrl) ? DBNull.Value : input.GatewayUrl;
     }
 
     private static GatewayConsumerRecord Map(SqlDataReader reader) => new()
@@ -128,6 +161,9 @@ public class GatewayConsumerRepository(IConfiguration config)
         CreatedOn = reader.IsDBNull(7) ? null : reader.GetDateTime(7),
         ModifiedBy = reader.IsDBNull(8) ? null : reader.GetString(8),
         ModifiedOn = reader.IsDBNull(9) ? null : reader.GetDateTime(9),
+        VerifiedApp = reader.IsDBNull(10) ? null : reader.GetString(10),
+        VerifiedOn = reader.IsDBNull(11) ? null : reader.GetDateTime(11),
+        GatewayUrl = reader.IsDBNull(12) ? null : reader.GetString(12),
     };
 }
 

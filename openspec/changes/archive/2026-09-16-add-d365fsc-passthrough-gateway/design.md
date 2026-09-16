@@ -397,6 +397,14 @@ that a second consumer requires identity verification first.
 → Grant provenance via `CREATEDBY`/`CREATEDON`, the permission grid makes grants visible, and an
 alert on production grant changes turns this from an incident-time discovery into a same-day one.
 
+**The dedicated Entra registration is deferred**, so the gateway authenticates as the integration
+service principal. The D365-side attribution argued for above therefore does not hold yet: records
+created through the gateway would be indistinguishable from pipeline-created ones.
+→ Tolerable while every grant is GET. The control is procedural rather than technical: no write verb
+is granted until a dedicated registration exists, reinforced by keeping the service principal's D365
+security role read-only. Unlike most risks here this one is **not reversible** — attribution cannot
+be reconstructed once the records are written.
+
 **D365 credentials sit in plaintext in `ENVIRONMENTTABLE.VALUE`**, and `environment-management`
 deliberately allows any validated dashboard user to reveal them. This change adds a second,
 internet-reachable credential under that policy.

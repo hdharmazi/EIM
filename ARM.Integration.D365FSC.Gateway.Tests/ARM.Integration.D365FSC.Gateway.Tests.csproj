@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ARM.Integration.D365FSC.Gateway\ARM.Integration.D365FSC.Gateway.csproj" />
+    <ProjectReference Include="..\ARM.Integration.Dashboard.API\ARM.Integration.Dashboard.API.csproj" />
   </ItemGroup>
 
 </Project>

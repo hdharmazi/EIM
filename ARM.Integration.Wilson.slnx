@@ -1,11 +1,12 @@
 <Solution>
   <Folder Name="/Script/">
-    <File Path="Script/Bicep/Firewall" />
-    <File Path="Script/Bicep/main-addqueue.bicep" />
-    <File Path="Script/Bicep/main-addqueueTest.bicep" />
-    <File Path="Script/Bicep/main-keyvault.bicep" />
-    <File Path="Script/Bicep/main.bicep" />
-    <File Path="Script/Bicep/script.txt" />
+    <File Path="Script/Superseded/README.md" />
+    <File Path="Script/Superseded/Firewall.ps1" />
+    <File Path="Script/Superseded/delete-queue.ps1" />
+    <File Path="Script/Superseded/main-addqueue.bicep" />
+    <File Path="Script/Superseded/main-addqueueTest.bicep" />
+    <File Path="Script/Superseded/main-keyvault.bicep" />
+    <File Path="Script/Superseded/main.bicep" />
   </Folder>
   <Folder Name="/Script/SQL/" />
   <Folder Name="/Solution Items/">

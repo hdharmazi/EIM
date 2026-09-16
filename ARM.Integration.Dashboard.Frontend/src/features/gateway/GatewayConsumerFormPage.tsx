@@ -8,6 +8,7 @@ import { useToast } from "@/components/ui/toast";
 import {
   useCreateGatewayConsumer,
   useGatewayConsumer,
+  useGatewayTargets,
   useUpdateGatewayConsumer,
   type GatewayConsumerInput,
 } from "./api";
@@ -19,6 +20,7 @@ export function GatewayConsumerFormPage() {
   const { toast } = useToast();
 
   const { data: existing } = useGatewayConsumer(consumerId ?? "", isEdit);
+  const { data: targets } = useGatewayTargets();
   const create = useCreateGatewayConsumer();
   const update = useUpdateGatewayConsumer();
 
@@ -28,6 +30,7 @@ export function GatewayConsumerFormPage() {
     enabled: false,
     expiresOn: null,
     description: "",
+    gatewayUrl: "",
   });
 
   React.useEffect(() => {
@@ -38,8 +41,12 @@ export function GatewayConsumerFormPage() {
       enabled: existing.enabled,
       expiresOn: existing.expiresOn ? existing.expiresOn.slice(0, 10) : null,
       description: existing.description ?? "",
+      gatewayUrl: existing.gatewayUrl ?? "",
     });
   }, [existing]);
+
+  // Shown as the placeholder so the fallback is visible rather than implied by an empty field.
+  const defaultGateway = targets?.[0];
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -88,6 +95,21 @@ export function GatewayConsumerFormPage() {
           <p className="mt-1 text-xs text-muted-foreground">
             The <code>SYSTEM</code> value in Environment Settings whose credentials this consumer's
             traffic uses. Callers cannot choose this.
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium">Gateway address</label>
+          <Input
+            type="url"
+            value={form.gatewayUrl ?? ""}
+            onChange={(e) => setForm({ ...form, gatewayUrl: e.target.value })}
+            placeholder={defaultGateway?.baseUrl ?? "https://my-gateway.azurewebsites.net"}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            The gateway this consumer calls, and the one their key is checked against. Leave blank to
+            use {defaultGateway ? <code>{defaultGateway.name}</code> : "the gateway this dashboard is configured with"}.
+            Must be an <code>https</code> address on a permitted host.
           </p>
         </div>
 

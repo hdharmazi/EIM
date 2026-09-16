@@ -1,5 +1,8 @@
-## ADDED Requirements
+# d365fsc-gateway Specification
 
+## Purpose
+TBD - created by archiving change add-d365fsc-passthrough-gateway. Update Purpose after archive.
+## Requirements
 ### Requirement: Versioned route surface
 The gateway SHALL expose exactly two route families under a version segment: data entities and
 bound actions at `/api/v1/d365fsc/{environment}/data/{*path}`, and custom services at
@@ -128,6 +131,18 @@ contacting D365.
 - **WHEN** a caller POSTs a body larger than the configured limit
 - **THEN** the gateway returns 413 and no D365 call is made
 
+### Requirement: Content type required with a body
+The gateway SHALL reject a request that carries a body without a `Content-Type` header, rather than
+forwarding it or assuming a type on the caller's behalf.
+
+#### Scenario: Body without a content type
+- **WHEN** a caller sends a request with a body and no `Content-Type` header
+- **THEN** the gateway returns 400 and no D365 call is made
+
+#### Scenario: Content type is not inferred
+- **WHEN** a caller sends a body with a non-JSON content type
+- **THEN** the gateway forwards that content type unchanged rather than substituting JSON
+
 ### Requirement: Error responses and correlation
 Every response SHALL carry a correlation identifier that is also emitted to telemetry. Error
 responses SHALL NOT disclose D365 internals, the resolved environment configuration, or which
@@ -140,3 +155,4 @@ resources exist.
 #### Scenario: Upstream failure surfaced without detail
 - **WHEN** D365 returns a server error
 - **THEN** the gateway returns an error response carrying the status and correlation identifier, without the upstream body's internal detail
+

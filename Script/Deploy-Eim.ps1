@@ -32,11 +32,11 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('dev1', 'bat', 'test')]
+    [ValidateSet('dev', 'dev1', 'bat', 'test')]
     [string]$Environment,
 
     [Parameter(Mandatory = $true)]
-    [ValidateSet('queues', 'schema', 'api', 'function', 'gateway', 'frontend', 'all')]
+    [ValidateSet('queues', 'schema', 'api', 'function', 'gateway', 'frontend', 'all', 'firewall', 'keyvault')]
     [string[]]$Component,
 
     [string]$ConfigPath
@@ -49,6 +49,13 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 # un-migrated database fails on its first trigger rather than at deploy time, which is far harder
 # to diagnose. Dashboard last because it only reads what the rest produces.
 $ComponentOrder = @('queues', 'schema', 'api', 'function', 'gateway', 'frontend')
+
+# Deliberately outside $ComponentOrder, so 'all' never runs them. Opening a SQL firewall is a
+# developer convenience, not a deployment step, and a deployment that quietly widens network access
+# is the kind of thing nobody notices until it is audited. The vault is excluded for a different
+# reason: nothing reads from it yet, so running it by default would create a second copy of every
+# secret for no benefit.
+$OnDemandComponents = @('firewall', 'keyvault')
 
 # --------------------------------------------------------------------------------------------
 # Configuration
@@ -98,6 +105,13 @@ function Get-DeployConfig {
         }
     }
 
+    # Checked for presence rather than truth: absent and false both read as falsy, so a forgotten
+    # flag would silently mean "no environment hosts the gateway" and 'all' would skip it everywhere
+    # without anyone being told.
+    if ($null -eq $config.gateway -or $null -eq $config.gateway.hostsGateway) {
+        throw "Configuration '$ConfigPath' is missing required key 'gateway.hostsGateway'. Set it false unless this environment owns the shared gateway."
+    }
+
     return $config
 }
 
@@ -126,10 +140,12 @@ function Get-ResourceNames {
         ServiceBus      = $Config.serviceBusNamespace
         FunctionApp     = Resolve-Name $names.functionApp    "azf-eim-customer-wtc-$env"
         StorageAccount  = Resolve-Name $names.storageAccount "stwtceimcustomer$env"
-        # The gateway is internet-facing and scales on request volume, so it gets its own app,
-        # plan and storage rather than sharing the capture pipeline's.
-        GatewayApp      = Resolve-Name $names.gatewayApp     "azf-d365fsc-gateway-wtc-$env"
-        GatewayStorage  = Resolve-Name $names.gatewayStorage "stwtcd365gw$env"
+        # Shared across every non-production environment. Unlike EIM.Customer, whose Service Bus
+        # triggers bind to environment-specific queues, the gateway takes the D365 environment from
+        # the request path, so nothing about it is per-environment. Named -nonprod rather than
+        # inheriting an environment suffix, which the dashboard did and now regrets.
+        GatewayApp      = Resolve-Name $names.gatewayApp     "azf-d365fsc-gateway-wtc-nonprod"
+        GatewayStorage  = Resolve-Name $names.gatewayStorage "stwtcd365gwnonprod"
         QueuePrefix     = Resolve-Name $names.queuePrefix    $env
         ApiAppName      = $Config.dashboard.apiAppName
         FrontendAppName = $Config.dashboard.frontendAppName
@@ -314,13 +330,94 @@ function Invoke-FunctionComponent {
     Write-Host "  function host: https://$hostName"
 }
 
+function Invoke-FirewallComponent {
+    param($Config, $Names, [switch]$Preview)
+
+    # Derived from the connection string so there is no second place to state the server, and no
+    # chance of opening a hole in one server while deploying against another.
+    $server = [regex]::Match($Config.secrets.eimdbConnectionString,
+        'Data Source\s*=\s*tcp:([^.,;]+)\.database\.windows\.net').Groups[1].Value
+    if ([string]::IsNullOrWhiteSpace($server)) {
+        throw "Could not read the SQL server name from 'secrets.eimdbConnectionString'. Expected a 'Data Source=tcp:<server>.database.windows.net' form."
+    }
+
+    $ip = (Invoke-RestMethod -Uri 'https://api.ipify.org' -TimeoutSec 20).Trim()
+    if ($ip -notmatch '^\d{1,3}(\.\d{1,3}){3}$') {
+        throw "Could not determine this machine's public IP address; got '$ip'."
+    }
+
+    # Named for the person, not the address: a rule per developer can be found and removed, whereas
+    # one shared 'AllowMyIP' silently moves whenever somebody else runs this.
+    $rule = "AllowDev-$($env:USERNAME)"
+
+    if ($Preview) {
+        Write-Host "  would allow $ip on $server as firewall rule '$rule'"
+        return
+    }
+
+    az sql server firewall-rule create --resource-group $Names.ResourceGroup `
+        --server $server --name $rule --start-ip-address $ip --end-ip-address $ip | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Could not create firewall rule '$rule' on '$server'." }
+
+    Write-Host "  $server now allows $ip via '$rule'"
+    Write-Host "  remove it when you are done: az sql server firewall-rule delete -g $($Names.ResourceGroup) -s $server -n $rule"
+}
+
+function Invoke-KeyVaultComponent {
+    param($Config, $Names, [switch]$Preview)
+
+    $vault = if ([string]::IsNullOrWhiteSpace($Config.keyVault.name)) {
+        "kv-d365fsc-wtc-nonprod"
+    } else { $Config.keyVault.name }
+
+    $secrets = @(
+        @{ name = 'asb';   value = $Config.secrets.serviceBusConnectionString }
+        @{ name = 'eimdb'; value = $Config.secrets.eimdbConnectionString }
+    )
+
+    if ($Preview) {
+        Write-Host "  would ensure vault    $vault (RBAC, soft delete 90 days)"
+        Write-Host "  would set secrets     $(($secrets.name) -join ', ')"
+        Write-Host "  NOTE nothing reads from this vault yet - see Script/Docs/deployment.md"
+        return
+    }
+
+    $rg = $Names.ResourceGroup
+
+    if (-not (az keyvault show --name $vault --resource-group $rg --query "name" -o tsv 2>$null)) {
+        az keyvault create --name $vault --resource-group $rg --location $Names.Location `
+            --sku standard --enable-rbac-authorization true `
+            --enable-soft-delete true --retention-days 90 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Could not create key vault '$vault'." }
+        Write-Host "  created vault $vault"
+    }
+
+    foreach ($secret in $secrets) {
+        if ([string]::IsNullOrWhiteSpace($secret.value)) {
+            throw "Secret '$($secret.name)' resolved to empty. Storing a blank secret would look like success and fail later at the point of use."
+        }
+
+        az keyvault secret set --vault-name $vault --name $secret.name --value $secret.value | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            # The vault uses RBAC, so control-plane rights to create it do not grant data-plane
+            # rights to write a secret. That distinction is the usual cause of a failure here.
+            throw "Could not set secret '$($secret.name)' in '$vault'. If this is a 403, grant yourself the data-plane role: az role assignment create --role ""Key Vault Secrets Officer"" --assignee <your-object-id> --scope $(az keyvault show --name $vault --resource-group $rg --query id -o tsv)"
+        }
+        Write-Host "  set secret $($secret.name)"
+    }
+
+    Write-Host "  NOTE nothing reads from this vault. Connection strings are still held in"
+    Write-Host "       ENVIRONMENTTABLE and app settings in plaintext, so these are a second copy"
+    Write-Host "       that must be rotated alongside the originals."
+}
+
 function Invoke-GatewayComponent {
     param($Config, $Names, [switch]$Preview)
 
     if ($Preview) {
         Write-Host "  would ensure storage  $($Names.GatewayStorage)"
         Write-Host "  would ensure flex app $($Names.GatewayApp)"
-        Write-Host "  would ensure insights appins-d365fsc-gateway-wtc-$($Names.Environment)"
+        Write-Host "  would ensure insights appins-d365fsc-gateway-wtc-nonprod"
         Write-Host "  would apply settings, publish, zip and deploy ARM.Integration.D365FSC.Gateway"
         return
     }
@@ -365,7 +462,7 @@ function Invoke-GatewayComponent {
     # without it: authorization denials are the only intrusion signal this design has, and a 403
     # with no telemetry record cannot be told apart from a mis-typed grant.
     $insightsName = if ([string]::IsNullOrWhiteSpace($gw.appInsightsName)) {
-        "appins-d365fsc-gateway-wtc-$($Names.Environment)"
+        "appins-d365fsc-gateway-wtc-nonprod"
     } else { $gw.appInsightsName }
     # Created through the generic resource API rather than `az monitor app-insights`, which lives in
     # an optional CLI extension and prompts to install itself - an interactive prompt that hangs an
@@ -466,6 +563,10 @@ function Invoke-ApiComponent {
         @{ name = 'Simulation__CaptureToD365Queue';         value = $queues.CaptureToD365Queue }
         @{ name = 'Simulation__CaptureToD365ResponseQueue'; value = $queues.CaptureToD365QueueResponse }
         @{ name = 'Simulation__D365ToCaptureQueue';         value = $queues.D365ToCaptureQueue }
+        # Same value the gateway is deployed with, so the address the dashboard verifies keys against
+        # cannot drift from the one the gateway actually answers on.
+        @{ name = 'Gateway__BaseUrl';                       value = $Config.gateway.baseUrl }
+        @{ name = 'Gateway__AppName';                       value = $Names.GatewayApp }
     )
 
     foreach ($setting in $settings) {
@@ -564,13 +665,29 @@ $config = Get-DeployConfig -Environment $Environment -ConfigPath $ConfigPath
 $names  = Get-ResourceNames -Config $config
 
 $requested = if ($Component -contains 'all') { $ComponentOrder } else { $Component }
-$ordered = $ComponentOrder | Where-Object { $requested -contains $_ }
+$ordered = @($ComponentOrder | Where-Object { $requested -contains $_ })
+$ordered += @($OnDemandComponents | Where-Object { $Component -contains $_ })
 
-# Refused rather than silently skipped: asking to deploy the shared dashboard from a environment
-# that does not own it means the request was wrong, and quietly ignoring it hides that.
-$shared = @('api', 'frontend') | Where-Object { $ordered -contains $_ }
-if ($shared -and -not $config.dashboard.hostsDashboard) {
-    throw "Environment '$Environment' does not host the shared dashboard, so '$($shared -join ", ")' cannot be deployed from it."
+# Shared components are deployed once for all non-production environments. Naming one explicitly
+# against an environment that does not host it means the request was wrong, so it is refused rather
+# than skipped. Asking for 'all' is not such a request - it means "everything that belongs here" -
+# so shared components are dropped from the list instead, which is what makes 'all' usable for an
+# ordinary environment at all.
+$sharedHosts = @{
+    api      = [bool]$config.dashboard.hostsDashboard
+    frontend = [bool]$config.dashboard.hostsDashboard
+    gateway  = [bool]$config.gateway.hostsGateway
+}
+
+$notHosted = $ordered | Where-Object { $sharedHosts.ContainsKey($_) -and -not $sharedHosts[$_] }
+if ($notHosted) {
+    $explicit = $notHosted | Where-Object { $Component -contains $_ }
+    if ($explicit) {
+        throw "Environment '$Environment' does not host '$($explicit -join ", ")', so it cannot be deployed from here. Deploy shared components from the environment that owns them."
+    }
+
+    Write-Host "Skipping shared component(s) not hosted here: $($notHosted -join ', ')"
+    $ordered = $ordered | Where-Object { $notHosted -notcontains $_ }
 }
 
 $preview = -not $PSCmdlet.ShouldProcess($Environment, "deploy $($ordered -join ', ')")
@@ -594,6 +711,8 @@ $handlers = @{
     function = ${function:Invoke-FunctionComponent}
     gateway  = ${function:Invoke-GatewayComponent}
     frontend = ${function:Invoke-FrontendComponent}
+    firewall = ${function:Invoke-FirewallComponent}
+    keyvault = ${function:Invoke-KeyVaultComponent}
 }
 
 foreach ($step in $ordered) {

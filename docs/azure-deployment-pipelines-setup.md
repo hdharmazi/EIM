@@ -7,7 +7,17 @@ Two manual Azure DevOps pipelines deploy code without changing Azure runtime set
 
 ## Architecture
 
-The Dashboard API and frontend are one shared non-production application. Logical environments are selected through UI/API configuration. The EIM.Customer Function has one Function App per environment so each trigger consumes only its own queues.
+The Dashboard API and frontend are one shared non-production application, and the D365 F&SC gateway is
+another. Logical environments are selected through UI/API configuration for the dashboard, and from the
+request path for the gateway, so neither needs a copy per environment.
+
+The EIM.Customer Function has one Function App per environment because its Service Bus triggers bind to
+environment-specific queues at startup — that is the one component that genuinely cannot be shared.
+
+Databases: `eimdb` is the shared non-production database used by every deployed environment. `eimdb_dev`
+sits on the same SQL server but is for local development only — it exists so local work does not disturb
+anyone testing against the sandbox. Nothing deployed points at it. Because both live on the same server,
+it is easy to connect to the wrong one; check the catalog, not just the server.
 
 ## Create the pipelines
 
