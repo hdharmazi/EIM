@@ -4,16 +4,17 @@
 
 ## Objective
 
-Add two Azure DevOps pipelines:
+Add three Azure DevOps pipelines:
 
 1. Deploy the shared non-production Dashboard API and frontend.
-2. Select an environment and deploy `ARM.Integration.EIM.Customer` to its dedicated Function App.
+2. Build `ARM.Integration.EIM.Customer` once and promote the package through `dev`, `bat`, and `test`.
+3. Test and deploy the shared non-production D365 F&SC Gateway.
 
 ## Current understanding
 
 - Application: `ARM.Integration.EIM.Customer`
 - Runtime: .NET 10 isolated worker, Azure Functions v4, Linux
-- Selectable targets: DEV1 (`azf-eim-customer-wtc-dev1`), TEST (`azf-eim-customer-wtc-test`), and BAT (`azf-eim-customer-wtc-bat`)
+- Promotion targets: `dev` (`azf-eim-customer-wtc-dev`), `bat` (`azf-eim-customer-wtc-bat`), and `test` (`azf-eim-customer-wtc-test`)
 - Existing deployment style: Release publish followed by ZIP deployment
 - Trigger: manual only
 - Deployment scope: code only; Function App settings remain managed in Azure
@@ -21,26 +22,39 @@ Add two Azure DevOps pipelines:
 - Region used by repository scripts: `centralus`
 - Shared dashboard API: `wtc-dashboard-api-dev` on Linux App Service
 - Shared dashboard frontend: `wtc-dashboard-frontend-dev` on Azure Static Web Apps
+- Shared D365 F&SC Gateway: `azf-d365fsc-gateway-wtc-nonprod` on Azure Functions
 - Dashboard environment routing is selected through application configuration in the UI/API, not separate dashboard deployments.
 
 ## Decisions
 
-- Both pipelines are manual-only.
+- All three pipelines are manual-only.
 - Dashboard supports component selection: API, frontend, or both.
-- Function deployment supports `dev1`, `test`, and `bat`.
+- EIM.Customer promotes one package in order through `dev`, `bat`, and `test`.
+- Manual validation gates after `dev` and `bat` reject after 24 hours if no decision is made.
+- Gateway always deploys to the shared nonprod Function App after successful tests.
 - Pipelines deploy code only and do not overwrite Azure runtime settings.
 - Publish profiles/tokens are temporary deployment credentials until workload identity is available.
 
 ## Function pipeline
 
-1. Start manually and require an `environment` parameter: `dev1`, `test`, or `bat`.
+1. Start manually with no environment parameter.
 2. Restore, build, and test the .NET solution.
 3. Publish `ARM.Integration.EIM.Customer` in Release mode.
 4. Publish an immutable ZIP artifact.
-5. Map the selected environment to its Function App and secret publish-profile variable.
-6. Deploy the ZIP through the Function App's Kudu ZIP-deploy endpoint using the selected publish profile.
-7. Use distinct Azure DevOps Environments (`eim-customer-dev1`, `eim-customer-test`, `eim-customer-bat`) so approvals can be configured per target.
-8. Verify deployment completion and report the selected app and build.
+5. Deploy the ZIP to `dev`, then pause for manual validation.
+6. After approval, deploy the same ZIP to `bat`, then pause for manual validation.
+7. After approval, deploy the same ZIP to `test` without rebuilding.
+8. Use distinct Azure DevOps Environments (`eim-customer-dev`, `eim-customer-bat`, `eim-customer-test`) for deployment history and optional checks.
+9. Deploy each ZIP through the Function App's Kudu ZIP-deploy endpoint using its publish profile.
+
+## Gateway pipeline
+
+1. Start manually with no component or environment parameter.
+2. Restore the Gateway project and run `ARM.Integration.D365FSC.Gateway.Tests`.
+3. Publish `ARM.Integration.D365FSC.Gateway` in Release mode.
+4. Publish an immutable ZIP artifact with `host.json` at the ZIP root.
+5. Deploy the artifact to `azf-d365fsc-gateway-wtc-nonprod` using Azure DevOps Environment `d365fsc-gateway-nonprod`.
+6. Change code only; retain Gateway settings, keys, database configuration, and infrastructure in Azure.
 
 ## Dashboard pipeline
 
@@ -54,7 +68,9 @@ Add two Azure DevOps pipelines:
 
 ## Security
 
-- Store `DEV1_FUNCTION_PUBLISH_PROFILE`, `TEST_FUNCTION_PUBLISH_PROFILE`, and `BAT_FUNCTION_PUBLISH_PROFILE` as secret pipeline variables or in a restricted variable group.
+- Store `DEV_FUNCTION_PUBLISH_PROFILE`, `BAT_FUNCTION_PUBLISH_PROFILE`, and `TEST_FUNCTION_PUBLISH_PROFILE` as secret pipeline variables or in a restricted variable group.
+- Store `NONPROD_GATEWAY_PUBLISH_PROFILE` as a secret pipeline variable.
+- Store the validation identities in non-secret `MANUAL_VALIDATION_NOTIFY_USERS`.
 - Store `NONPROD_API_PUBLISH_PROFILE` and `NONPROD_SWA_DEPLOYMENT_TOKEN` as secret pipeline variables.
 - Do not store publish profiles, connection strings, or application secrets in source control or artifacts.
 - Keep runtime app settings in Azure configuration/Key Vault rather than the code deployment package.
@@ -70,30 +86,37 @@ Add two Azure DevOps pipelines:
 	- [x] Dashboard frontend installs dependencies and builds with Node.js 22.
 	- [x] Function package contains `host.json` at ZIP root.
 	- [x] Dashboard API ZIP contains the application DLL at ZIP root.
-	- [x] Both Azure DevOps YAML files have no editor diagnostics.
+	- [x] All three Azure DevOps deployment YAML files have no editor diagnostics.
 	- [x] Target names and required secret-variable names match the setup guide.
-	- [x] No runtime application settings are changed by either pipeline.
+	- [x] One EIM.Customer artifact is referenced by all three deployment stages.
+	- [x] Gateway tests run before the Gateway artifact is published and deployed.
+	- [x] No runtime application settings are changed by any pipeline.
 
 ## Rollback
 
-Retain pipeline artifacts so a previously successful ZIP can be redeployed. Do not mutate runtime app settings during code-only deployment. Rollback by manually running the pipeline against a prior artifact/commit.
+Retain pipeline artifacts so a previously successful ZIP can be redeployed. Do not mutate runtime app settings during code-only deployment. Rollback by redeploying the retained package or manually running the pipeline from a prior commit.
 
 ## Validation Proof
 
-- `dotnet test ARM.Integration.EIM.Tests/ARM.Integration.EIM.Tests.csproj --configuration Release`
-	- Passed: 12 tests, 0 failures.
-- `dotnet publish ARM.Integration.EIM.Customer/ARM.Integration.EIM.Customer.csproj --configuration Release --output artifacts/pipeline-validation/function`
-	- Passed; `host.json` exists at publish root.
+- EIM and Gateway test projects through the VS Code test adapter
+	- Passed: 61 tests, 0 failures.
+- Release publish and ZIP validation for `ARM.Integration.EIM.Customer` and `ARM.Integration.D365FSC.Gateway`
+	- Passed; both archives contain `host.json` at ZIP root.
+- `dotnet build ARM.Integration.Wilson.slnx --configuration Release`
+	- Passed with existing nullable/package warnings.
+	- Gateway tests report five known high-severity advisories for `System.Security.Cryptography.Xml` 10.0.7.
 - `dotnet publish ARM.Integration.Dashboard.API/ARM.Integration.Dashboard.API.csproj --configuration Release --output artifacts/pipeline-validation/api`
 	- Passed; `ARM.Integration.Dashboard.API.dll` exists at publish root.
 - `npm --prefix ARM.Integration.Dashboard.Frontend ci` and `npm --prefix ARM.Integration.Dashboard.Frontend run build`
 	- Passed after stopping the locally running Vite process that held `esbuild.exe`.
 	- npm reported 4 dependency vulnerabilities (2 moderate, 2 high); follow-up dependency remediation is recommended.
 	- Vite reported an existing bundle-size warning over 500 kB.
-- PowerShell parser validation for `Script/Deploy-ZipWithPublishProfile.ps1`
-	- Passed.
-- Editor diagnostics for both deployment YAML files
+- PowerShell parser validation for `script/deployment/Deploy-Eim.ps1` and `script/deployment/Deploy-ZipWithPublishProfile.ps1`
+	- Passed; deployment config ignore rules also passed.
+- Editor diagnostics for all three deployment YAML files
 	- No errors.
+- Relative Markdown link validation
+	- Passed for the root README, indexes, pipeline setup, and deployment guides.
 - `git diff --check`
 	- Passed.
 - Static IaC role verification

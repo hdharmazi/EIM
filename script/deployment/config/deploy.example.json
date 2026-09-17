@@ -1,6 +1,6 @@
 {
-  "//": "Copy to deploy.<environment>.json and fill in. Those copies are gitignored because they carry credentials. Every key below is required unless marked optional.",
-  "environment": "dev1",
+  "//": "Copy to deploy.<environment>.json and fill in non-secret values. Environment configs are tracked; keep secret placeholders and supply credentials through environment variables. Every key below is required unless marked optional.",
+  "environment": "dev",
   "subscriptionId": "<subscription id or name>",
   "//resourceGroup": "Configuration rather than a constant, so an environment in another region can be added without reworking naming.",
   "resourceGroup": "d365fsc-integration-nonprod",
@@ -35,7 +35,7 @@
     "//appInsightsName": "Optional. Omit or null to derive as appins-d365fsc-gateway-wtc-nonprod. Flex Consumption does not auto-provision Application Insights, and without it authorization denials leave no diagnosable record.",
     "appInsightsName": null
   },
-  "//secrets": "Never commit these. This file is the reason deploy.*.json is gitignored.",
+  "//secrets": "Never commit real values. Keep placeholders in tracked configs and supply EIM_DEPLOY_EIMDB and EIM_DEPLOY_SERVICEBUS at runtime.",
   "secrets": {
     "eimdbConnectionString": "<sql connection string>",
     "serviceBusConnectionString": "<service bus connection string>"

@@ -34,7 +34,7 @@ steps:
     inputs:
       targetType: filePath
       pwsh: true
-      filePath: Script/Create-AiPullRequest.ps1
+      filePath: script/Create-AiPullRequest.ps1
       arguments: >-
         -SourceBranch "$(Build.SourceBranch)"
         -TargetBranch "$(TARGET_BRANCH)"

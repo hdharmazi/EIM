@@ -1,6 +1,6 @@
 # Superseded
 
-These files provisioned or maintained Azure resources before `Script/Deploy-Eim.ps1` covered them.
+These files provisioned or maintained Azure resources before `script/deployment/Deploy-Eim.ps1` covered them.
 They are kept because they record what was done historically, not because they should be run.
 
 | File | Replaced by |
@@ -11,7 +11,7 @@ They are kept because they record what was done historically, not because they s
 | `delete-queue.ps1` | nothing, deliberately — see below |
 
 There is no Bicep in this repository any more. Everything Azure-side is a component of
-`Script/Deploy-Eim.ps1`, so there is one way to deploy and one place that reads an environment's
+`script/deployment/Deploy-Eim.ps1`, so there is one way to deploy and one place that reads an environment's
 configuration.
 
 ## Queue templates

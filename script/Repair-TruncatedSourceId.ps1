@@ -10,7 +10,7 @@
 
     Run deliberately, out of hours. This is not a migration and is not run by the deploy pipeline:
     recovering each value means scanning an NVARCHAR(MAX) payload, and doing all of them in one
-    transaction exceeded thirty minutes while holding locks on a table BAT and TEST write to.
+    transaction exceeded thirty minutes while holding locks on a table bat and test write to.
 
     Safe to stop and re-run. Progress is the shrinking count of rows still at 30 characters, so an
     interrupted run simply resumes.
@@ -29,7 +29,7 @@
 
 .EXAMPLE
     $env:EIMDB_MIGRATOR_CONNECTION = '<connection string>'
-    ./Script/Repair-TruncatedSourceId.ps1 -UseEnvironment -WhatIf
+    ./script/Repair-TruncatedSourceId.ps1 -UseEnvironment -WhatIf
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -102,7 +102,7 @@ if (-not $PSCmdlet.ShouldProcess("$remaining row(s) in $database", "repair SOURC
 }
 
 # One transaction per batch, looping server-side. The trigger is disabled inside each batch rather
-# than across the run: left off throughout, every unrelated write from BAT or TEST would silently
+# than across the run: left off throughout, every unrelated write from bat or test would silently
 # skip its MODIFIEDDATETIME stamp. Per batch, other writers wait briefly instead.
 $quote = [char]34
 $repair = @"

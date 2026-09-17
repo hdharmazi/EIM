@@ -1,9 +1,10 @@
 # Azure deployment pipelines setup
 
-Two manual Azure DevOps pipelines deploy code without changing Azure runtime settings:
+Three manual Azure DevOps pipelines deploy code without changing Azure runtime settings:
 
-- `.azure-pipelines/workflows/deploy-dashboard-nonprod.yml`
-- `.azure-pipelines/workflows/deploy-eim-customer-function.yml`
+- `.azure-pipelines/workflows/deployment/deploy-dashboard-nonprod.yml`
+- `.azure-pipelines/workflows/deployment/deploy-eim-customer-nonprod.yml`
+- `.azure-pipelines/workflows/deployment/deploy-d365fsc-gateway-nonprod.yml`
 
 ## Architecture
 
@@ -29,19 +30,31 @@ For each YAML file:
 4. Select the YAML path.
 5. Save without running until its secrets are configured.
 
-## Function pipeline secrets
+## EIM.Customer pipeline variables
 
 Download each Function App's publish profile from Azure Portal and add these Azure DevOps pipeline variables with **Keep this value secret** enabled:
 
 | Variable | Function App |
 |---|---|
-| `DEV1_FUNCTION_PUBLISH_PROFILE` | `azf-eim-customer-wtc-dev1` |
-| `TEST_FUNCTION_PUBLISH_PROFILE` | `azf-eim-customer-wtc-test` |
+| `DEV_FUNCTION_PUBLISH_PROFILE` | `azf-eim-customer-wtc-dev` |
 | `BAT_FUNCTION_PUBLISH_PROFILE` | `azf-eim-customer-wtc-bat` |
+| `TEST_FUNCTION_PUBLISH_PROFILE` | `azf-eim-customer-wtc-test` |
 
-The pipeline asks for `dev1`, `test`, or `bat` when manually run. It builds one code artifact and deploys it without changing Function App settings.
+Also add `MANUAL_VALIDATION_NOTIFY_USERS` as a non-secret variable containing the Azure DevOps user or group to notify at the promotion gates.
+
+The pipeline builds one immutable package, deploys it to `dev`, pauses for manual validation, deploys the same package to `bat`, pauses again, and finally deploys it to `test`. Each validation can wait for up to 24 hours and rejects the promotion on timeout.
 
 Publish-profile ZIP deployment requires **SCM Basic Auth Publishing Credentials** on each target Function App. In Azure Portal, open the Function App → **Configuration** → **General settings**, enable **SCM Basic Auth Publishing Credentials**, save, then download a fresh publish profile. If the setting was previously disabled, an older profile may not authenticate; replace the corresponding secret pipeline variable with the newly downloaded XML.
+
+## Gateway pipeline variables
+
+Add this secret variable to the Gateway pipeline:
+
+| Variable | Function App |
+|---|---|
+| `NONPROD_GATEWAY_PUBLISH_PROFILE` | `azf-d365fsc-gateway-wtc-nonprod` |
+
+The Gateway is shared across `dev`, `bat`, and `test`. A manual run tests and packages the Gateway, then deploys it to the shared nonprod Function App.
 
 ## Dashboard pipeline variables
 
@@ -63,28 +76,37 @@ The pipeline asks whether to deploy `api`, `frontend`, or `both`. With `both`, t
 
 The YAML references these Azure DevOps Environments:
 
-- `eim-customer-dev1`
-- `eim-customer-test`
+- `eim-customer-dev`
 - `eim-customer-bat`
+- `eim-customer-test`
+- `d365fsc-gateway-nonprod`
 - `dashboard-nonprod-api`
 - `dashboard-nonprod-frontend`
 
-Azure DevOps can create them on first use if the pipeline author has permission. To require approval for BAT:
+Azure DevOps can create them on first use if the pipeline author has permission. The EIM.Customer pipeline already contains manual validation tasks after `dev` and `bat`; additional environment approvals can be configured in Azure DevOps when required.
 
-1. Open **Pipelines** → **Environments** → `eim-customer-bat`.
+1. Open **Pipelines** → **Environments** → the target environment.
 2. Open **Approvals and checks**.
 3. Add **Approvals** and select the responsible reviewer(s).
 
-Approvals are configured in Azure DevOps, not stored in YAML.
+Azure DevOps Environment approvals are configured in Azure DevOps, not stored in YAML. The EIM.Customer `ManualValidation` promotion gates are stored in YAML.
 
 ## Running deployments
 
 ### Function
 
 1. Open the Function deployment pipeline.
+2. Select **Run pipeline** and run it without an environment parameter.
+3. Validate `dev` when the first manual gate is reached, then approve or reject promotion to `bat`.
+4. Validate `bat` at the second gate, then approve or reject promotion to `test`.
+
+Every environment receives the package created by the single Build stage; approval does not rebuild it.
+
+### Gateway
+
+1. Open the Gateway deployment pipeline.
 2. Select **Run pipeline**.
-3. Choose `dev1`, `test`, or `bat`.
-4. Run and approve the target environment if required.
+3. Review the Gateway test results and shared nonprod deployment stage.
 
 ### Dashboard
 
@@ -113,3 +135,4 @@ Pipeline artifacts are retained according to Azure DevOps retention policy. To r
 
 - **Kudu ZIP deploy returns HTTP 401:** SCM Basic Auth Publishing Credentials are disabled or the stored publish profile is stale. Enable SCM basic authentication on the exact target app, save, download a new publish profile, replace the environment-specific secret variable, and rerun.
 - **Publish-profile download is disabled:** enable SCM Basic Auth Publishing Credentials first or ask an Azure resource administrator to do so.
+- **Manual validation does not notify anyone:** verify `MANUAL_VALIDATION_NOTIFY_USERS` contains valid Azure DevOps identities and that they can access the pipeline run.

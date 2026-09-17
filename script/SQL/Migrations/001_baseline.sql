@@ -186,7 +186,7 @@ CREATE TABLE [dbo].[FILESTATUSTABLE](
 GO
 */
 
--- SPINSERTMESSAGEQUEUE moved to Script/SQL/Repeatable/R__SPINSERTMESSAGEQUEUE.sql
+-- SPINSERTMESSAGEQUEUE moved to script/SQL/Repeatable/R__SPINSERTMESSAGEQUEUE.sql
 -- (CREATE OR ALTER objects are repeatable, not versioned).
 
 

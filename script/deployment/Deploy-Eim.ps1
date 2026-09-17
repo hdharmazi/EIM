@@ -3,9 +3,9 @@
     Deploys ARM.Integration.Wilson components to a non-production environment.
 
 .DESCRIPTION
-    Replaces the per-environment scripts under Script/Deploy-Manual/, which had drifted from each
+    Replaces the per-environment scripts under script/Deploy-Manual/, which had drifted from each
     other and from what was actually deployed. Names are derived from the environment rather than
-    retyped, and every value that varies lives in Script/config/deploy.<environment>.json.
+    retyped, and every value that varies lives in script/deployment/config/deploy.<environment>.json.
 
     Components:
       queues    Service Bus queues for the environment
@@ -15,7 +15,7 @@
       frontend  dashboard SPA          (shared - only from the hosting environment)
 
 .PARAMETER Environment
-    dev1, bat or test.
+    dev, bat or test.
 
 .PARAMETER Component
     One or more components, or all. Order is enforced regardless of the order given.
@@ -24,15 +24,15 @@
     Report the derived names and the intended actions. Makes no mutating call.
 
 .EXAMPLE
-    ./Script/Deploy-Eim.ps1 -Environment dev1 -Component all -WhatIf
+    ./script/deployment/Deploy-Eim.ps1 -Environment dev -Component all -WhatIf
 
 .EXAMPLE
-    ./Script/Deploy-Eim.ps1 -Environment bat -Component function
+    ./script/deployment/Deploy-Eim.ps1 -Environment bat -Component function
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('dev', 'dev1', 'bat', 'test')]
+    [ValidateSet('dev', 'bat', 'test')]
     [string]$Environment,
 
     [Parameter(Mandatory = $true)]
@@ -43,7 +43,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$RepoRoot = Split-Path -Parent $PSScriptRoot
+$RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 # Queues before schema before code: a Function App that starts against a missing queue or an
 # un-migrated database fails on its first trigger rather than at deploy time, which is far harder
@@ -69,7 +69,7 @@ function Get-DeployConfig {
     }
 
     if (-not (Test-Path $ConfigPath)) {
-        throw "No configuration at '$ConfigPath'. Copy Script/config/deploy.example.json and fill it in."
+        throw "No configuration at '$ConfigPath'. Copy script/deployment/config/deploy.example.json and fill it in."
     }
 
     $config = Get-Content $ConfigPath -Raw | ConvertFrom-Json
@@ -206,12 +206,37 @@ function Invoke-QueuesComponent {
         return
     }
 
-    $script = Join-Path $PSScriptRoot 'Deploy-Manual/Deploy-ServiceBusQueue-AzCli.ps1'
-    if (-not (Test-Path $script)) { throw "Queue script not found at '$script'." }
+    $namespace = az servicebus namespace show `
+        --resource-group $Names.ResourceGroup `
+        --name $Names.ServiceBus `
+        --query name -o tsv 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($namespace)) {
+        throw "Service Bus namespace '$($Names.ServiceBus)' was not found in resource group '$($Names.ResourceGroup)'."
+    }
 
     foreach ($queue in $all) {
-        & $script -ResourceGroup $Names.ResourceGroup -Namespace $Names.ServiceBus -QueueName $queue
-        if ($LASTEXITCODE -ne 0) { throw "Queue '$queue' failed." }
+        $existing = az servicebus queue show `
+            --resource-group $Names.ResourceGroup `
+            --namespace-name $Names.ServiceBus `
+            --name $queue `
+            --query name -o tsv 2>$null
+        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($existing)) {
+            Write-Host "  exists queue $queue"
+            continue
+        }
+
+        az servicebus queue create `
+            --resource-group $Names.ResourceGroup `
+            --namespace-name $Names.ServiceBus `
+            --name $queue `
+            --max-size 1024 `
+            --default-message-time-to-live P14D `
+            --lock-duration PT60S `
+            --max-delivery-count 10 `
+            --enable-dead-lettering-on-message-expiration true `
+            --enable-partitioning false | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Could not create Service Bus queue '$queue'." }
+        Write-Host "  created queue $queue"
     }
 }
 
@@ -398,7 +423,7 @@ function Invoke-KeyVaultComponent {
     if ($Preview) {
         Write-Host "  would ensure vault    $vault (RBAC, soft delete 90 days)"
         Write-Host "  would set secrets     $(($secrets.name) -join ', ')"
-        Write-Host "  NOTE nothing reads from this vault yet - see Script/Docs/deployment.md"
+        Write-Host "  NOTE nothing reads from this vault yet - see docs/deployment/deployment.md"
         return
     }
 

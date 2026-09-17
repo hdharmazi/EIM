@@ -23,6 +23,6 @@ The sales-order Excel parser ([SalesOrderExcelParser.cs](../../../ARM.Integratio
 
 ## Risks / Trade-offs
 
-- Output contract change: six fields go from numeric `0`/`1` to the literal strings `"Yes"`/`"No"`. The `SalesOrder_To_D365FSC` consumer expects these strings (confirmed), and the sample [Capture1.json](../../../Script/Docs/Capture1.json) is refreshed as part of this change to match.
+- Output contract change: six fields go from numeric `0`/`1` to the literal strings `"Yes"`/`"No"`. The `SalesOrder_To_D365FSC` consumer expects these strings (confirmed), and the sample [sales-order-capture.json](../../../docs/samples/sales-order-capture.json) is refreshed as part of this change to match.
 - Existing workbooks containing `0`/`1` in these columns keep working because those tokens remain accepted.
 - Unexpected free-text in a flag cell now fails the sheet instead of silently defaulting; this is intended (surfaces bad data) but is stricter than before.

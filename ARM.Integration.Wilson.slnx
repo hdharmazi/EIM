@@ -1,17 +1,20 @@
 <Solution>
-  <Folder Name="/Script/">
-    <File Path="Script/Superseded/README.md" />
-    <File Path="Script/Superseded/Firewall.ps1" />
-    <File Path="Script/Superseded/delete-queue.ps1" />
-    <File Path="Script/Superseded/main-addqueue.bicep" />
-    <File Path="Script/Superseded/main-addqueueTest.bicep" />
-    <File Path="Script/Superseded/main-keyvault.bicep" />
-    <File Path="Script/Superseded/main.bicep" />
+  <Folder Name="/script/">
+    <File Path="script/deployment/Deploy-Eim.ps1" />
+    <File Path="script/deployment/Deploy-ZipWithPublishProfile.ps1" />
+    <File Path="script/Superseded/README.md" />
+    <File Path="script/Superseded/Firewall.ps1" />
+    <File Path="script/Superseded/delete-queue.ps1" />
+    <File Path="script/Superseded/main-addqueue.bicep" />
+    <File Path="script/Superseded/main-addqueueTest.bicep" />
+    <File Path="script/Superseded/main-keyvault.bicep" />
+    <File Path="script/Superseded/main.bicep" />
   </Folder>
-  <Folder Name="/Script/SQL/" />
-  <Folder Name="/Solution Items/">
-    <File Path="Script/Docs/deployment.md" />
-    <File Path="Script/Docs/database-migrations.md" />
+  <Folder Name="/script/SQL/" />
+  <Folder Name="/Deployment Docs/">
+    <File Path="docs/deployment/deployment.md" />
+    <File Path="docs/deployment/database-migrations.md" />
+    <File Path="docs/deployment/deployment-plan.md" />
   </Folder>
   
 

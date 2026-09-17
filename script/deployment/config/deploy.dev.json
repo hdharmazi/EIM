@@ -1,0 +1,58 @@
+{
+  "environment": "dev",
+  "subscriptionId": "<subscription id or name>",
+  "resourceGroup": "d365fsc-integration-nonprod",
+  "location": "centralus",
+  "appServicePlan": "asp-appservice-p0v3-linux-dev",
+  "serviceBusNamespace": "asb-eim-wtc-nonprod",
+  "names": {
+    "functionApp": "azf-eim-customer-wtc-dev",
+    "storageAccount": null,
+    "functionInsights": null,
+    "gatewayApp": null,
+    "gatewayStorage": null,
+    "queuePrefix": null
+  },
+  "gateway": {
+    "hostsGateway": false,
+    "baseUrl": "https://azf-d365fsc-gateway-wtc-nonprod.azurewebsites.net",
+    "alwaysReadyInstances": 1,
+    "maximumInstanceCount": 10,
+    "instanceMemoryMB": 2048,
+    "maxRequestBytes": 4194304,
+    "idempotencyRetention": "1.00:00:00",
+    "idempotencyPurgeSchedule": "0 15 * * * *",
+    "appInsightsName": null
+  },
+  "secrets": {
+    "eimdbConnectionString": "<sql connection string for eimdb>",
+    "serviceBusConnectionString": "<service bus connection string>"
+  },
+  "keyVault": {
+    "name": null
+  },
+  "dashboard": {
+    "hostsDashboard": false,
+    "apiAppName": "wtc-dashboard-api-dev",
+    "frontendAppName": "wtc-dashboard-frontend-dev"
+  },
+  "entra": {
+    "tenantId": "<deployed tenant id>",
+    "clientId": "<deployed client id>",
+    "audience": "<api://... or client id>",
+    "scope": "user_impersonation"
+  },
+  "function": {
+    "excludedUsers": "<semicolon separated guids>",
+    "pollSchedule": "0 */1 * * * *",
+    "awaitingD365SweepSchedule": "0 */15 * * * *",
+    "awaitingD365StuckTimeoutHours": "4",
+    "releaseSweepSchedule": "0 */1 * * * *",
+    "releaseSweepBatchSize": "100",
+    "retrySweepSchedule": "0 */1 * * * *",
+    "retrySweepBatchSize": "100",
+    "retryMaxAttempts": "5",
+    "retryBaseDelaySeconds": "30",
+    "retryMaxDelaySeconds": "1800"
+  }
+}

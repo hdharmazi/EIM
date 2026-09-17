@@ -1,0 +1,94 @@
+# Manual, code-only deployment of the shared non-production D365 F&SC Gateway.
+trigger: none
+pr: none
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  DOTNET_VERSION: 10.0.x
+  CONFIGURATION: Release
+  GATEWAY_PROJECT: ARM.Integration.D365FSC.Gateway/ARM.Integration.D365FSC.Gateway.csproj
+  TEST_PROJECT: ARM.Integration.D365FSC.Gateway.Tests/ARM.Integration.D365FSC.Gateway.Tests.csproj
+  ARTIFACT_NAME: d365fsc-gateway
+  PACKAGE_FILE: d365fsc-gateway-$(Build.BuildId).zip
+
+stages:
+  - stage: Build
+    displayName: Build and package shared nonprod Gateway
+    jobs:
+      - job: Build
+        steps:
+          - checkout: self
+
+          - task: UseDotNet@2
+            displayName: Use .NET SDK $(DOTNET_VERSION)
+            inputs:
+              packageType: sdk
+              version: $(DOTNET_VERSION)
+
+          - task: DotNetCoreCLI@2
+            displayName: Restore Gateway project
+            inputs:
+              command: restore
+              projects: $(GATEWAY_PROJECT)
+
+          - task: DotNetCoreCLI@2
+            displayName: Run Gateway tests
+            inputs:
+              command: test
+              projects: $(TEST_PROJECT)
+              arguments: --configuration $(CONFIGURATION)
+
+          - task: DotNetCoreCLI@2
+            displayName: Publish Gateway
+            inputs:
+              command: publish
+              publishWebProjects: false
+              projects: $(GATEWAY_PROJECT)
+              arguments: --configuration $(CONFIGURATION) --output $(Build.ArtifactStagingDirectory)/gateway-publish --no-restore
+              zipAfterPublish: false
+              modifyOutputPath: false
+
+          - task: ArchiveFiles@2
+            displayName: Package Gateway ZIP
+            inputs:
+              rootFolderOrFile: $(Build.ArtifactStagingDirectory)/gateway-publish
+              includeRootFolder: false
+              archiveType: zip
+              archiveFile: $(Build.ArtifactStagingDirectory)/$(PACKAGE_FILE)
+              replaceExistingArchive: true
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish Gateway artifact
+            inputs:
+              targetPath: $(Build.ArtifactStagingDirectory)/$(PACKAGE_FILE)
+              artifact: $(ARTIFACT_NAME)
+
+  - stage: DeployNonprod
+    displayName: Deploy shared nonprod Gateway
+    dependsOn: Build
+    jobs:
+      - deployment: DeployGateway
+        displayName: Deploy shared nonprod Gateway
+        environment: d365fsc-gateway-nonprod
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - download: current
+                  artifact: $(ARTIFACT_NAME)
+
+                - task: PowerShell@2
+                  displayName: ZIP deploy azf-d365fsc-gateway-wtc-nonprod
+                  env:
+                    NONPROD_GATEWAY_PUBLISH_PROFILE: $(NONPROD_GATEWAY_PUBLISH_PROFILE)
+                  inputs:
+                    targetType: filePath
+                    pwsh: true
+                    filePath: script/deployment/Deploy-ZipWithPublishProfile.ps1
+                    arguments: >-
+                      -PackagePath "$(Pipeline.Workspace)/$(ARTIFACT_NAME)/$(PACKAGE_FILE)"
+                      -PublishProfileEnvironmentVariable "NONPROD_GATEWAY_PUBLISH_PROFILE"

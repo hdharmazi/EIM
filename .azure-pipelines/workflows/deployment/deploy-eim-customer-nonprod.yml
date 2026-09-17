@@ -1,0 +1,186 @@
+# Manual, code-only promotion of one EIM.Customer package through dev, bat, and test.
+trigger: none
+pr: none
+
+pool:
+  vmImage: windows-latest
+
+variables:
+  DOTNET_VERSION: 10.0.x
+  CONFIGURATION: Release
+  FUNCTION_PROJECT: ARM.Integration.EIM.Customer/ARM.Integration.EIM.Customer.csproj
+  TEST_PROJECT: ARM.Integration.EIM.Tests/ARM.Integration.EIM.Tests.csproj
+  ARTIFACT_NAME: eim-customer
+  PACKAGE_FILE: eim-customer-$(Build.BuildId).zip
+
+stages:
+  - stage: Build
+    displayName: Build and package EIM.Customer
+    jobs:
+      - job: Build
+        steps:
+          - checkout: self
+
+          - task: UseDotNet@2
+            displayName: Use .NET SDK $(DOTNET_VERSION)
+            inputs:
+              packageType: sdk
+              version: $(DOTNET_VERSION)
+
+          - task: DotNetCoreCLI@2
+            displayName: Restore Function project
+            inputs:
+              command: restore
+              projects: $(FUNCTION_PROJECT)
+
+          - task: DotNetCoreCLI@2
+            displayName: Run EIM tests
+            inputs:
+              command: test
+              projects: $(TEST_PROJECT)
+              arguments: --configuration $(CONFIGURATION)
+
+          - task: DotNetCoreCLI@2
+            displayName: Publish Function
+            inputs:
+              command: publish
+              publishWebProjects: false
+              projects: $(FUNCTION_PROJECT)
+              arguments: --configuration $(CONFIGURATION) --output $(Build.ArtifactStagingDirectory)/function-publish --no-restore
+              zipAfterPublish: false
+              modifyOutputPath: false
+
+          - task: ArchiveFiles@2
+            displayName: Package Function ZIP
+            inputs:
+              rootFolderOrFile: $(Build.ArtifactStagingDirectory)/function-publish
+              includeRootFolder: false
+              archiveType: zip
+              archiveFile: $(Build.ArtifactStagingDirectory)/$(PACKAGE_FILE)
+              replaceExistingArchive: true
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish Function artifact
+            inputs:
+              targetPath: $(Build.ArtifactStagingDirectory)/$(PACKAGE_FILE)
+              artifact: $(ARTIFACT_NAME)
+
+  - stage: DeployDev
+    displayName: Deploy EIM.Customer to dev
+    dependsOn: Build
+    jobs:
+      - deployment: DeployDev
+        displayName: Deploy EIM.Customer to dev
+        environment: eim-customer-dev
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - download: current
+                  artifact: $(ARTIFACT_NAME)
+
+                - task: PowerShell@2
+                  displayName: ZIP deploy azf-eim-customer-wtc-dev
+                  env:
+                    DEV_FUNCTION_PUBLISH_PROFILE: $(DEV_FUNCTION_PUBLISH_PROFILE)
+                  inputs:
+                    targetType: filePath
+                    pwsh: true
+                    filePath: script/deployment/Deploy-ZipWithPublishProfile.ps1
+                    arguments: >-
+                      -PackagePath "$(Pipeline.Workspace)/$(ARTIFACT_NAME)/$(PACKAGE_FILE)"
+                      -PublishProfileEnvironmentVariable "DEV_FUNCTION_PUBLISH_PROFILE"
+
+  - stage: ValidateDev
+    displayName: Validate dev deployment
+    dependsOn: DeployDev
+    jobs:
+      - job: ValidateDev
+        displayName: Approve promotion from dev to bat
+        pool: server
+        timeoutInMinutes: 1445
+        steps:
+          - task: ManualValidation@0
+            timeoutInMinutes: 1440
+            inputs:
+              notifyUsers: $(MANUAL_VALIDATION_NOTIFY_USERS)
+              instructions: >-
+                Validate build $(Build.BuildId) on azf-eim-customer-wtc-dev.
+                Approve to promote the same package to bat, or reject to stop promotion.
+              onTimeout: reject
+
+  - stage: DeployBat
+    displayName: Deploy EIM.Customer to bat
+    dependsOn: ValidateDev
+    jobs:
+      - deployment: DeployBat
+        displayName: Deploy EIM.Customer to bat
+        environment: eim-customer-bat
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - download: current
+                  artifact: $(ARTIFACT_NAME)
+
+                - task: PowerShell@2
+                  displayName: ZIP deploy azf-eim-customer-wtc-bat
+                  env:
+                    BAT_FUNCTION_PUBLISH_PROFILE: $(BAT_FUNCTION_PUBLISH_PROFILE)
+                  inputs:
+                    targetType: filePath
+                    pwsh: true
+                    filePath: script/deployment/Deploy-ZipWithPublishProfile.ps1
+                    arguments: >-
+                      -PackagePath "$(Pipeline.Workspace)/$(ARTIFACT_NAME)/$(PACKAGE_FILE)"
+                      -PublishProfileEnvironmentVariable "BAT_FUNCTION_PUBLISH_PROFILE"
+
+  - stage: ValidateBat
+    displayName: Validate bat deployment
+    dependsOn: DeployBat
+    jobs:
+      - job: ValidateBat
+        displayName: Approve promotion from bat to test
+        pool: server
+        timeoutInMinutes: 1445
+        steps:
+          - task: ManualValidation@0
+            timeoutInMinutes: 1440
+            inputs:
+              notifyUsers: $(MANUAL_VALIDATION_NOTIFY_USERS)
+              instructions: >-
+                Validate build $(Build.BuildId) on azf-eim-customer-wtc-bat.
+                Approve to promote the same package to test, or reject to stop promotion.
+              onTimeout: reject
+
+  - stage: DeployTest
+    displayName: Deploy EIM.Customer to test
+    dependsOn: ValidateBat
+    jobs:
+      - deployment: DeployTest
+        displayName: Deploy EIM.Customer to test
+        environment: eim-customer-test
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - download: current
+                  artifact: $(ARTIFACT_NAME)
+
+                - task: PowerShell@2
+                  displayName: ZIP deploy azf-eim-customer-wtc-test
+                  env:
+                    TEST_FUNCTION_PUBLISH_PROFILE: $(TEST_FUNCTION_PUBLISH_PROFILE)
+                  inputs:
+                    targetType: filePath
+                    pwsh: true
+                    filePath: script/deployment/Deploy-ZipWithPublishProfile.ps1
+                    arguments: >-
+                      -PackagePath "$(Pipeline.Workspace)/$(ARTIFACT_NAME)/$(PACKAGE_FILE)"
+                      -PublishProfileEnvironmentVariable "TEST_FUNCTION_PUBLISH_PROFILE"

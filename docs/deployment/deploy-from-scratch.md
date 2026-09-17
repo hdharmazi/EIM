@@ -4,7 +4,7 @@ Standing up this system in an empty subscription. If you are adding an environme
 already exists, you want the "Onboarding a new environment" section of [deployment.md](deployment.md)
 instead — it is a much shorter list.
 
-There is no Bicep and no ARM template. Everything is a component of `Script/Deploy-Eim.ps1`, so there
+There is no Bicep and no ARM template. Everything is a component of `script/deployment/Deploy-Eim.ps1`, so there
 is one way to deploy and one place that reads an environment's configuration.
 
 ## What you need first
@@ -13,7 +13,7 @@ is one way to deploy and one place that reads an environment's configuration.
 |---|---|
 | Azure CLI | `az login`, and an account that can create resource groups |
 | .NET SDK 10 | builds the API, the Functions host and the gateway |
-| Node 20+ | builds the SPA |
+| Node 22 | builds the SPA |
 | SQL access | an account that can create a database and run DDL |
 | Entra rights | to register an application, or someone who has them |
 
@@ -60,6 +60,11 @@ az sql server create --resource-group <rg> --name <sql-server> --location <regio
 az sql db create --resource-group <rg> --server <sql-server> --name eimdb --service-objective S0
 ```
 
+The database is empty at this point. The `schema` deployment component is mandatory: it creates the
+tables and indexes, records applied versions in `dbo.SchemaVersions`, seeds shared status/routing
+data, and installs the repeatable stored procedure and trigger. None of the applications creates
+schema at startup.
+
 Finally, the two dashboard resources. **The script does not create these**, by design: a linked
 backend needs the Standard SKU, and creating one silently on the wrong tier produces a dashboard that
 loads and then fails every API call.
@@ -84,11 +89,12 @@ registration they were not issued for.
 ## 3. Configuration
 
 ```powershell
-Copy-Item Script\config\deploy.example.json Script\config\deploy.<env>.json
+Copy-Item script\deployment\config\deploy.example.json script\deployment\config\deploy.<env>.json
 ```
 
-`deploy.example.json` documents every key inline and is the only one committed — the rest hold SQL
-and Service Bus credentials and are gitignored. Keep it that way.
+`deploy.example.json` documents every key inline. Environment files are tracked so infrastructure
+settings can be reviewed. Keep secret fields as placeholders and supply SQL and Service Bus
+connection strings through `EIM_DEPLOY_EIMDB` and `EIM_DEPLOY_SERVICEBUS` when deploying.
 
 For your first environment:
 
@@ -110,7 +116,7 @@ a forgotten flag would silently mean no environment deploys the gateway.
 ## 4. Open the SQL firewall
 
 ```powershell
-.\Script\Deploy-Eim.ps1 -Environment <env> -Component firewall
+.\script\deployment\Deploy-Eim.ps1 -Environment <env> -Component firewall
 ```
 
 Adds your current public IP as a rule named for you. Not part of `all`, because a deployment that
@@ -120,7 +126,7 @@ printed when it is created.
 ## 5. Check before you deploy
 
 ```powershell
-.\Script\Deploy-Eim.ps1 -Environment <env> -Component all -WhatIf
+.\script\deployment\Deploy-Eim.ps1 -Environment <env> -Component all -WhatIf
 ```
 
 Read the derived names against what you created in step 1. This is the cheapest moment to catch a
@@ -129,7 +135,7 @@ typo; after this, resources start existing.
 ## 6. Deploy
 
 ```powershell
-.\Script\Deploy-Eim.ps1 -Environment <env> -Component all
+.\script\deployment\Deploy-Eim.ps1 -Environment <env> -Component all
 ```
 
 Order is deliberate: `queues`, `schema`, `api`, `function`, `gateway`, `frontend`. Queues and schema
@@ -140,16 +146,20 @@ last because it only reads what the rest produces.
 The script stops at the first failure and names the component. It does not continue, because a
 half-deployed environment reporting success is worse than a stop.
 
-## 7. Seed the database
+## 7. Complete environment data
 
-Two tables need rows before anything works. Neither is created by deployment, because both hold
-decisions rather than infrastructure.
+Migrations create both tables and seed the repository-defined status and routing defaults. Review
+those defaults for the environments being deployed, then add the connection profiles that cannot be
+stored in source control.
 
-**`ROUTETABLE`** — one row per message route for the environment. A message arriving with no route is
-dead-lettered with reason `NoRoute`, so a gap here is lost traffic rather than an untidy table.
+**`ROUTETABLE`** — migration `006_seed_routetable.sql` supplies the known default routes. Confirm the
+new environment is covered and add any environment-specific routes. A message arriving with no route
+is dead-lettered with reason `NoRoute`, so a seeding gap is lost traffic rather than an untidy table.
 
-**`ENVIRONMENTTABLE`** — the D365 connection profiles. The gateway resolves `D365FSC-GW/<environment>`
-from the environment in the request path, and the capture pipeline uses `D365FSC/<environment>`.
+**`ENVIRONMENTTABLE`** — add the real D365 connection profiles after migration. The baseline contains
+only a placeholder sample, not deployable credentials. The gateway resolves
+`D365FSC-GW/<environment>` from the environment in the request path, and the capture pipeline uses
+`D365FSC/<environment>`.
 
 Connection strings are held here in plaintext, and Environment Settings lets any dashboard admin
 reveal them. That is a known and accepted state, not an oversight — see the standing constraints in
@@ -186,7 +196,7 @@ consumer between gateway apps.
 ## Optional: Key Vault
 
 ```powershell
-.\Script\Deploy-Eim.ps1 -Environment <env> -Component keyvault
+.\script\deployment\Deploy-Eim.ps1 -Environment <env> -Component keyvault
 ```
 
 Provisions an RBAC-authorised vault and stores the Service Bus and SQL connection strings.
@@ -203,7 +213,7 @@ If that step fails with 403, the component prints the role assignment you need.
 
 Much shorter — the shared resources already exist:
 
-1. Add the name to the `ValidateSet` on `-Environment` in `Script/Deploy-Eim.ps1`.
+1. Add the name to the `ValidateSet` on `-Environment` in `script/deployment/Deploy-Eim.ps1`.
 2. Copy `deploy.example.json` and fill it in, with **both** `hostsDashboard` and `hostsGateway` false.
 3. `-Component all` — it skips the shared components and reports which it skipped.
 4. Seed `ROUTETABLE`, and `ENVIRONMENTTABLE` if the gateway is to serve the environment.

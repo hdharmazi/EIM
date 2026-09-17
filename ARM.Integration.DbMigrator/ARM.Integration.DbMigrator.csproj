@@ -11,11 +11,11 @@
     <PackageReference Include="dbup-sqlserver" Version="7.2.0" />
   </ItemGroup>
 
-  <!-- Scripts stay under Script/SQL so they remain discoverable, but ship inside this
+  <!-- Scripts stay under script/SQL so they remain discoverable, but ship inside this
        assembly so a build always carries exactly the migrations of its source revision. -->
   <ItemGroup>
-    <EmbeddedResource Include="..\Script\SQL\Migrations\*.sql" LogicalName="Migrations.%(Filename)%(Extension)" />
-    <EmbeddedResource Include="..\Script\SQL\Repeatable\*.sql" LogicalName="Repeatable.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\script\SQL\Migrations\*.sql" LogicalName="Migrations.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\script\SQL\Repeatable\*.sql" LogicalName="Repeatable.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

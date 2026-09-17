@@ -120,7 +120,7 @@ stages:
                     inputs:
                       targetType: filePath
                       pwsh: true
-                      filePath: Script/Deploy-ZipWithPublishProfile.ps1
+                      filePath: script/deployment/Deploy-ZipWithPublishProfile.ps1
                       arguments: >-
                         -PackagePath "$(Pipeline.Workspace)/dashboard-api/dashboard-api-$(Build.BuildId).zip"
                         -PublishProfileEnvironmentVariable "NONPROD_API_PUBLISH_PROFILE"

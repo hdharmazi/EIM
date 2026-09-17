@@ -68,7 +68,7 @@ var repeatableScripts = assembly.GetManifestResourceNames()
 // Build integrity, checked before the connection so a bad package fails the same way everywhere.
 if (versionedScripts.Length == 0)
 {
-    Console.Error.WriteLine("No embedded migration scripts found. The build is not carrying Script/SQL/Migrations.");
+    Console.Error.WriteLine("No embedded migration scripts found. The build is not carrying script/SQL/Migrations.");
     return 2;
 }
 

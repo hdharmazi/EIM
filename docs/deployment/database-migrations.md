@@ -3,13 +3,22 @@
 Schema for `eimdb` is applied by `ARM.Integration.DbMigrator`, a console runner built on DbUp.
 No application process changes the schema at startup.
 
+The migrator is required for a new database and for every later release that adds a migration. An
+empty Azure SQL database does not contain the tables, indexes, routing rows, stored procedure, or
+trigger used by the API, EIM.Customer, and Gateway. Deploying code without first applying migrations
+produces table-not-found errors; it is not a supported deployment mode.
+
+`script/deployment/Deploy-Eim.ps1 -Component schema` runs the migrator. The code-only Azure DevOps
+pipelines intentionally do not run it because they promote application packages without receiving a
+database connection string.
+
 ## Where scripts live
 
 | Folder | Category | Applied |
 |---|---|---|
-| `Script/SQL/Migrations/` | Versioned | Once, in filename order, recorded in `dbo.SchemaVersions` |
-| `Script/SQL/Repeatable/` | Repeatable | Every run, after all pending versioned scripts |
-| `Script/SQL/_scratch/` | Neither | Never — not embedded, not deployed |
+| `script/SQL/Migrations/` | Versioned | Once, in filename order, recorded in `dbo.SchemaVersions` |
+| `script/SQL/Repeatable/` | Repeatable | Every run, after all pending versioned scripts |
+| `script/SQL/_scratch/` | Neither | Never — not embedded, not deployed |
 
 Scripts stay in the repository as ordinary `.sql` files but are compiled into the runner as
 embedded resources, so a given build always carries exactly the migrations of its source revision.
@@ -36,7 +45,7 @@ column that a pending migration in the same run just added.
 
 ## Adding a versioned migration
 
-1. Create `Script/SQL/Migrations/NNN_short_description.sql`, where `NNN` is the next free
+1. Create `script/SQL/Migrations/NNN_short_description.sql`, where `NNN` is the next free
    three-digit number.
 2. Write the forward change only.
 3. Build the runner and confirm your script appears in the embedded inventory it prints on startup.
@@ -272,7 +281,7 @@ clear it.
 
 ## Review checklist
 
-When reviewing a pull request that touches `Script/SQL/`:
+When reviewing a pull request that touches `script/SQL/`:
 
 - [ ] Is the script filed in the correct category? `CREATE OR ALTER` objects belong in
       `Repeatable/`; everything else in `Migrations/`.

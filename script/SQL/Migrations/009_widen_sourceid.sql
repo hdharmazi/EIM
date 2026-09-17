@@ -17,7 +17,7 @@
 -- how this happened in the first place.
 --
 -- This migration only widens. Repairing the existing rows is a separate,
--- chunked, resumable operation - see Script/Repair-TruncatedSourceId.ps1. The
+-- chunked, resumable operation - see script/Repair-TruncatedSourceId.ps1. The
 -- first attempt did the repair here and exceeded a 1800 second timeout, because
 -- recovering each value means scanning an NVARCHAR(MAX) payload and there are
 -- 77,700 of them. It rolled back cleanly, but it had held a transaction against

@@ -1,7 +1,7 @@
 # Deployment
 
-Non-production deployment is one script, `Script/Deploy-Eim.ps1`, driven by one configuration file
-per environment. It replaces the ten scripts that used to live in `Script/Deploy-Manual/`, and the
+Non-production deployment is one script, `script/deployment/Deploy-Eim.ps1`, driven by one configuration file
+per environment. It replaces the scripts that used to live in `script/Deploy-Manual/`, and the
 Bicep templates that used to live alongside them. There is no Bicep or ARM template in this
 repository — everything Azure-side is a component of this script.
 
@@ -12,16 +12,16 @@ exists: see [deploy-from-scratch.md](deploy-from-scratch.md).
 
 ```powershell
 # Preview. Reports the derived names and intended actions, changes nothing.
-./Script/Deploy-Eim.ps1 -Environment bat -Component all -WhatIf
+./script/deployment/Deploy-Eim.ps1 -Environment bat -Component all -WhatIf
 
 # One component
-./Script/Deploy-Eim.ps1 -Environment bat -Component function
+./script/deployment/Deploy-Eim.ps1 -Environment bat -Component function
 
 # Several. Order is enforced, not taken from the order given.
-./Script/Deploy-Eim.ps1 -Environment bat -Component queues,schema,function
+./script/deployment/Deploy-Eim.ps1 -Environment bat -Component queues,schema,function
 ```
 
-Environments are `dev1`, `bat` and `test`. Components are:
+Environments are `dev`, `bat` and `test`. Components are:
 
 | Component | Does |
 |---|---|
@@ -46,7 +46,7 @@ produces.
 Run it when `schema` cannot reach the database:
 
 ```powershell
-.\Script\Deploy-Eim.ps1 -Environment bat -Component firewall
+.\script\deployment\Deploy-Eim.ps1 -Environment bat -Component firewall
 ```
 
 It is **not** part of `all`, and deliberately so. Opening a SQL firewall is a developer convenience,
@@ -79,9 +79,9 @@ produces a dashboard that loads and then fails every call.
 
 ## Configuration
 
-`Script/config/deploy.<environment>.json`, one per environment. `deploy.example.json` documents
-every key and is the only one committed — the rest carry the SQL and Service Bus credentials and are
-gitignored.
+`script/deployment/config/deploy.<environment>.json`, one per environment. These files are tracked so
+resource names and non-secret settings can be reviewed. Keep the SQL and Service Bus fields as
+placeholders and supply their values through `EIM_DEPLOY_EIMDB` and `EIM_DEPLOY_SERVICEBUS` at runtime.
 
 | Key | Required | Notes |
 |---|---|---|
@@ -134,7 +134,7 @@ Only queues, storage, the Function App and the database schema are per environme
 the gateway already exist and are reused, so adding an environment provisions three resources and
 touches no infrastructure template.
 
-1. Add the environment name to the `ValidateSet` on `-Environment` in `Script/Deploy-Eim.ps1`.
+1. Add the environment name to the `ValidateSet` on `-Environment` in `script/deployment/Deploy-Eim.ps1`.
 2. Copy `deploy.example.json` to `deploy.<environment>.json` and fill it in. Leave `names` null
    unless a resource does not follow the pattern.
 3. Set `dashboard.hostsDashboard` and `gateway.hostsGateway` to false. A new environment reuses both
@@ -164,10 +164,15 @@ secrets into it. If that step fails with 403, the component prints the role assi
 
 ### Queues
 
-Queue provisioning is `Deploy-Eim.ps1 -Component queues`, and nothing else. All five names derive from
-the environment prefix.
+Queue provisioning is `script/deployment/Deploy-Eim.ps1 -Component queues`, and nothing else. All
+five names derive from the environment prefix. The component verifies that the configured Service
+Bus namespace exists, skips queues that already exist, and creates only missing queues.
 
-The Bicep templates under `Script/Bicep/Superseded/` did this before and hard-code `bat-` and `test-`
+New queues use a 1 GB maximum size, 14-day default TTL, 60-second lock duration, maximum delivery
+count 10, dead-lettering on expiration, and no partitioning. Queue creation is implemented directly
+in `Deploy-Eim.ps1`; there is no separate queue helper to keep in sync.
+
+The Bicep templates under `script/Superseded/` did this before and hard-code `bat-` and `test-`
 queue names. They are kept for history only — one of them declares a list of queues it never actually
 creates, so reading it to find out what exists gives the wrong answer.
 
@@ -177,7 +182,7 @@ live traffic.
 
 ### Key Vault is not implemented
 
-`Deploy-Eim.ps1 -Component keyvault` provisions a vault and stores connection strings, but nothing
+`script/deployment/Deploy-Eim.ps1 -Component keyvault` provisions a vault and stores connection strings, but nothing
 reads from it. The capability is kept because the work is deferred rather than abandoned; running it
 on its own achieves nothing except a second copy of each secret.
 
