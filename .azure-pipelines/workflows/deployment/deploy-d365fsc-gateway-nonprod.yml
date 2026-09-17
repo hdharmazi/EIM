@@ -12,6 +12,8 @@ variables:
   TEST_PROJECT: ARM.Integration.D365FSC.Gateway.Tests/ARM.Integration.D365FSC.Gateway.Tests.csproj
   ARTIFACT_NAME: d365fsc-gateway
   PACKAGE_FILE: d365fsc-gateway-$(Build.BuildId).zip
+  GATEWAY_APP_NAME: azf-d365fsc-gateway-wtc-nonprod
+  RESOURCE_GROUP: d365fsc-integration-nonprod
 
 stages:
   - stage: Build
@@ -81,14 +83,15 @@ stages:
                 - download: current
                   artifact: $(ARTIFACT_NAME)
 
-                - task: PowerShell@2
-                  displayName: ZIP deploy azf-d365fsc-gateway-wtc-nonprod
-                  env:
-                    NONPROD_GATEWAY_PUBLISH_PROFILE: $(NONPROD_GATEWAY_PUBLISH_PROFILE)
+                - task: AzureCLI@2
+                  displayName: ZIP deploy $(GATEWAY_APP_NAME)
                   inputs:
-                    targetType: filePath
-                    pwsh: true
-                    filePath: script/deployment/Deploy-ZipWithPublishProfile.ps1
-                    arguments: >-
-                      -PackagePath "$(Pipeline.Workspace)/$(ARTIFACT_NAME)/$(PACKAGE_FILE)"
-                      -PublishProfileEnvironmentVariable "NONPROD_GATEWAY_PUBLISH_PROFILE"
+                    azureSubscription: $(NONPROD_AZURE_SERVICE_CONNECTION)
+                    scriptType: pscore
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      az functionapp deployment source config-zip `
+                        --resource-group "$(RESOURCE_GROUP)" `
+                        --name "$(GATEWAY_APP_NAME)" `
+                        --src "$(Pipeline.Workspace)/$(ARTIFACT_NAME)/$(PACKAGE_FILE)"
+                      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

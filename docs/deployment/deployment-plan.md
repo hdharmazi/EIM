@@ -69,7 +69,7 @@ Add three Azure DevOps pipelines:
 ## Security
 
 - Store `DEV_FUNCTION_PUBLISH_PROFILE`, `BAT_FUNCTION_PUBLISH_PROFILE`, and `TEST_FUNCTION_PUBLISH_PROFILE` as secret pipeline variables or in a restricted variable group.
-- Store `NONPROD_GATEWAY_PUBLISH_PROFILE` as a secret pipeline variable.
+- Configure `NONPROD_AZURE_SERVICE_CONNECTION` with the name of an authorized Azure Resource Manager service connection for Gateway deployment.
 - Store the validation identities in non-secret `MANUAL_VALIDATION_NOTIFY_USERS`.
 - Store `NONPROD_API_PUBLISH_PROFILE` and `NONPROD_SWA_DEPLOYMENT_TOKEN` as secret pipeline variables.
 - Do not store publish profiles, connection strings, or application secrets in source control or artifacts.

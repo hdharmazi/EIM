@@ -48,13 +48,20 @@ Publish-profile ZIP deployment requires **SCM Basic Auth Publishing Credentials*
 
 ## Gateway pipeline variables
 
-Add this secret variable to the Gateway pipeline:
+Add this non-secret variable to the Gateway pipeline:
 
-| Variable | Function App |
+| Variable | Description |
 |---|---|
-| `NONPROD_GATEWAY_PUBLISH_PROFILE` | `azf-d365fsc-gateway-wtc-nonprod` |
+| `NONPROD_AZURE_SERVICE_CONNECTION` | Name of an Azure Resource Manager service connection authorized for `d365fsc-integration-nonprod` |
 
-The Gateway is shared across `dev`, `bat`, and `test`. A manual run tests and packages the Gateway, then deploys it to the shared nonprod Function App.
+The Gateway is shared across `dev`, `bat`, and `test`. A manual run tests and packages the Gateway,
+then deploys it to the shared nonprod Function App through Azure CLI. The Gateway runs on Flex
+Consumption, so its pipeline does not use a publish profile or the Kudu `/api/zipdeploy` endpoint.
+
+Create the service connection under **Project settings** → **Service connections** → **New service
+connection** → **Azure Resource Manager**. Grant it permission to deploy the Gateway Function App,
+then authorize it for this pipeline. The service connection identity needs a deployment-capable role
+such as **Contributor** on the resource group, or a narrower equivalent on the Function App.
 
 ## Dashboard pipeline variables
 
@@ -134,6 +141,8 @@ Pipeline artifacts are retained according to Azure DevOps retention policy. To r
 ## Troubleshooting
 
 - **Kudu ZIP deploy returns HTTP 401:** SCM Basic Auth Publishing Credentials are disabled or the stored publish profile is stale. Enable SCM basic authentication on the exact target app, save, download a new publish profile, replace the environment-specific secret variable, and rerun.
+- **Gateway Kudu ZIP deploy returns HTTP 404:** the Gateway is a Flex Consumption Function App and must use the Gateway pipeline's Azure CLI deployment step. Pull the current YAML, configure `NONPROD_AZURE_SERVICE_CONNECTION`, and do not use `NONPROD_GATEWAY_PUBLISH_PROFILE` for this pipeline.
+- **Gateway AzureCLI task cannot find or use the service connection:** confirm `NONPROD_AZURE_SERVICE_CONNECTION` exactly matches the Azure DevOps service connection name and authorize the connection for the pipeline. Confirm its identity has deployment permission on `d365fsc-integration-nonprod`.
 - **Publish-profile download is disabled:** enable SCM Basic Auth Publishing Credentials first or ask an Azure resource administrator to do so.
 - **Publish-profile variable is not valid XML:** open the exact target Function App, download its publish profile, open the downloaded file in a text editor, and paste the complete XML contents into the matching secret pipeline variable. Do not paste the filename, a Secure Files path, JSON, surrounding quotes, or the Azure DevOps `$(VARIABLE_NAME)` expression. If the variable comes from a variable group, link and authorize that group for the pipeline.
 - **Manual validation does not notify anyone:** verify `MANUAL_VALIDATION_NOTIFY_USERS` contains valid Azure DevOps identities and that they can access the pipeline run.
