@@ -12,6 +12,8 @@
   "names": {
     "functionApp": null,
     "storageAccount": null,
+    "//functionInsights": "Omit or null to derive appins-eim-customer-wtc-<env>. Without it the timer sweeps and queue handlers run blind: a trigger that never fires leaves no record anywhere.",
+    "functionInsights": null,
     "gatewayApp": null,
     "gatewayStorage": null,
     "queuePrefix": null

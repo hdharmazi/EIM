@@ -4,7 +4,25 @@ using Microsoft.Data.SqlClient;
 
 namespace ARM.Integration.Dashboard.API.Services;
 
-public class GatewayConsumerRepository(IConfiguration config)
+/// <summary>
+/// Consumer storage, behind an interface so the registration rules that guard a key — refusing a
+/// digest, and leaving an existing hash alone when verification fails — can be tested without a
+/// database. Those rules are the whole point of the endpoint, so they should not be the part that
+/// is hardest to cover.
+/// </summary>
+public interface IGatewayConsumerRepository
+{
+    Task<List<GatewayConsumerRecord>> GetAllAsync();
+    Task<GatewayConsumerRecord?> GetAsync(string consumerId);
+    Task<int> CountEnabledUnverifiedAsync(string? excludingConsumerId = null);
+    Task CreateAsync(GatewayConsumerInput input, string createdBy);
+    Task<bool> UpdateAsync(string consumerId, GatewayConsumerInput input, string modifiedBy);
+    Task<bool> DeleteAsync(string consumerId);
+    Task<bool> SetKeyHashAsync(
+        string consumerId, string keyHash, string modifiedBy, string? verifiedApp, DateTime? verifiedOn);
+}
+
+public class GatewayConsumerRepository(IConfiguration config) : IGatewayConsumerRepository
 {
     private readonly string _connectionString = config.GetConnectionString("EIMDB")
         ?? throw new InvalidOperationException("EIMDB connection string is missing.");

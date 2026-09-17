@@ -19,6 +19,7 @@ builder.Services.AddScoped<SalesOrderExcelParser>();
 builder.Services.AddScoped<RouteRepository>();
 builder.Services.AddScoped<StatusRepository>();
 builder.Services.AddScoped<GatewayConsumerRepository>();
+builder.Services.AddScoped<IGatewayConsumerRepository>(sp => sp.GetRequiredService<GatewayConsumerRepository>());
 builder.Services.AddScoped<GatewayPermissionRepository>();
 builder.Services.AddScoped<D365EntityCatalog>();
 

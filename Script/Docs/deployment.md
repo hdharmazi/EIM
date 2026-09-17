@@ -90,7 +90,7 @@ gitignored.
 | `resourceGroup`, `location` | yes | Configuration, not constants, so an environment in another region can be added |
 | `appServicePlan` | yes | Shared across environments — see below |
 | `serviceBusNamespace` | yes | Queue names are derived from the environment prefix |
-| `names.functionApp`, `names.storageAccount`, `names.queuePrefix` | no | Override the derived name; omit or null to derive |
+| `names.functionApp`, `names.storageAccount`, `names.functionInsights`, `names.queuePrefix` | no | Override the derived name; omit or null to derive |
 | `secrets.eimdbConnectionString` | yes | Used by `schema`, `api`, `function` and `gateway`. Every non-production environment points at `eimdb` |
 | `secrets.serviceBusConnectionString` | yes | |
 | `dashboard.hostsDashboard` | yes | Exactly one environment should be true |

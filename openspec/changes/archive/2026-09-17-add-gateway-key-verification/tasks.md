@@ -69,6 +69,14 @@
 - [x] 5b.5 Verify a key against the consumer's own address when it has one, falling back to the configured list when it does not
 - [x] 5b.6 Show each consumer's gateway in the list, and the resolved target in the key dialog
 - [x] 5b.7 Test the address policy and verification against an address outside the configured list
+- [x] 5b.8 Accept only a response carrying the gateway's correlation header, not merely any non-401
+
+> 5b.8 fixes a defect introduced by 5b.5. While the address came only from server configuration the
+> target was always a real gateway, so "anything that is not 401" was a safe inference. Making the
+> address editable broke that: every app under `azurewebsites.net` answers, and a sibling Functions
+> app returns 404 for the probe path — observed against `azf-eim-customer-wtc-bat` on 2026-09-16.
+> That would have recorded a key as Verified against an application that can never honour it, which
+> is the exact false assurance this change exists to remove.
 
 > The list-based selection alone still needed a redeploy to add a gateway, which put a routine
 > onboarding step behind a deployment. The address now lives on the consumer, where an administrator
@@ -82,15 +90,18 @@
 - [x] 6.1 Test the response mapping: 401 rejects, 400 accepts, 200 accepts, timeout is unreachable
 - [x] 6.2 Test that an unreachable gateway yields unable-to-check, not rejected
 - [x] 6.3 Test that the gateway application name is recorded on acceptance
-- [ ] 6.4 Test that a failed verification leaves an existing key hash unchanged
-- [ ] 6.5 Test that the hex-digest rejection still runs before any network call is made
+- [x] 6.4 Test that a failed verification leaves an existing key hash unchanged
+- [x] 6.5 Test that the hex-digest rejection still runs before any network call is made
 - [x] 6.6 Add a gateway authorizer test asserting the decision is unchanged by verification metadata
 - [x] 6.7 Test that a loopback gateway stores the key without probing and records it as unchecked, not verified
 
-> 6.4 and 6.5 are not done and are not faked. Both assert controller behaviour, and the controller
-> depends on the concrete `GatewayConsumerRepository`, which needs a database. Testing them properly
-> means extracting an interface — a real refactor, not a test. The behaviour is implemented and was
-> confirmed by hand; it simply is not covered.
+> 6.4 and 6.5 were blocked on the controller depending on the concrete repository, which needs a
+> database. Resolved by extracting `IGatewayConsumerRepository` in the dashboard API — a small,
+> contained change rather than a test-shaped workaround. The rules these cover are the reason the
+> endpoint exists, so they should not have been the hardest part to reach.
+>
+> 6.5 asserts the probe handler was never invoked, not merely that the request was refused: the point
+> is that a digest is caught before a key-shaped value is put on the wire.
 
 ## 7. Documentation
 
@@ -101,9 +112,26 @@
 
 ## 8. Verification against real environments
 
-- [ ] 8.1 Confirm a genuine key from one gateway is accepted and the correct application is recorded
-- [ ] 8.2 Confirm a random string is refused with a rejection message
-- [ ] 8.3 Confirm a valid key for a *different* function app is refused, proving the probe discriminates between applications rather than merely detecting well-formed keys (verified by hand 2026-09-16: a dev gateway key returns 401 from the test gateway)
-- [ ] 8.4 Stop or block a gateway and confirm the result is unable-to-check, not rejected
-- [ ] 8.5 Check App Insights to confirm probe traffic does not appear in the `Gateway denied` query used for alerting, and fix or document it if it does
-- [ ] 8.6 DROPPED by decision: existing `eng-apps` and `eng-apps-dev` hashes are left alone. They keep working, and will show a recorded key with an unknown gateway application until someone re-registers them.
+- [x] 8.1 Confirm a genuine key from one gateway is accepted and the correct application is recorded
+- [x] 8.2 Confirm a random string is refused with a rejection message
+- [x] 8.3 Confirm a valid key for a *different* function app is refused, proving the probe discriminates between applications rather than merely detecting well-formed keys (verified by hand 2026-09-16: a dev gateway key returns 401 from the test gateway)
+- [x] 8.4 Stop or block a gateway and confirm the result is unable-to-check, not rejected
+- [x] 8.5 Check App Insights to confirm probe traffic does not appear in the `Gateway denied` query used for alerting, and fix or document it if it does
+
+> 8.1 confirmed in production: consumer `test-1` carries `VERIFIEDAPP = azf-d365fsc-gateway-wtc-nonprod`
+> from a key registered through the dashboard, and a live request with that key returns 200.
+>
+> 8.4 confirmed two ways rather than by stopping a shared gateway: a hostname that does not resolve
+> fails DNS and is reported unreachable, and an address that answers without the gateway's correlation
+> header is likewise unreachable rather than rejected.
+>
+> 8.5 confirmed clean. Probes appear only as `requests` with `resultCode=400`; no trace matches
+> `missing consumer`, `PROBE` or `malformed`, so the `Gateway denied` alert query is unaffected. The
+> earlier note that this was blocked on permissions was wrong — the blocker was the tooling. Querying
+> the managed workspace through ARM needs a role the operator lacks, but the `application-insights`
+> CLI extension queries through the component, which the operator can already read. No access change
+> was needed.
+>
+> The same query independently confirmed the live 403 diagnosis:
+> `Gateway denied: consumer=test-1 ... reason=key does not match consumer`.
+- [x] 8.6 DROPPED, then resolved by events: this was to leave the existing `eng-apps` and `eng-apps-dev` hashes alone, showing a recorded key against an unknown gateway application until someone re-registered them. Both consumers were deleted instead, so no row is left in that state. `test-1` is the only consumer and was registered through the verified path from the start.
