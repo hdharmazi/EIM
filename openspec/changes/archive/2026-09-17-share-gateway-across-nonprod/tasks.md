@@ -91,10 +91,22 @@
 > repointing `eng-apps`. Repointing would have replaced a working consumer's key hash and broken it
 > against the gateway it currently uses. The rows were deleted afterwards.
 
-## 8. Cutover, not yet started
+## 8. Cutover
 
-- [ ] 8.1 Issue a host key on the shared gateway for each real consumer
-- [ ] 8.2 Re-register each key and change the consumer's base address in the same step
-- [ ] 8.3 Confirm no traffic remains on `azf-d365fsc-gateway-wtc-dev` and `-test`
-- [ ] 8.4 Delete the per-environment gateway apps and their storage accounts, as a separate decision once 8.3 holds
-- [ ] 8.5 Remove the `eng-apps` key created on the shared gateway during verification if cutover does not proceed soon
+- [x] 8.1 Issue a host key on the shared gateway for each real consumer
+- [x] 8.2 Re-register each key and change the consumer's base address in the same step
+- [x] 8.3 Confirm no traffic remains on `azf-d365fsc-gateway-wtc-dev` and `-test`
+- [x] 8.4 Delete the per-environment gateway apps and their storage accounts, as a separate decision once 8.3 holds
+- [x] 8.5 Remove the `eng-apps` key created on the shared gateway during verification if cutover does not proceed soon
+
+> The cutover this section was written for no longer exists. `eng-apps` and `eng-apps-dev` have been
+> deleted from `GATEWAYCONSUMER`; App Insights shows requests for `eng-apps` failing with
+> `reason=unknown consumer`. `test-1` is the only consumer, and it was created directly against the
+> shared gateway, so there was nothing to migrate.
+>
+> Verified 2026-09-16 after the operator acted: `azf-d365fsc-gateway-wtc-nonprod` is the only gateway
+> app left, the shared gateway holds only `default` and `test-1`, and consumer `test-1` is bound to
+> the `test-1` key rather than the shared `default` one.
+>
+> 8.3 was checked before deletion: one request each to `-dev` and `-test` in seven days, both from
+> this session's diagnostics.

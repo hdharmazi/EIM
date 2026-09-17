@@ -216,6 +216,11 @@ public class MessageQueueRepository(IConfiguration config, ILoggerFactory logger
         // older than the cutoff), not a narrow intersection that usually matches nothing.
         var where = string.Join(" OR ", conditions);
 
+        // Computed once and reused by both statements. Evaluating UtcNow per command would give the
+        // second delete a slightly later cutoff, so a row created in between would lose its parent
+        // while keeping its log details - and there is no foreign key to stop that.
+        var cutoff = olderThanDays.HasValue ? DateTime.UtcNow.AddDays(-olderThanDays.Value) : (DateTime?)null;
+
         // Delete log details first (child records)
         var deleteLogsSql = $"DELETE FROM MESSAGELOGDETAIL WHERE MESSAGEID IN (SELECT ID FROM MESSAGEQUEUETABLE WHERE {where})";
         var deleteMessagesSql = $"DELETE FROM MESSAGEQUEUETABLE WHERE {where}";
@@ -229,7 +234,7 @@ public class MessageQueueRepository(IConfiguration config, ILoggerFactory logger
             await using (var cmd = new SqlCommand(deleteLogsSql, conn, tx))
             {
                 if (status.HasValue) cmd.Parameters.AddWithValue("@STATUS", status.Value);
-                if (olderThanDays.HasValue) cmd.Parameters.AddWithValue("@CUTOFF", DateTime.UtcNow.AddDays(-olderThanDays.Value));
+                if (cutoff.HasValue) cmd.Parameters.AddWithValue("@CUTOFF", cutoff.Value);
                 await cmd.ExecuteNonQueryAsync();
             }
 
@@ -237,7 +242,7 @@ public class MessageQueueRepository(IConfiguration config, ILoggerFactory logger
             await using (var cmd = new SqlCommand(deleteMessagesSql, conn, tx))
             {
                 if (status.HasValue) cmd.Parameters.AddWithValue("@STATUS", status.Value);
-                if (olderThanDays.HasValue) cmd.Parameters.AddWithValue("@CUTOFF", DateTime.UtcNow.AddDays(-olderThanDays.Value));
+                if (cutoff.HasValue) cmd.Parameters.AddWithValue("@CUTOFF", cutoff.Value);
                 deleted = await cmd.ExecuteNonQueryAsync();
             }
 

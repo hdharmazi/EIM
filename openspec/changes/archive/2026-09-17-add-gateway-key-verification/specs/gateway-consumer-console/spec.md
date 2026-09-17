@@ -70,6 +70,10 @@ consumer lookup, grant evaluation, or environment credential resolution occurs.
 - **WHEN** the dashboard verifies a key against a gateway application
 - **THEN** no D365 request is made, no environment credential is read, and no idempotency record is written
 
+#### Scenario: A responder that is not the gateway is never accepted
+- **WHEN** the address answers but the response does not carry the gateway's correlation header
+- **THEN** the key is not stored and the result is reported as unable to check, because every application under the same domain answers and "not refused" is not proof of a gateway
+
 ## ADDED Requirements
 
 ### Requirement: Gateway application recorded from verification

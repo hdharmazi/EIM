@@ -140,6 +140,7 @@ function Get-ResourceNames {
         ServiceBus      = $Config.serviceBusNamespace
         FunctionApp     = Resolve-Name $names.functionApp    "azf-eim-customer-wtc-$env"
         StorageAccount  = Resolve-Name $names.storageAccount "stwtceimcustomer$env"
+        FunctionInsights = Resolve-Name $names.functionInsights "appins-eim-customer-wtc-$env"
         # Shared across every non-production environment. Unlike EIM.Customer, whose Service Bus
         # triggers bind to environment-specific queues, the gateway takes the D365 environment from
         # the request path, so nothing about it is per-environment. Named -nonprod rather than
@@ -246,6 +247,7 @@ function Invoke-FunctionComponent {
         Write-Host "  would ensure plan     $($Names.AppServicePlan)"
         Write-Host "  would ensure storage  $($Names.StorageAccount)"
         Write-Host "  would ensure function $($Names.FunctionApp)"
+        Write-Host "  would ensure insights $($Names.FunctionInsights)"
         Write-Host "  would apply settings, publish, zip and deploy ARM.Integration.EIM.Customer"
         return
     }
@@ -268,9 +270,27 @@ function Invoke-FunctionComponent {
             --functions-version 4 --os-type Linux | Out-Null
     }
 
+    # Without this the sweeps and handlers run blind: a timer that never fires, or a message that
+    # fails classification, leaves no record anywhere. Created through the generic resource API
+    # rather than `az monitor app-insights`, which lives in an optional extension and prompts to
+    # install itself - an interactive prompt that hangs an unattended deploy.
+    $insightsName = $Names.FunctionInsights
+    if (-not (az resource show --resource-group $rg --name $insightsName `
+                --resource-type Microsoft.Insights/components --query "name" -o tsv 2>$null)) {
+        az resource create --resource-group $rg --name $insightsName `
+            --resource-type Microsoft.Insights/components --location $Names.Location `
+            --properties '{\"Application_Type\":\"web\"}' | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Could not create Application Insights component '$insightsName'." }
+    }
+
+    $insightsConnection = az resource show --resource-group $rg --name $insightsName `
+        --resource-type Microsoft.Insights/components --query properties.ConnectionString -o tsv
+    if ([string]::IsNullOrWhiteSpace($insightsConnection)) { throw "Could not read the Application Insights connection string." }
+
     $fn = $Config.function
     $settings = @(
         @{ name = 'FUNCTIONS_WORKER_RUNTIME';      value = 'dotnet-isolated' }
+        @{ name = 'APPLICATIONINSIGHTS_CONNECTION_STRING'; value = $insightsConnection }
         @{ name = 'ServiceBus';                    value = $Config.secrets.serviceBusConnectionString }
         @{ name = 'EIMDB';                         value = $Config.secrets.eimdbConnectionString }
         @{ name = 'D365FscDataEventQueue';         value = $queues.D365FscDataEventQueue }

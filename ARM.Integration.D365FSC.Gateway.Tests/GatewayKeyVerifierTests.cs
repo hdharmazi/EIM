@@ -8,6 +8,14 @@ public class GatewayKeyVerifierTests
 {
     private const string BaseUrl = "https://azf-d365fsc-gateway-wtc-nonprod.azurewebsites.net";
 
+    /// <summary>A response shaped like one this gateway's worker produced.</summary>
+    private static HttpResponseMessage FromGateway(HttpStatusCode status)
+    {
+        var response = new HttpResponseMessage(status);
+        response.Headers.Add("X-Correlation-Id", Guid.NewGuid().ToString("n"));
+        return response;
+    }
+
     /// <summary>
     /// 401 is the platform refusing a key it never issued, and is the only response that means the
     /// key is wrong. Everything else means the key got past the platform.
@@ -20,7 +28,7 @@ public class GatewayKeyVerifierTests
     [InlineData(HttpStatusCode.Unauthorized, GatewayKeyVerdict.Rejected)]
     public async Task Maps_status_to_verdict(HttpStatusCode status, GatewayKeyVerdict expected)
     {
-        var verifier = Build(_ => new HttpResponseMessage(status));
+        var verifier = Build(_ => FromGateway(status));
 
         var result = await verifier.VerifyAsync("some-key");
 
@@ -51,10 +59,29 @@ public class GatewayKeyVerifierTests
         Assert.Equal(GatewayKeyVerdict.Unreachable, result.Verdict);
     }
 
+    /// <summary>
+    /// Every app under azurewebsites.net answers, so "not 401" is not proof of a gateway. A Functions
+    /// app with no such route returns 404; treating that as acceptance would record a key as verified
+    /// against something that cannot honour it. Observed 2026-09-16 against a real sibling app.
+    /// </summary>
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.OK)]
+    [InlineData(HttpStatusCode.BadRequest)]
+    public async Task A_responder_that_is_not_the_gateway_is_never_accepted(HttpStatusCode status)
+    {
+        var verifier = Build(_ => new HttpResponseMessage(status));
+
+        var result = await verifier.VerifyAsync("some-key");
+
+        Assert.Equal(GatewayKeyVerdict.Unreachable, result.Verdict);
+        Assert.Contains("not as a D365 gateway", result.Detail);
+    }
+
     [Fact]
     public async Task Records_the_application_that_accepted_the_key()
     {
-        var verifier = Build(_ => new HttpResponseMessage(HttpStatusCode.BadRequest));
+        var verifier = Build(_ => FromGateway(HttpStatusCode.BadRequest));
 
         var result = await verifier.VerifyAsync("some-key");
 
@@ -118,7 +145,7 @@ public class GatewayKeyVerifierTests
     [Fact]
     public async Task Refuses_to_guess_when_several_gateways_are_configured()
     {
-        var verifier = BuildMulti(_ => new HttpResponseMessage(HttpStatusCode.BadRequest));
+        var verifier = BuildMulti(_ => FromGateway(HttpStatusCode.BadRequest));
 
         var result = await verifier.VerifyAsync("some-key");
 
@@ -131,7 +158,7 @@ public class GatewayKeyVerifierTests
     {
         Uri? requested = null;
         var verifier = BuildMulti(
-            _ => new HttpResponseMessage(HttpStatusCode.BadRequest),
+            _ => FromGateway(HttpStatusCode.BadRequest),
             onRequest: r => requested = r.RequestUri);
 
         var result = await verifier.VerifyAsync("some-key", "secondary");
@@ -200,7 +227,7 @@ public class GatewayKeyVerifierTests
     {
         Uri? requested = null;
         var verifier = Build(
-            _ => new HttpResponseMessage(HttpStatusCode.BadRequest),
+            _ => FromGateway(HttpStatusCode.BadRequest),
             onRequest: r => requested = r.RequestUri);
 
         var result = await verifier.VerifyAtAsync("some-key", "https://azf-gw-other.azurewebsites.net");
@@ -226,7 +253,7 @@ public class GatewayKeyVerifierTests
     public async Task Sends_the_key_as_a_header_and_omits_the_consumer_id()
     {
         HttpRequestMessage? captured = null;
-        var verifier = Build(_ => new HttpResponseMessage(HttpStatusCode.BadRequest), onRequest: r => captured = r);
+        var verifier = Build(_ => FromGateway(HttpStatusCode.BadRequest), onRequest: r => captured = r);
 
         await verifier.VerifyAsync("the-key");
 

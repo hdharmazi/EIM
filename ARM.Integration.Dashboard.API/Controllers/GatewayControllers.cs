@@ -12,7 +12,7 @@ namespace ARM.Integration.Dashboard.API.Controllers;
 [Route("api/gateway/consumers")]
 [Authorize(Roles = "Admin")]
 public class GatewayConsumerController(
-    GatewayConsumerRepository repo,
+    IGatewayConsumerRepository repo,
     GatewayKeyVerifier verifier,
     ILogger<GatewayConsumerController> logger) : ControllerBase
 {

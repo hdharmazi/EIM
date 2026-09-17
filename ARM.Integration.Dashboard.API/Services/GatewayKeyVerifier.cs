@@ -158,6 +158,12 @@ public sealed class GatewayKeyVerifier(
 {
     private const string ProbePath = "api/v1/d365fsc/PROBE/data/probe";
 
+    /// <summary>
+    /// Stamped by the gateway on every response its worker produces. Absent on the platform's own
+    /// 401, and absent from anything that is not this gateway.
+    /// </summary>
+    private const string CorrelationHeader = "X-Correlation-Id";
+
     /// <summary>The gateways a key may be checked against, for the caller to choose from.</summary>
     public IReadOnlyList<GatewayTarget> Targets => options.ResolveTargets();
 
@@ -279,13 +285,24 @@ public sealed class GatewayKeyVerifier(
 
         using (response)
         {
-            // 401 is the platform refusing a key it did not issue. Anything else means the key got
-            // past the platform and the worker ran - which is all this needs to establish.
+            // 401 is the platform refusing a key it did not issue. It is produced before the worker
+            // runs, so it is the one status that means the key itself is wrong.
             if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 return new(GatewayKeyVerdict.Rejected,
                     app,
                     $"{app} rejected this key. Check it was copied whole, and that it belongs to that application.");
+            }
+
+            // Getting past the platform is necessary but not sufficient. Any other app under the same
+            // domain answers too - a Functions app with no such route returns 404, which would
+            // otherwise be read as acceptance and record a key as verified against something that is
+            // not a gateway at all. Only this gateway stamps a correlation id.
+            if (!response.Headers.Contains(CorrelationHeader))
+            {
+                return new(GatewayKeyVerdict.Unreachable,
+                    app,
+                    $"{app} answered, but not as a D365 gateway (HTTP {(int)response.StatusCode}). Check the gateway address is correct. The key was not stored.");
             }
 
             return new(GatewayKeyVerdict.Accepted, app, $"Verified against {app}.");

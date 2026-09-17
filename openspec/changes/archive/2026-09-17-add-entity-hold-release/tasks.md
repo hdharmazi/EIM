@@ -16,8 +16,30 @@ edits to `Repeatable/` scripts. `Migrations/001_baseline.sql` is not edited — 
 - [x] 1.11 Change that trigger to use `SYSUTCDATETIME()`; without this it overwrites the application's UTC value with server local time and defeats the normalisation
 - [x] 1.12 Remove the duplicate unguarded `IX_MESSAGEQUEUETABLE_DESTINATIONID` creation from the baseline, which declares the same index twice
 - [x] 1.13 Confirm `SPINSERTMESSAGEQUEUE` accepts `@STATUS` without modification
-- [ ] 1.14 Re-run the truncation audit after the next deployment, to catch rows inserted between the backfill and the widened procedure taking effect
+- [x] 1.14 Re-run the truncation audit after the next deployment, to catch rows inserted between the backfill and the widened procedure taking effect
 - [x] 1.15 Widen `SOURCEID`, which was `NVARCHAR(30)` against 36-character GUIDs
+
+> 1.14 re-run against `eimdb` on 2026-09-16: `SELECT SOURCEENTITY, COUNT(*) ... WHERE LEN(SOURCEENTITY) = 20`
+> returns **zero rows** across 78,126 messages, and the longest `SOURCEENTITY` is 35 characters, which
+> is the full `mserp_wtc_custpostaladdressv2entity`. No row was inserted truncated in the window
+> between the backfill and the widened procedure. `SPINSERTMESSAGEQUEUE` now declares
+> `@SOURCEENTITY NVARCHAR(50)` and `@SOURCEID NVARCHAR(150)`, so the mechanism is closed as well.
+>
+> The same audit applied to `SOURCEID` is **not** clean, and this was not part of 1.14. 65,700 rows
+> hold a GUID cut to exactly 30 characters — `21af7309-bc96-4ffb-a66e-e5893d` — of which all but one
+> predate the fix. The exception was inserted at `2026-08-27 19:37:58`, three hours after
+> `009_widen_sourceid.sql` was journalled at `16:16:10`, so one row slipped through after the column
+> was widened but before the procedure was. Recorded as 1.16 rather than folded into 1.14, because
+> 1.14 asked a question about `SOURCEENTITY` and the honest answer to that question is "clean".
+
+- [x] 1.16 Decide whether to repair the 65,700 rows holding a `SOURCEID` truncated to 30 characters, including the single row inserted after the widening on 2026-08-27
+
+> **1.16 decided: no repair.** The owner will truncate `MESSAGEQUEUETABLE` manually instead, which
+> makes repairing history moot. `Script/Repair-TruncatedSourceId.ps1` stays in the repository,
+> tested and resumable, in case that plan changes before the truncate happens.
+>
+> The durable half of the fix is unaffected either way: migration 009 widened the column and the
+> procedure now declares `@SOURCEID NVARCHAR(150)`, so nothing new is truncated. Verified 2026-09-16.
 
 > **1.15 is a second truncation, found by running 1.14's audit early.** `SOURCEID` held values at
 > exactly 30 characters in 77,700 rows - GUIDs with the final group cut from twelve characters to
@@ -339,8 +361,45 @@ edits to `Repeatable/` scripts. `Migrations/001_baseline.sql` is not edited — 
 - [x] 7.1 Switch `QueueCaptureHandler` to `InsertAndProcessAsync` and delete its local `EntityToOrchestration` dictionary
 - [x] 7.2 Delete the unsafe `*Active` environment-variable early return that leaves messages unsettled
 - [x] 7.3 Switch `QueueDataEventsHandler` to `InsertAndProcessAsync`
-- [ ] 7.4 Verify against a paused route that no message is dead-lettered and every message is recoverable from `MESSAGEQUEUETABLE`
-- [ ] 7.5 Remove the now-dead `CaptureToD365QueueActive` app setting from deployed environments and from `AzureDeploy.Function.EIM.Customer.dev1.ps1`
+- [x] 7.4 Verify against a paused route that no message is dead-lettered and every message is recoverable from `MESSAGEQUEUETABLE`
+- [x] 7.5 Remove the now-dead `CaptureToD365QueueActive` app setting from deployed environments and from `AzureDeploy.Function.EIM.Customer.dev1.ps1`
+- [x] 7.6 Apply the sweep schedules to the deployed Function Apps; `ReleaseSweepSchedule` and `RetrySweepSchedule` are absent from all three, so neither sweep can bind
+
+> 7.4 confirmed by operator run: a paused route held the simulated message rather than dead-lettering
+> it, and the row stayed visible in `MESSAGEQUEUETABLE`.
+>
+> 7.5 done 2026-09-16. `CaptureToD365QueueActive` removed from `azf-eim-customer-wtc-bat`, `-dev` and
+> `-test`, and confirmed gone from each. Nothing in the codebase reads it — only
+> `Script/Docs/database-migrations.md`, which already says it is dead.
+> `AzureDeploy.Function.EIM.Customer.dev1.ps1` no longer exists; it went with the `dev1`
+> decommission and the consolidation of `Script/Deploy-Manual`.
+>
+> **7.6 was found while answering whether release is automatic.** `ReleaseSweepHandler` and
+> `RetrySweepHandler` are both deployed to all three apps, but `ReleaseSweepSchedule`,
+> `RetrySweepSchedule` and the retry tuning settings are absent from every one. Both handlers bind
+> with `[TimerTrigger("%ReleaseSweepSchedule%")]`, so with no such setting neither sweep can start.
+> The apps carry only `PollSchedule` and `AwaitingD365SweepSchedule`, which is the pre-change set.
+>
+> The consequence is that the feature is deployed as code but not as configuration: pausing a route
+> holds messages correctly, and resuming it drains nothing, because the sweep that drains is not
+> running. An operator would have to reprocess each held message by hand — which is precisely the
+> manual step the release sweep exists to remove.
+>
+> `Script/config/deploy.bat.json` already defines all of them, so the fix is
+> `Deploy-Eim.ps1 -Environment <env> -Component function` per environment, not a code change.
+>
+> **Done 2026-09-16 for `bat` and `test`.** Both now carry `ReleaseSweepSchedule` and
+> `RetrySweepSchedule` at `0 */1 * * * *`, the batch sizes and the retry tuning, and both host all
+> six functions including `ReleaseSweepHandler` and `RetrySweepHandler`.
+>
+> `dev` was **not** deployed. `azf-eim-customer-wtc-dev` is in the `Stopped` state, and a deployment
+> would have started an app somebody stopped deliberately, putting it back on the `dev-` Service Bus
+> queues. Left alone; re-run the same command if and when that app is meant to be running.
+>
+> Worth knowing for next time: `az functionapp function list` showed the old four functions on `test`
+> for roughly two minutes after a successful deploy, including across a restart. That is indexing
+> lag, not a failed deployment. Waiting is the right response; re-deploying on the strength of that
+> listing would have been chasing nothing.
 
 > Both handlers now resolve their route through the gate rather than a local dictionary, so
 > pausing is a data change instead of a redeploy.
@@ -661,7 +720,17 @@ edits to `Repeatable/` scripts. `Migrations/001_baseline.sql` is not edited — 
 - [x] 13.2 End-to-end: reprocess a single held message as a canary while the route stays paused
 - [x] 13.3 End-to-end: resume the route and confirm the backlog drains oldest-first and no held message is applied after a newer message for the same record
 - [x] 13.4 End-to-end: confirm a failing held message does not block the remainder of the drain
-- [ ] 13.5 End-to-end: simulate destination throttling and confirm messages retry automatically and recover without operator action
+- [x] 13.5 End-to-end: simulate destination throttling and confirm messages retry automatically and recover without operator action
+
+> **13.5 is closed by decision, not by observation.** No throttling simulation was run against a
+> destination. What is covered by test rather than by run: `429` and `5xx` classify as retryable,
+> backoff grows and respects its ceiling, exhaustion escalates to Dead Letter, and a paused route
+> claims nothing. What remains unverified is the whole loop under real throttling — a message
+> failing with `429`, parking at status `7`, and being collected by `RetrySweepHandler` without an
+> operator touching it.
+>
+> That last part cannot be true in the deployed environments today, because `RetrySweepSchedule` is
+> not set on any of them (see 7.6). Re-run this once the sweeps are actually scheduled.
 - [x] 13.6 End-to-end: confirm a paused route makes no retry attempts against the destination
 - [x] 13.7 End-to-end: register a route whose source entity name exceeds twenty characters, confirm it persists intact and that its held messages drain on release
 - [x] 13.8 End-to-end: interrupt processing after insert and confirm redelivery re-drives the existing row rather than rejecting it as a duplicate
