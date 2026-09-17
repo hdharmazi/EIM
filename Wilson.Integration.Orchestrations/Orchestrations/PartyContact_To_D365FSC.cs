@@ -24,11 +24,18 @@ namespace Wilson.Integration.Orchestrations
         private static string? ResolvePartyNumber(CapturePartyContactMessageContract source) =>
             !string.IsNullOrWhiteSpace(source.ContactPartyNumber) ? source.ContactPartyNumber : source.CustomerPartyNumber;
 
+        private static string PreferPartyNumber(string? d365Value, string? sourceValue) =>
+            !string.IsNullOrWhiteSpace(d365Value)
+                ? d365Value
+                : sourceValue ?? "";
+
         protected override PartyContactsEntity MapToTarget(CapturePartyContactMessageContract source)
         {
             return new PartyContactsEntity
             {
-                PartyNumber = ResolvePartyNumber(source),
+                PartyNumber = ResolvePartyNumber(source) ?? "",
+                WTC_ContactPartyNumber = source.ContactPartyNumber,
+                WTC_CustomerPartyNumber = source.CustomerPartyNumber,
                 ElectronicAddressId = source.ElectronicAddressId,
                 Locator = source.Locator,
                 LocatorExtension = source.LocatorExtension,
@@ -51,8 +58,12 @@ namespace Wilson.Integration.Orchestrations
             {
                 return new CapturePartyContactMessageContract
                 {
-                    ContactPartyNumber  = d365Result.PartyNumber,
-                    CustomerPartyNumber = d365Result.PartyNumber,
+                    ContactPartyNumber = PreferPartyNumber(
+                        d365Result.WTC_ContactPartyNumber,
+                        source.ContactPartyNumber),
+                    CustomerPartyNumber = PreferPartyNumber(
+                        d365Result.WTC_CustomerPartyNumber,
+                        source.CustomerPartyNumber),
                     ElectronicAddressId = d365Result.ElectronicAddressId,
                     Locator = d365Result.Locator,
                     LocatorExtension = d365Result.LocatorExtension,

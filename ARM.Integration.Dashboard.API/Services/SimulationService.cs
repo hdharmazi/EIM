@@ -448,19 +448,23 @@ public class SimulationService(IConfiguration config, ConfigurationRepository co
     private async IAsyncEnumerable<SimulationEvent> CapturePartyContactCreate(
         Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
+        var contactPartyNumber  = Get(f, "contactpartynumber",  "");
+        var customerPartyNumber = Get(f, "customerpartynumber", "");
+        if (string.IsNullOrEmpty(contactPartyNumber) && string.IsNullOrEmpty(customerPartyNumber))
+            { yield return Err("At least one of ContactPartyNumber or CustomerPartyNumber is required."); yield break; }
+
         var data = new CapturePartyContactMessageContract
         {
-            ContactPartyNumber = Get(f, "contactpartynumber", "000000706"),
-            Locator     = Get(f, "locator",     "712-366-2241"),
-            IsPrimary   = Get(f, "isprimary",   "Yes"),
-            Type        = Get(f, "type",        "Phone"),
+            Locator   = Get(f, "locator",   "712-366-2241"),
+            IsPrimary = Get(f, "isprimary", "Yes"),
+            Type      = Get(f, "type",      "Phone"),
         };
         var ext             = Get(f, "locatorextension",    "");
         var desc            = Get(f, "description",         "");
-        var custPartyNumber = Get(f, "customerpartynumber", "");
-        if (!string.IsNullOrEmpty(ext))             data.LocatorExtension    = ext;
-        if (!string.IsNullOrEmpty(desc))            data.Description         = desc;
-        if (!string.IsNullOrEmpty(custPartyNumber)) data.CustomerPartyNumber = custPartyNumber;
+        if (!string.IsNullOrEmpty(contactPartyNumber))  data.ContactPartyNumber  = contactPartyNumber;
+        if (!string.IsNullOrEmpty(customerPartyNumber)) data.CustomerPartyNumber = customerPartyNumber;
+        if (!string.IsNullOrEmpty(ext))                 data.LocatorExtension    = ext;
+        if (!string.IsNullOrEmpty(desc))                data.Description         = desc;
 
         var envelope = new CaptureMessageEnvelope<CapturePartyContactMessageContract>
         {

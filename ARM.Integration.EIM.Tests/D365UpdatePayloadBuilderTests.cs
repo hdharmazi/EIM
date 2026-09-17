@@ -152,6 +152,210 @@ public class D365UpdatePayloadBuilderTests
         Assert.Equal("ada@example.com", (string?)payload["Locator"]);
     }
 
+    [Fact]
+    public void PartyContactNewResponse_MapsWtcPartyNumbers()
+    {
+        var response = new TestablePartyContact().Response(
+            new CapturePartyContactMessageContract
+            {
+                ContactPartyNumber = "SOURCE-CONTACT",
+                CustomerPartyNumber = "SOURCE-CUSTOMER",
+                ElectronicAddressId = "SOURCE-EA",
+            },
+            new PartyContactsEntity
+            {
+                PartyNumber = "000177803",
+                WTC_ContactPartyNumber = "000177803",
+                WTC_CustomerPartyNumber = "000000706",
+                ElectronicAddressId = "000188139",
+                Locator = "123-123-1142",
+                LocatorExtension = "",
+                IsPrimary = "Yes",
+                Description = "Schimt",
+                Type = "Phone",
+                IsInstantMessage = "No",
+                IsMobilePhone = "No",
+                CountryRegionCode = "",
+                Purpose = "",
+                LocationId = "000307027",
+                IsPrivate = "No",
+            },
+            "New");
+
+        Assert.Equal("000177803", response.ContactPartyNumber);
+        Assert.Equal("000000706", response.CustomerPartyNumber);
+        Assert.Equal("000188139", response.ElectronicAddressId);
+        Assert.Equal("123-123-1142", response.Locator);
+        Assert.Equal("Phone", response.Type);
+        Assert.Equal("000307027", response.LocationId);
+    }
+
+    [Fact]
+    public void PartyContactNewResponse_PreservesReportedBlankCustomerPartyNumber()
+    {
+        var response = new TestablePartyContact().Response(
+            new CapturePartyContactMessageContract
+            {
+                ContactPartyNumber = "SOURCE-CONTACT",
+            },
+            new PartyContactsEntity
+            {
+                PartyNumber = "000177803",
+                WTC_ContactPartyNumber = "000177803",
+                WTC_CustomerPartyNumber = "",
+                ElectronicAddressId = "000188139",
+            },
+            "New");
+
+        Assert.Equal("000177803", response.ContactPartyNumber);
+        Assert.Equal("", response.CustomerPartyNumber);
+    }
+
+    [Fact]
+    public void PartyContactNewResponse_FallsBackToSourceContactWhenWtcContactPartyNumberIsBlank()
+    {
+        var response = new TestablePartyContact().Response(
+            new CapturePartyContactMessageContract
+            {
+                ContactPartyNumber = "000177803",
+                Locator = "712-366-2241",
+                IsPrimary = "Yes",
+                Type = "Phone",
+            },
+            new PartyContactsEntity
+            {
+                PartyNumber = "000177803",
+                WTC_ContactPartyNumber = "",
+                WTC_CustomerPartyNumber = "",
+                ElectronicAddressId = "000188141",
+                Locator = "712-366-2241",
+                LocatorExtension = "",
+                IsPrimary = "Yes",
+                Description = "",
+                Type = "Phone",
+                IsInstantMessage = "No",
+                IsMobilePhone = "No",
+                CountryRegionCode = "",
+                Purpose = "",
+                LocationId = "000307027",
+                IsPrivate = "No",
+            },
+            "New");
+
+        Assert.Equal("000177803", response.ContactPartyNumber);
+        Assert.Equal("", response.CustomerPartyNumber);
+        Assert.Equal("000188141", response.ElectronicAddressId);
+    }
+
+    [Fact]
+    public void PartyContactNewResponse_DoesNotPopulateContactFromCustomerOnlyInput()
+    {
+        var response = new TestablePartyContact().Response(
+            new CapturePartyContactMessageContract
+            {
+                CustomerPartyNumber = "000029968",
+                Locator = "712-366-7777",
+                IsPrimary = "Yes",
+                Type = "Phone",
+            },
+            new PartyContactsEntity
+            {
+                PartyNumber = "000029968",
+                WTC_ContactPartyNumber = "",
+                WTC_CustomerPartyNumber = "",
+                ElectronicAddressId = "000188144",
+                Locator = "712-366-7777",
+                LocatorExtension = "",
+                IsPrimary = "Yes",
+                Description = "",
+                Type = "Phone",
+                IsInstantMessage = "No",
+                IsMobilePhone = "No",
+                CountryRegionCode = "",
+                Purpose = "",
+                LocationId = "000307021",
+                IsPrivate = "No",
+            },
+            "New");
+
+        Assert.Equal("", response.ContactPartyNumber);
+        Assert.Equal("000029968", response.CustomerPartyNumber);
+        Assert.Equal("000188144", response.ElectronicAddressId);
+    }
+
+    [Fact]
+    public void PartyContactUpdateResponse_EchoesSourceIdentityFields()
+    {
+        var response = new TestablePartyContact().Response(
+            new CapturePartyContactMessageContract
+            {
+                ContactPartyNumber = "SOURCE-CONTACT",
+                CustomerPartyNumber = "SOURCE-CUSTOMER",
+                ElectronicAddressId = "SOURCE-EA",
+            },
+            null,
+            "Update");
+
+        Assert.Equal("SOURCE-CONTACT", response.ContactPartyNumber);
+        Assert.Equal("SOURCE-CUSTOMER", response.CustomerPartyNumber);
+        Assert.Equal("SOURCE-EA", response.ElectronicAddressId);
+    }
+
+    [Theory]
+    [InlineData("CONTACT", "CUSTOMER", "CONTACT")]
+    [InlineData("", "CUSTOMER", "CUSTOMER")]
+    [InlineData(null, "CUSTOMER", "CUSTOMER")]
+    public void PartyContactRequest_ResolvesPartyNumberFromContactThenCustomer(
+        string? contactPartyNumber,
+        string customerPartyNumber,
+        string expectedPartyNumber)
+    {
+        var target = new TestablePartyContact().Target(new CapturePartyContactMessageContract
+        {
+            ContactPartyNumber = contactPartyNumber!,
+            CustomerPartyNumber = customerPartyNumber,
+            ElectronicAddressId = "EA-1",
+        });
+
+        Assert.Equal(expectedPartyNumber, target.PartyNumber);
+    }
+
+    [Fact]
+    public void PartyContactRequest_MapsSourcePartyNumbersToWtcFields()
+    {
+        var target = new TestablePartyContact().Target(new CapturePartyContactMessageContract
+        {
+            ContactPartyNumber = "000177803",
+            CustomerPartyNumber = "000029968",
+            ElectronicAddressId = "000188147",
+        });
+
+        Assert.Equal("000177803", target.PartyNumber);
+        Assert.Equal("000177803", target.WTC_ContactPartyNumber);
+        Assert.Equal("000029968", target.WTC_CustomerPartyNumber);
+    }
+
+    [Fact]
+    public void BuildUpdatePayload_PartyContact_RetainsWtcPartyNumberContext()
+    {
+        var target = new TestablePartyContact().Target(new CapturePartyContactMessageContract
+        {
+            CustomerPartyNumber = "000029968",
+            ElectronicAddressId = "000188147",
+            Locator = "222-366-2241",
+            LocatorExtension = "edit",
+            IsPrimary = "Yes",
+            Description = "",
+        });
+
+        var payload = Parse(D365UpdatePayloadBuilder.BuildUpdatePayload(target).Json);
+
+        Assert.False(payload.ContainsKey("PartyNumber"));
+        Assert.False(payload.ContainsKey("ElectronicAddressId"));
+        Assert.Equal("000029968", (string?)payload["WTC_CustomerPartyNumber"]);
+        Assert.False(payload.ContainsKey("WTC_ContactPartyNumber"));
+    }
+
     // 5.4 — filtering does not mutate the entity, so the key still resolves from the full instance.
     [Fact]
     public void BuildUpdatePayload_DoesNotMutateEntity_SoKeyStillResolves()
@@ -231,5 +435,12 @@ public class D365UpdatePayloadBuilderTests
     private sealed class TestablePartyContact : PartyContact_To_D365FSC
     {
         public EntityKey Key(PartyContactsEntity e) => BuildEntityKey(e);
+
+        public PartyContactsEntity Target(CapturePartyContactMessageContract source) => MapToTarget(source);
+
+        public CapturePartyContactMessageContract Response(
+            CapturePartyContactMessageContract source,
+            PartyContactsEntity? result,
+            string action) => BuildResponseData(source, result, action);
     }
 }
