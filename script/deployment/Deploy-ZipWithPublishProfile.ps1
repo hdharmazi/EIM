@@ -16,10 +16,21 @@ if ([string]::IsNullOrWhiteSpace($profileXml)) {
     throw "Secret environment variable '$PublishProfileEnvironmentVariable' is not set."
 }
 
+if ($profileXml -eq "`$($PublishProfileEnvironmentVariable)") {
+    throw "Azure DevOps did not resolve pipeline variable '$PublishProfileEnvironmentVariable'. Add it to this pipeline, or link and authorize the variable group that contains it."
+}
+
+$profileXml = $profileXml.Trim()
+if ($profileXml.Length -ge 2 -and
+    (($profileXml[0] -eq '"' -and $profileXml[-1] -eq '"') -or
+     ($profileXml[0] -eq "'" -and $profileXml[-1] -eq "'"))) {
+    throw "'$PublishProfileEnvironmentVariable' is wrapped in quotes. Paste the publish-profile XML file contents without surrounding quotes."
+}
+
 try {
     [xml] $profileDocument = $profileXml
 } catch {
-    throw "'$PublishProfileEnvironmentVariable' does not contain a valid Azure publish-profile XML document."
+    throw "'$PublishProfileEnvironmentVariable' is not valid publish-profile XML. Download the publish profile from the target Function App and paste the complete file contents, beginning with '<publishData' or '<?xml', into the secret variable."
 }
 
 $publishProfile = @($profileDocument.publishData.publishProfile) |

@@ -135,4 +135,5 @@ Pipeline artifacts are retained according to Azure DevOps retention policy. To r
 
 - **Kudu ZIP deploy returns HTTP 401:** SCM Basic Auth Publishing Credentials are disabled or the stored publish profile is stale. Enable SCM basic authentication on the exact target app, save, download a new publish profile, replace the environment-specific secret variable, and rerun.
 - **Publish-profile download is disabled:** enable SCM Basic Auth Publishing Credentials first or ask an Azure resource administrator to do so.
+- **Publish-profile variable is not valid XML:** open the exact target Function App, download its publish profile, open the downloaded file in a text editor, and paste the complete XML contents into the matching secret pipeline variable. Do not paste the filename, a Secure Files path, JSON, surrounding quotes, or the Azure DevOps `$(VARIABLE_NAME)` expression. If the variable comes from a variable group, link and authorize that group for the pipeline.
 - **Manual validation does not notify anyone:** verify `MANUAL_VALIDATION_NOTIFY_USERS` contains valid Azure DevOps identities and that they can access the pipeline run.
