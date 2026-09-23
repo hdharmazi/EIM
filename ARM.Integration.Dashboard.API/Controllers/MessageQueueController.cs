@@ -98,20 +98,33 @@ public class MessageQueueController(
     }
 
     [HttpPost("cleanup")]
-    public async Task<IActionResult> Cleanup([FromQuery] int? status, [FromQuery] int? olderThanDays)
+    public async Task<IActionResult> Cleanup(
+        [FromQuery] int? status,
+        [FromQuery] int? olderThanDays,
+        [FromQuery] bool acknowledgeProtected = false)
     {
         if (!status.HasValue && !olderThanDays.HasValue)
             return BadRequest(new { message = "At least one filter (status or olderThanDays) is required." });
 
+        var scope = CleanupEligibility.Resolve(status, acknowledgeProtected);
+        if (scope.IsRefused)
+        {
+            // "refused" separates a protected status from a filter that simply matched nothing.
+            return BadRequest(new { success = false, refused = true, message = scope.Refusal });
+        }
+
         try
         {
-            var deleted = await repo.CleanupAsync(status, olderThanDays);
-            return Ok(new { success = true, deleted, message = $"Deleted {deleted} record(s)." });
-        }
-        catch (InvalidOperationException ex)
-        {
-            // Authored validation message, safe to surface.
-            return BadRequest(new { success = false, message = ex.Message });
+            var result = await repo.CleanupAsync(scope.Statuses, olderThanDays);
+
+            return Ok(new
+            {
+                success = true,
+                refused = false,
+                deleted = result.Deleted,
+                remaining = result.Remaining,
+                message = $"Deleted {result.Deleted} record(s)."
+            });
         }
         catch (Exception ex)
         {

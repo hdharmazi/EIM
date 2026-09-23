@@ -102,17 +102,29 @@ export function useReprocess(id: number) {
 
 export interface CleanupResult {
   success: boolean;
+  /** True when a protected status was selected without acknowledgement. Not a zero-match. */
+  refused: boolean;
   deleted: number;
+  /** Still eligible after this request's time budget expired. Non-zero means call again. */
+  remaining: number;
   message: string;
 }
 
+export interface CleanupParams {
+  status?: number;
+  olderThanDays?: number;
+  acknowledgeProtected?: boolean;
+}
+
+/** One request only; the server bounds each call, so callers repeat until `remaining` is 0. */
 export function useCleanup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (params: { status?: number; olderThanDays?: number }) => {
+    mutationFn: (params: CleanupParams) => {
       const q = new URLSearchParams();
       if (params.status !== undefined) q.set("status", String(params.status));
       if (params.olderThanDays !== undefined) q.set("olderThanDays", String(params.olderThanDays));
+      if (params.acknowledgeProtected) q.set("acknowledgeProtected", "true");
       return apiFetch<CleanupResult>(`/api/messagequeue/cleanup?${q.toString()}`, { method: "POST" });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["messages"] }),

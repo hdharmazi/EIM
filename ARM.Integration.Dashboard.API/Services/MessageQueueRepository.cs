@@ -3,10 +3,19 @@ using ARM.Integration.Dashboard.API.Models;
 using ARM.Integration.EIM;
 using ARM.Integration.EIM.Orchestration;
 using Microsoft.Data.SqlClient;
+using System.Diagnostics;
 
 namespace ARM.Integration.Dashboard.API.Services;
 
-public class MessageQueueRepository(IConfiguration config, ILoggerFactory loggerFactory)
+/// <remarks>
+/// Cleanup batch size and time budget are constructor parameters so tests can force multi-batch and
+/// budget-expiry behaviour without seeding tens of thousands of rows. Production uses the defaults.
+/// </remarks>
+public class MessageQueueRepository(
+    IConfiguration config,
+    ILoggerFactory loggerFactory,
+    int cleanupBatchSize = 2000,
+    int cleanupBudgetSeconds = 60)
 {
     private readonly string _connectionString = config.GetConnectionString("EIMDB")
         ?? throw new InvalidOperationException("EIMDB connection string is missing.");
@@ -200,59 +209,102 @@ public class MessageQueueRepository(IConfiguration config, ILoggerFactory logger
         return records;
     }
 
-    public async Task<int> CleanupAsync(int? status, int? olderThanDays)
+    /// <summary>Bounded per call: what this call deleted, and what is still eligible.</summary>
+    public sealed record CleanupResult(int Deleted, int Remaining);
+
+    private const int CleanupCommandTimeoutSeconds = 120;
+
+    /// <summary>
+    /// Deletes eligible records in bounded batches, each committed independently, until none remain
+    /// or the time budget elapses.
+    /// </summary>
+    /// <remarks>
+    /// One unbounded transaction cannot clear a large backlog inside any command timeout, and
+    /// rolling back on expiry meant nothing was ever deleted however often it was retried.
+    /// Committed batches are the progress, so a caller repeats until <c>Remaining</c> is zero.
+    /// <paramref name="statuses"/> already encodes any operator-selected status, so age is the only
+    /// other condition and the two combine with AND.
+    /// </remarks>
+    public async Task<CleanupResult> CleanupAsync(IReadOnlyList<int> statuses, int? olderThanDays)
     {
-        var conditions = new List<string>();
+        if (statuses.Count == 0)
+            return new CleanupResult(0, 0);
 
-        if (status.HasValue)
-            conditions.Add("STATUS = @STATUS");
-        if (olderThanDays.HasValue)
-            conditions.Add("CREATEDDATETIME < @CUTOFF");
+        var statusParams = statuses.Select((_, i) => $"@S{i}").ToArray();
+        var where = $"STATUS IN ({string.Join(", ", statusParams)})"
+                  + (olderThanDays.HasValue ? " AND CREATEDDATETIME < @CUTOFF" : string.Empty);
 
-        if (conditions.Count == 0)
-            throw new InvalidOperationException("At least one filter (status or olderThanDays) is required.");
-
-        // OR, not AND: with both filters set this is a broad purge (this status, or anything
-        // older than the cutoff), not a narrow intersection that usually matches nothing.
-        var where = string.Join(" OR ", conditions);
-
-        // Computed once and reused by both statements. Evaluating UtcNow per command would give the
-        // second delete a slightly later cutoff, so a row created in between would lose its parent
-        // while keeping its log details - and there is no foreign key to stop that.
+        // Evaluated once so every batch shares a cutoff; a per-batch UtcNow would let rows created
+        // mid-run drift into scope.
         var cutoff = olderThanDays.HasValue ? DateTime.UtcNow.AddDays(-olderThanDays.Value) : (DateTime?)null;
 
-        // Delete log details first (child records)
-        var deleteLogsSql = $"DELETE FROM MESSAGELOGDETAIL WHERE MESSAGEID IN (SELECT ID FROM MESSAGEQUEUETABLE WHERE {where})";
-        var deleteMessagesSql = $"DELETE FROM MESSAGEQUEUETABLE WHERE {where}";
+        // Children are deleted with their parents inside one batch. There is no foreign key, so
+        // splitting these into separate passes would orphan log details on any partial run.
+        var batchSql = $"""
+            DECLARE @Ids TABLE (ID BIGINT);
+
+            INSERT INTO @Ids (ID)
+            SELECT TOP (@BATCH) ID
+            FROM dbo.MESSAGEQUEUETABLE
+            WHERE {where}
+            ORDER BY ID;
+
+            DELETE FROM dbo.MESSAGELOGDETAIL  WHERE MESSAGEID IN (SELECT ID FROM @Ids);
+            DELETE FROM dbo.MESSAGEQUEUETABLE WHERE ID        IN (SELECT ID FROM @Ids);
+
+            SELECT COUNT(*) FROM @Ids;
+            """;
 
         await using var conn = new SqlConnection(_connectionString);
         await conn.OpenAsync();
-        await using var tx = conn.BeginTransaction();
 
-        try
+        var deleted = 0;
+        var elapsed = Stopwatch.StartNew();
+        var budget = TimeSpan.FromSeconds(cleanupBudgetSeconds);
+
+        while (elapsed.Elapsed < budget)
         {
-            await using (var cmd = new SqlCommand(deleteLogsSql, conn, tx))
+            await using var tx = (SqlTransaction)await conn.BeginTransactionAsync();
+            int claimed;
+
+            try
             {
-                if (status.HasValue) cmd.Parameters.AddWithValue("@STATUS", status.Value);
-                if (cutoff.HasValue) cmd.Parameters.AddWithValue("@CUTOFF", cutoff.Value);
-                await cmd.ExecuteNonQueryAsync();
+                await using var cmd = new SqlCommand(batchSql, conn, tx)
+                {
+                    CommandTimeout = CleanupCommandTimeoutSeconds
+                };
+                AddFilterParameters(cmd, statuses, cutoff);
+                cmd.Parameters.AddWithValue("@BATCH", cleanupBatchSize);
+
+                claimed = Convert.ToInt32(await cmd.ExecuteScalarAsync());
+                await tx.CommitAsync();
+            }
+            catch
+            {
+                await tx.RollbackAsync();
+                throw;
             }
 
-            int deleted;
-            await using (var cmd = new SqlCommand(deleteMessagesSql, conn, tx))
-            {
-                if (status.HasValue) cmd.Parameters.AddWithValue("@STATUS", status.Value);
-                if (cutoff.HasValue) cmd.Parameters.AddWithValue("@CUTOFF", cutoff.Value);
-                deleted = await cmd.ExecuteNonQueryAsync();
-            }
+            if (claimed == 0) break;
+            deleted += claimed;
+        }
 
-            await tx.CommitAsync();
-            return deleted;
-        }
-        catch
+        await using var remainingCmd = new SqlCommand(
+            $"SELECT COUNT(*) FROM dbo.MESSAGEQUEUETABLE WHERE {where}", conn)
         {
-            await tx.RollbackAsync();
-            throw;
-        }
+            CommandTimeout = CleanupCommandTimeoutSeconds
+        };
+        AddFilterParameters(remainingCmd, statuses, cutoff);
+
+        return new CleanupResult(deleted, Convert.ToInt32(await remainingCmd.ExecuteScalarAsync()));
+    }
+
+    private static void AddFilterParameters(SqlCommand cmd, IReadOnlyList<int> statuses, DateTime? cutoff)
+    {
+        for (var i = 0; i < statuses.Count; i++)
+            cmd.Parameters.AddWithValue($"@S{i}", statuses[i]);
+
+        if (cutoff.HasValue)
+            cmd.Parameters.AddWithValue("@CUTOFF", cutoff.Value);
     }
 }
