@@ -15,7 +15,8 @@ public class MessageQueueRepository(
     IConfiguration config,
     ILoggerFactory loggerFactory,
     int cleanupBatchSize = 2000,
-    int cleanupBudgetSeconds = 60)
+    // Short enough that the dashboard's progress line updates often; the client loops for the rest.
+    int cleanupBudgetSeconds = 20)
 {
     private readonly string _connectionString = config.GetConnectionString("EIMDB")
         ?? throw new InvalidOperationException("EIMDB connection string is missing.");
