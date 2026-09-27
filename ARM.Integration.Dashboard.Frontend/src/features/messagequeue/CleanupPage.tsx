@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,29 +22,67 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { ApiError } from "@/lib/api";
 import { MESSAGE_STATUSES } from "@/lib/status";
-import { useCleanup, useStatusCounts, type CleanupParams, type CleanupResult } from "./api";
+import { useStatusCounts, type CleanupParams } from "./api";
+import { markCleanupNotified, startCleanup, useCleanupRun } from "./cleanupRun";
 
 const ALL = "all";
+const FILTERS_KEY = "cleanup-filters";
+
+// Per tab: survives a reload so the Delete button is not left disabled by a cleared form.
+function loadFilters(): { status: string; olderThanDays: string } {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(FILTERS_KEY) ?? "null");
+    if (saved && typeof saved.status === "string" && typeof saved.olderThanDays === "string") return saved;
+  } catch {
+    // Ignore a corrupt entry and fall back to defaults.
+  }
+  return { status: ALL, olderThanDays: "" };
+}
 
 export function CleanupPage() {
   const { toast } = useToast();
   const counts = useStatusCounts();
-  const cleanup = useCleanup();
+  const run = useCleanupRun();
 
-  const [status, setStatus] = React.useState<string>(ALL);
-  const [olderThanDays, setOlderThanDays] = React.useState("");
+  const [status, setStatus] = React.useState<string>(() => loadFilters().status);
+  const [olderThanDays, setOlderThanDays] = React.useState(() => loadFilters().olderThanDays);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  const [refusal, setRefusal] = React.useState<string | null>(null);
-  const [progress, setProgress] = React.useState<{ deleted: number; remaining: number } | null>(null);
 
+  React.useEffect(() => {
+    sessionStorage.setItem(FILTERS_KEY, JSON.stringify({ status, olderThanDays }));
+  }, [status, olderThanDays]);
+
+  const running = run.phase === "running";
   const hasFilter = status !== ALL || olderThanDays.trim() !== "";
+  const refusal = run.phase === "refused" && !run.notified ? run.message : null;
 
-  async function runCleanup(acknowledgeProtected: boolean) {
+  // The run can finish while this page is unmounted, so the outcome is announced on next view.
+  React.useEffect(() => {
+    if (run.notified) return;
+
+    if (run.phase === "done") {
+      const none = run.deleted === 0;
+      toast({
+        variant: none ? "warning" : "success",
+        title: none ? "No records matched" : "Cleanup complete",
+        description: none
+          ? "No records matched the selected filter(s). Nothing was deleted."
+          : `Deleted ${run.deleted} record(s).`,
+      });
+      markCleanupNotified();
+    } else if (run.phase === "failed") {
+      toast({
+        variant: "destructive",
+        title: "Cleanup stopped",
+        description: `${run.message} Deleted ${run.deleted} record(s) before stopping; run again to continue.`,
+      });
+      markCleanupNotified();
+    }
+  }, [run.phase, run.notified, run.deleted, run.message, toast]);
+
+  function runCleanup(acknowledgeProtected: boolean) {
     setConfirmOpen(false);
-    setRefusal(null);
-    setProgress(null);
 
     const params: CleanupParams = {
       status: status === ALL ? undefined : Number(status),
@@ -52,38 +90,13 @@ export function CleanupPage() {
       acknowledgeProtected,
     };
 
-    let total = 0;
+    void startCleanup(params);
+  }
 
-    try {
-      // Each request is bounded by a server-side time budget, so a large backlog takes several.
-      for (;;) {
-        const result = await cleanup.mutateAsync(params);
-        total += result.deleted;
-        setProgress({ deleted: total, remaining: result.remaining });
-
-        // deleted === 0 also breaks the loop if rows remain but none could be claimed.
-        if (result.remaining === 0 || result.deleted === 0) break;
-      }
-
-      toast({
-        variant: total === 0 ? "warning" : "success",
-        title: total === 0 ? "No records matched" : "Cleanup complete",
-        description:
-          total === 0
-            ? "No records matched the selected filter(s). Nothing was deleted."
-            : `Deleted ${total} record(s).`,
-      });
-    } catch (err) {
-      const body = err instanceof ApiError ? (err.body as CleanupResult | undefined) : undefined;
-      if (body?.refused) {
-        // Surfaced as a second confirmation rather than an error: the operator may still proceed.
-        setRefusal(body.message);
-        return;
-      }
-      toast({ variant: "destructive", title: "Cleanup failed", description: String(err) });
-    } finally {
-      counts.refetch();
-    }
+  function acknowledgeAndRun() {
+    const params = run.params;
+    markCleanupNotified();
+    if (params) void startCleanup({ ...params, acknowledgeProtected: true });
   }
 
   return (
@@ -149,14 +162,28 @@ export function CleanupPage() {
             </span>
           </div>
 
-          {progress && (
-            <p className="text-sm text-muted-foreground">
-              Deleted {progress.deleted} record(s){progress.remaining > 0 ? `, ${progress.remaining} remaining…` : "."}
+          {running && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {run.remaining === null ? (
+                <span>Deleting… the first update arrives within about 20 seconds.</span>
+              ) : (
+                <span>
+                  Deleted {run.deleted.toLocaleString()} record(s), {run.remaining.toLocaleString()} remaining…
+                  You can leave this page; the cleanup continues while this browser tab stays open.
+                </span>
+              )}
+            </div>
+          )}
+
+          {run.phase === "failed" && (
+            <p className="text-sm text-destructive">
+              Last run stopped after deleting {run.deleted.toLocaleString()} record(s): {run.message}
             </p>
           )}
 
-          <Button variant="destructive" disabled={!hasFilter || cleanup.isPending} onClick={() => setConfirmOpen(true)}>
-            {cleanup.isPending ? "Deleting…" : "Delete Records"}
+          <Button variant="destructive" disabled={!hasFilter || running} onClick={() => setConfirmOpen(true)}>
+            {running ? "Deleting…" : "Delete Records"}
           </Button>
         </CardContent>
       </Card>
@@ -179,7 +206,7 @@ export function CleanupPage() {
             <Button variant="outline" onClick={() => setConfirmOpen(false)}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={() => runCleanup(false)} disabled={cleanup.isPending}>
+            <Button variant="destructive" onClick={() => runCleanup(false)} disabled={running}>
               Yes, Delete
             </Button>
           </DialogFooter>
@@ -187,7 +214,7 @@ export function CleanupPage() {
       </Dialog>
 
       {/* Second acknowledgement, quoting the server so the protection reasons live in one place. */}
-      <Dialog open={refusal !== null} onOpenChange={(open) => !open && setRefusal(null)}>
+      <Dialog open={refusal !== null} onOpenChange={(open) => !open && markCleanupNotified()}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>This status is protected</DialogTitle>
@@ -196,10 +223,10 @@ export function CleanupPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRefusal(null)}>
+            <Button variant="outline" onClick={markCleanupNotified}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={() => runCleanup(true)} disabled={cleanup.isPending}>
+            <Button variant="destructive" onClick={acknowledgeAndRun} disabled={running}>
               Delete Anyway
             </Button>
           </DialogFooter>

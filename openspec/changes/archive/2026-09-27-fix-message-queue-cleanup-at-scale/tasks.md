@@ -10,7 +10,7 @@
 - [x] 2.2 Delete `MESSAGELOGDETAIL` rows for the claimed ids, then the claimed parents, inside one transaction per batch. Keep both deletes in the same batch — there is no foreign key, so splitting them into separate passes can orphan log details.
 - [x] 2.3 Set an explicit `CommandTimeout` on every command; do not rely on the 30-second default.
 - [x] 2.4 Introduce a batch size constant, initially 2,000, sited so it is trivial to change after measurement.
-- [x] 2.5 Loop batches until no rows are affected or a wall-clock budget of roughly 60 seconds elapses.
+- [x] 2.5 Loop batches until no rows are affected or a wall-clock budget of roughly 20 seconds elapses (reduced from 60 during verification so progress updates more often).
 - [x] 2.6 Return deleted count and remaining count. Compute `remaining` once, after the loop, using the same eligibility and filter predicate.
 - [x] 2.7 No index is added. If task 7.4 shows a batch is slow, an index on `(STATUS, CREATEDDATETIME)` is the additive follow-up — it needs no code change.
 
@@ -31,9 +31,11 @@
 
 - [x] 5.1 Continue issuing cleanup requests while `remaining` is greater than zero, accumulating the total deleted.
 - [x] 5.2 Show a running total and remaining count during a multi-request run, so a long run does not appear idle.
+- [x] 5.2a Hold the run in a module-level store rather than the page component, so it survives navigation and a second run cannot start while one is in flight. Found during verification.
 - [x] 5.3 Keep all statuses in the dropdown; add a second acknowledgement step in the confirmation dialog when a protected status is selected, naming the status and its dependency.
 - [x] 5.4 Update the page copy: the two filters now narrow each other, and an unfiltered-by-status run deletes only Completed and Failed.
 - [x] 5.5 Surface a refusal distinctly from "no records matched" and from a completed deletion.
+- [x] 5.5a Report a stopped run with its HTTP status and correlation id, show it inline until the next run, treat "nothing deleted but rows remain" as a stop rather than a completion, and keep filter values across a reload. Found during verification.
 
 ## 6. Tests
 
@@ -48,9 +50,9 @@
 
 ## 7. Verification
 
-- [ ] 7.1 Deploy API and frontend together — the client depends on the new `remaining` field.
-- [ ] 7.2 Verify against a **populated** table, before truncating anything. A near-empty table makes any implementation look correct, including the current one.
-- [ ] 7.3 Run cleanup with no status and `olderThanDays = 7`. Confirm it spans more than one batch, the total climbs, and `remaining` reaches zero. A single-batch run proves nothing about batching.
-- [ ] 7.4 Record the observed per-batch duration. This is the measurement that decides whether the batch size needs changing and whether the rejected index is worth adding.
-- [ ] 7.5 Confirm held, retry-scheduled, and awaiting rows still exist after the run, and that a paused route still drains correctly when re-enabled.
-- [ ] 7.6 Truncate the remaining backlog directly if desired — the data is disposable, and doing it after 7.3 keeps the verification meaningful.
+- [x] 7.1 Deploy API and frontend together — the client depends on the new `remaining` field.
+- [x] 7.2 Verify against a **populated** table, before truncating anything. A near-empty table makes any implementation look correct, including the current one. Verified 2026-09-24/26 against `eimdb`: 78,091 Completed, 47 Failed, 22 Dead letter, 547,566 log detail rows.
+- [x] 7.3 Run cleanup with no status and `olderThanDays = 7`. Confirm it spans more than one batch, the total climbs, and `remaining` reaches zero. A single-batch run proves nothing about batching. Four runs (three interrupted by page reloads, fixed in 5.2a) cleared the backlog to 75 Completed; every interruption kept committed batches and created no orphaned log rows (165 pre-existing before and after).
+- [x] 7.4 Record the observed per-batch duration. This is the measurement that decides whether the batch size needs changing and whether the rejected index is worth adding. Roughly 20 seconds per 2,000-row batch. The cost appears to be LOB deletion rather than row lookup, so the rejected index is not expected to help.
+- [x] 7.5 Confirm held, retry-scheduled, and awaiting rows still exist after the run, and that a paused route still drains correctly when re-enabled. `eimdb` held no Held, RetryScheduled or AwaitingD365 rows; all 22 protected Dead letter rows survived, and the integration tests cover the other protected statuses. Cleanup does not touch the release sweep, so route draining is unaffected.
+- [x] 7.6 Truncate the remaining backlog directly if desired — the data is disposable, and doing it after 7.3 keeps the verification meaningful. Not required: the backlog is cleared.

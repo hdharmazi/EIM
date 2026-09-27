@@ -90,8 +90,18 @@ all-or-nothing semantics, so a failure at 95% completion still deletes nothing.
 
 ### 2. A wall-clock budget, with the client continuing
 
-A single request stops after roughly 60 seconds and returns `{ deleted, remaining }`. The client
+A single request stops after roughly 20 seconds and returns `{ deleted, remaining }`. The client
 re-issues until `remaining` is zero, accumulating the total for display.
+
+The budget was first set at 60 seconds. Verification against the real backlog showed the page
+appeared frozen for the first minute, so it was cut to 20: each extra request costs one `COUNT`,
+which is negligible beside a 2,000-row batch.
+
+The loop runs in a module-level store rather than in the page component. Verification also showed
+that navigating away and back left a run going in the background while presenting a fresh, enabled
+Delete button, inviting a second concurrent run. Holding the run outside the component keeps
+progress visible across navigation and blocks a second start. A full page reload still stops the
+loop; committed batches remain and the next run resumes from what is left.
 
 This decouples the size of a run from the platform request timeout (~230s on Azure App Service):
 the work is bounded per request but unbounded overall. An abandoned run leaves the table consistent
