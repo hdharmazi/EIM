@@ -28,8 +28,9 @@ public abstract class BaseForwardOrchestration<TDest> : IOrchestration where TDe
     /// hasTrackedChanges: Whether the message contains relevant changes that warrant forwarding.
     /// mappedData: The mapped destination contract.
     /// sourceTimestamp: Optional timestamp from the source event.
+    /// skipReason: When non-null, the message is not forwarded and the reason is logged at Warning.
     /// </returns>
-    protected abstract (string action, bool hasTrackedChanges, TDest mappedData, string? sourceTimestamp)
+    protected abstract (string action, bool hasTrackedChanges, TDest mappedData, string? sourceTimestamp, string? skipReason)
         ParseAndMap(string payload);
 
     /// <summary>
@@ -73,10 +74,17 @@ public abstract class BaseForwardOrchestration<TDest> : IOrchestration where TDe
                 data.DestinationSystem, data.Environment, connectionString);
             var destinationQueue = data.Queue;
 
-            var (action, hasTrackedChanges, mappedData, sourceTimestamp) = ParseAndMap(data.Payload);
+            var (action, hasTrackedChanges, mappedData, sourceTimestamp, skipReason) = ParseAndMap(data.Payload);
 
             stepLog.Log("DetermineAction", action);
             stepLog.Log("MappedPayload", JsonSerializer.Serialize(mappedData));
+
+            if (skipReason is not null)
+            {
+                result = $"skipped: {skipReason}";
+                stepLog.LogWarning("Result", result);
+                return OrchestrationResult.Completed(result);
+            }
 
             if (!hasTrackedChanges)
             {

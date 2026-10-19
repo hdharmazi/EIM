@@ -32,6 +32,12 @@ public abstract class D365EventForwardOrchestration<TDest> : BaseForwardOrchestr
     /// <param name="action">The determined action string: "New", "Update", or "Delete".</param>
     protected abstract TDest MapFields(Func<string, bool, string?> getField, string action);
 
+    /// <summary>When non-null, replaces the action derived from <c>MessageName</c>.</summary>
+    protected virtual string? ForcedAction => null;
+
+    /// <summary>Returns a reason to withhold the forward (logged at Warning), or null to proceed.</summary>
+    protected virtual string? GetSkipReason(EventContext context) => null;
+
     /// <summary>
     /// Returns the source ID for the message envelope given the queue message and parsed event context.
     /// Override to customize (e.g., use MessageId instead of SourceId).
@@ -43,7 +49,7 @@ public abstract class D365EventForwardOrchestration<TDest> : BaseForwardOrchestr
     protected sealed override string GetSourceId(QueueMessageContract message)
         => GetSourceId(message, _currentContext!);
 
-    protected override (string action, bool hasTrackedChanges, TDest mappedData, string? sourceTimestamp)
+    protected override (string action, bool hasTrackedChanges, TDest mappedData, string? sourceTimestamp, string? skipReason)
         ParseAndMap(string payload)
     {
         var context = JsonSerializer.Deserialize<EventContext>(payload)
@@ -77,6 +83,9 @@ public abstract class D365EventForwardOrchestration<TDest> : BaseForwardOrchestr
                 break;
         }
 
+        if (ForcedAction is { } forced)
+            actionString = forced;
+
         bool flagTrack = false;
 
         string? GetFieldValue(string fieldName, bool force = false)
@@ -96,6 +105,6 @@ public abstract class D365EventForwardOrchestration<TDest> : BaseForwardOrchestr
 
         var mappedData = MapFields(GetFieldValue, actionString);
 
-        return (actionString, flagTrack, mappedData, context.OperationCreatedOn);
+        return (actionString, flagTrack, mappedData, context.OperationCreatedOn, GetSkipReason(context));
     }
 }

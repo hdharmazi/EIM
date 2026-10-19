@@ -109,6 +109,7 @@ function entityStem(entity: string): string | null {
     mserp_custcustomerv3entity: "customer",
     mserp_smmcontactpersonv2entity: "contact",
     mserp_wtc_custpostaladdressv2entity: "address",
+    mserp_wtc_custpostaladdressdeletedv2entity: "address",
     mserp_dirpartycontactv3entity: "partycontact",
   };
   return known[entity.toLowerCase()] ?? null;

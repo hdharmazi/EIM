@@ -24,7 +24,7 @@ public class SamplePoll_To_Target : BaseForwardOrchestration<SampleTargetContrac
 {
     protected override string EntityName => "Customer";
 
-    protected override (string action, bool hasTrackedChanges, SampleTargetContract mappedData, string? sourceTimestamp)
+    protected override (string action, bool hasTrackedChanges, SampleTargetContract mappedData, string? sourceTimestamp, string? skipReason)
         ParseAndMap(string payload)
     {
         // Payload is the raw JSON record from the source API
@@ -42,7 +42,7 @@ public class SamplePoll_To_Target : BaseForwardOrchestration<SampleTargetContrac
         // Determine action based on source data (customize per integration)
         var action = string.IsNullOrWhiteSpace(source.DeletedAt) ? "New" : "Delete";
 
-        return (action, true, mapped, source.ModifiedAt);
+        return (action, true, mapped, source.ModifiedAt, null);
     }
 }
 

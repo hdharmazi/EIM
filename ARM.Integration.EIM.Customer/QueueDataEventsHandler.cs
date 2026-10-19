@@ -28,11 +28,12 @@ public class QueueDataEventsHandler(
     /// Maps D365 entity names to their orchestration type and destination queue setting.
     /// To add a new entity, add a single entry here.
     /// </summary>
-    private static readonly Dictionary<string, (string Type, string QueueSetting)> EntityRoutes = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly Dictionary<string, (string Type, string QueueSetting)> EntityRoutes = new(StringComparer.OrdinalIgnoreCase)
     {
         ["mserp_custcustomerv3entity"]      = ("Customer_To_Capture","D365ToCaptureQueue"),
         ["mserp_smmcontactpersonv2entity"]   = ("Contact_To_Capture","D365ToCaptureQueue"),
         ["mserp_wtc_custpostaladdressv2entity"]  = ("CustomerAddress_To_Capture","D365ToCaptureQueue"),
+        ["mserp_wtc_custpostaladdressdeletedv2entity"] = ("CustomerAddressDelete_To_Capture", "D365ToCaptureQueue"),
         ["mserp_dirpartycontactv3entity"]    = ("PartyContact_To_Capture","D365ToCaptureQueue"),
     };
 
@@ -89,6 +90,7 @@ public class QueueDataEventsHandler(
     private static readonly Dictionary<string, string> EntityRequiredFields = new(StringComparer.OrdinalIgnoreCase)
     {
         ["mserp_smmcontactpersonv2entity"] = "mserp_wtc_associatedcustomeraccount",
+        ["mserp_wtc_custpostaladdressdeletedv2entity"] = "mserp_addresslocationid",
     };
 
     /// <summary>
