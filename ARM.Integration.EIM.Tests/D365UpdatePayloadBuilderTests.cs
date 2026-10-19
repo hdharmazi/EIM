@@ -153,20 +153,18 @@ public class D365UpdatePayloadBuilderTests
     }
 
     [Fact]
-    public void PartyContactNewResponse_MapsWtcPartyNumbers()
+    public void PartyContactNewResponse_ContactOfCustomer_EchoesSubmittedPartyNumbers()
     {
         var response = new TestablePartyContact().Response(
             new CapturePartyContactMessageContract
             {
-                ContactPartyNumber = "SOURCE-CONTACT",
-                CustomerPartyNumber = "SOURCE-CUSTOMER",
+                ContactPartyNumber = "000177803",
+                CustomerPartyNumber = "000000706",
                 ElectronicAddressId = "SOURCE-EA",
             },
             new PartyContactsEntity
             {
                 PartyNumber = "000177803",
-                WTC_ContactPartyNumber = "000177803",
-                WTC_CustomerPartyNumber = "000000706",
                 ElectronicAddressId = "000188139",
                 Locator = "123-123-1142",
                 LocatorExtension = "",
@@ -191,28 +189,7 @@ public class D365UpdatePayloadBuilderTests
     }
 
     [Fact]
-    public void PartyContactNewResponse_PreservesReportedBlankCustomerPartyNumber()
-    {
-        var response = new TestablePartyContact().Response(
-            new CapturePartyContactMessageContract
-            {
-                ContactPartyNumber = "SOURCE-CONTACT",
-            },
-            new PartyContactsEntity
-            {
-                PartyNumber = "000177803",
-                WTC_ContactPartyNumber = "000177803",
-                WTC_CustomerPartyNumber = "",
-                ElectronicAddressId = "000188139",
-            },
-            "New");
-
-        Assert.Equal("000177803", response.ContactPartyNumber);
-        Assert.Equal("", response.CustomerPartyNumber);
-    }
-
-    [Fact]
-    public void PartyContactNewResponse_FallsBackToSourceContactWhenWtcContactPartyNumberIsBlank()
+    public void PartyContactNewResponse_ContactOnly_LeavesCustomerPartyNumberBlank()
     {
         var response = new TestablePartyContact().Response(
             new CapturePartyContactMessageContract
@@ -225,8 +202,6 @@ public class D365UpdatePayloadBuilderTests
             new PartyContactsEntity
             {
                 PartyNumber = "000177803",
-                WTC_ContactPartyNumber = "",
-                WTC_CustomerPartyNumber = "",
                 ElectronicAddressId = "000188141",
                 Locator = "712-366-2241",
                 LocatorExtension = "",
@@ -261,8 +236,6 @@ public class D365UpdatePayloadBuilderTests
             new PartyContactsEntity
             {
                 PartyNumber = "000029968",
-                WTC_ContactPartyNumber = "",
-                WTC_CustomerPartyNumber = "",
                 ElectronicAddressId = "000188144",
                 Locator = "712-366-7777",
                 LocatorExtension = "",
@@ -321,22 +294,27 @@ public class D365UpdatePayloadBuilderTests
     }
 
     [Fact]
-    public void PartyContactRequest_MapsSourcePartyNumbersToWtcFields()
+    public void PartyContactCreatePayload_SendsPartyNumberWithoutWtcPartyFields()
     {
         var target = new TestablePartyContact().Target(new CapturePartyContactMessageContract
         {
-            ContactPartyNumber = "000177803",
-            CustomerPartyNumber = "000029968",
-            ElectronicAddressId = "000188147",
+            ContactPartyNumber = "000181101",
+            CustomerPartyNumber = "",
+            Locator = "cchurch@mail.com",
+            LocatorExtension = "",
+            Description = "Email",
+            Type = "Email",
         });
 
-        Assert.Equal("000177803", target.PartyNumber);
-        Assert.Equal("000177803", target.WTC_ContactPartyNumber);
-        Assert.Equal("000029968", target.WTC_CustomerPartyNumber);
+        var payload = Parse(JsonSerializer.Serialize(target));
+
+        Assert.Equal("000181101", (string?)payload["PartyNumber"]);
+        Assert.Equal("cchurch@mail.com", (string?)payload["Locator"]);
+        Assert.DoesNotContain(payload, p => p.Key.StartsWith("WTC_", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void BuildUpdatePayload_PartyContact_RetainsWtcPartyNumberContext()
+    public void BuildUpdatePayload_PartyContact_KeysOnPartyNumberWithoutWtcPartyFields()
     {
         var target = new TestablePartyContact().Target(new CapturePartyContactMessageContract
         {
@@ -349,11 +327,12 @@ public class D365UpdatePayloadBuilderTests
         });
 
         var payload = Parse(D365UpdatePayloadBuilder.BuildUpdatePayload(target).Json);
+        var key = new TestablePartyContact().Key(target);
 
         Assert.False(payload.ContainsKey("PartyNumber"));
         Assert.False(payload.ContainsKey("ElectronicAddressId"));
-        Assert.Equal("000029968", (string?)payload["WTC_CustomerPartyNumber"]);
-        Assert.False(payload.ContainsKey("WTC_ContactPartyNumber"));
+        Assert.DoesNotContain(payload, p => p.Key.StartsWith("WTC_", StringComparison.Ordinal));
+        Assert.Equal("PartyNumber='000029968',ElectronicAddressId='000188147'", key.ToString());
     }
 
     // 5.4 — filtering does not mutate the entity, so the key still resolves from the full instance.
