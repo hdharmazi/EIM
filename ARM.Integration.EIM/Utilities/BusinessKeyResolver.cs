@@ -11,6 +11,7 @@ public static class BusinessKeyResolver
         ["mserp_custcustomerv3entity"]     = "mserp_customeraccount",
         ["mserp_smmcontactpersonv2entity"]  = "mserp_contactpersonid",
         ["mserp_custpostaladdressv2entity"] = "mserp_addresslocationid",
+        ["mserp_wtc_custpostaladdressdeletedv2entity"] = "mserp_addresslocationid",
         ["mserp_dirpartycontactv3entity"]   = "mserp_electronicaddressid",
     };
 

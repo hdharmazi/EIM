@@ -1,0 +1,34 @@
+{
+  "BusinessEventId": "",
+  "MessageName": "OnExternalUpdated",
+  "PrimaryEntityName": "mserp_wtc_custpostaladdressdeletedv2entity",
+  "OperationId": "5b0f4a2e-8c1d-4f3a-9e6b-2d7c1a9f0e11",
+  "OperationCreatedOn": "/Date(1760889600000+0000)/",
+  "InputParameters": [
+    {
+      "key": "Target",
+      "value": {
+        "Id": "7f3c2b1a-0d9e-4c8b-a6f5-4e3d2c1b0a99",
+        "LogicalName": "mserp_wtc_custpostaladdressdeletedv2entity",
+        "Attributes": [
+          { "key": "mserp_dataareaid", "value": "wtc" },
+          { "key": "mserp_customeraccount", "value": "C000123" },
+          { "key": "mserp_addresslocationid", "value": "000146089" },
+          { "key": "mserp_isprimary", "value": { "__type": "OptionSetValue:http://schemas.microsoft.com/xrm/2011/Contracts", "Value": 200000001 } },
+          { "key": "mserp_addresslocationroles", "value": "Business" },
+          { "key": "mserp_addressdescription", "value": "Main yard" },
+          { "key": "mserp_addresscity", "value": "Sioux City" },
+          { "key": "mserp_addresszipcode", "value": "51101" },
+          { "key": "mserp_addressstreet", "value": "100 Example St" },
+          { "key": "mserp_addresscountryregionid", "value": "USA" },
+          { "key": "mserp_addressstate", "value": "IA" },
+          { "key": "mserp_wtc_isdeleted", "value": { "__type": "OptionSetValue:http://schemas.microsoft.com/xrm/2011/Contracts", "Value": 200000001 } }
+        ]
+      }
+    },
+    {
+      "key": "ChangedFields",
+      "value": [ "mserp_wtc_isdeleted" ]
+    }
+  ]
+}

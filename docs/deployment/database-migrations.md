@@ -279,6 +279,104 @@ Held messages already captured before a rollback stay at status `6`. Nothing col
 the release sweep is disabled, so drain the backlog first, or re-enable the sweep long enough to
 clear it.
 
+## Deploying the customer address delete route
+
+Migration `014_seed_customer_address_delete_route.sql` seeds a route naming
+`CustomerAddressDelete_To_Capture`. This release **reverses the usual order: deploy code first,
+then migrate.** EIM.Customer runs `RouteRegistryValidator` at startup and refuses to start when a
+route names an orchestration it has not registered. If the route row exists while the previous build
+starts — a restart, or a Consumption scale-out — the host is down, not degraded.
+
+`Deploy-Eim.ps1` always runs `schema` before `function`, whatever order components are given in, so
+this release must be deployed in **separate invocations**. Do not use `-Component all`, and do not
+combine `schema` with `function` or `api` in one call.
+
+Per environment, lowest first:
+
+```powershell
+# 1. Code. The new build validates cleanly: no route names the new orchestration yet.
+./script/deployment/Deploy-Eim.ps1 -Environment <env> -Component function
+./script/deployment/Deploy-Eim.ps1 -Environment <env> -Component api   # where hostsDashboard; reprocess uses the same registry
+
+# 2. Confirm the host started and logged "Route validation passed" before continuing.
+
+# 3. Schema. 014 is the only pending versioned script expected.
+./script/deployment/Deploy-Eim.ps1 -Environment <env> -Component schema
+```
+
+`014` throws unless exactly four rows exist for the new route (BAT, DEV, DEV2, TEST). Confirm:
+
+```sql
+SELECT ENVIRONMENT, ORCHESTRATIONTYPE, ENABLED, ONPAUSE
+FROM dbo.ROUTETABLE
+WHERE SOURCEENTITY = N'mserp_wtc_custpostaladdressdeletedv2entity';
+```
+
+Between step 1 and the route cache refreshing after step 3 (up to 60 seconds), the new build knows
+the entity but finds no route, so any address deletion in that window is dead-lettered on the
+data-event queue with reason `NoRoute`. Keep the gap short, then resubmit those dead letters.
+Before this release they were silently discarded, so nothing is lost relative to today.
+
+### Before enabling in a shared environment
+
+Messages sent to Capture cannot be recalled. Before the route carries real traffic in BAT or TEST,
+the Capture team must have confirmed:
+
+- a delete message whose `SourceId` is the `AddressLocationId` (e.g. `000146089`) rather than an
+  operation GUID is accepted;
+- whether a `Delete` needs the full address body or only `DataAreaId`, `CustomerAccount` and
+  `AddressLocationId`.
+
+Until then, keep the route paused in those environments (`ENABLED = 0`, `ONPAUSE = 'Hold'`) so
+deletions are captured and held rather than sent or lost.
+
+### Verifying end to end
+
+Delete a customer address in F&SC, then:
+
+```sql
+SELECT TOP 5 m.ID, m.ENVIRONMENT, m.SOURCEID, m.STATUS, m.CREATEDDATETIME
+FROM dbo.MESSAGEQUEUETABLE m
+WHERE m.SOURCEENTITY = N'mserp_wtc_custpostaladdressdeletedv2entity'
+ORDER BY m.ID DESC;
+
+SELECT d.NAME, d.DETAIL
+FROM dbo.MESSAGELOGDETAIL d
+WHERE d.MESSAGEID = <ID from above>
+ORDER BY d.ID;
+```
+
+Expect `SOURCEID` equal to the address location id, a `DetermineAction` step of `Delete`, and a
+`Result` step whose envelope has `"Action":"Delete"` and `"Entity":"CustomerAddress"`. Save the
+payload from `MESSAGEQUEUETABLE.PAYLOAD` over the test fixture
+`ARM.Integration.EIM.Tests/TestData/CustomerAddressDeleted.OnExternalUpdated.json` and re-run the
+tests.
+
+### Watching the deleted-flag guard
+
+An event on the delete entity whose `mserp_wtc_isdeleted` is not `Yes` is not forwarded; it is
+completed with a Warning-level `Result` step. Over the first cycle, count them:
+
+```sql
+SELECT m.ENVIRONMENT, COUNT(*) AS Skipped, MAX(d.CREATEDDATETIME) AS Latest
+FROM dbo.MESSAGELOGDETAIL d
+JOIN dbo.MESSAGEQUEUETABLE m ON m.ID = d.MESSAGEID
+WHERE m.SOURCEENTITY = N'mserp_wtc_custpostaladdressdeletedv2entity'
+  AND d.NAME = N'Result'
+  AND d.DETAIL LIKE N'skipped:%mserp_wtc_isdeleted%'
+GROUP BY m.ENVIRONMENT;
+```
+
+Zero is the expected answer. Any row means F&SC can set the flag back to `No` on this entity, and
+what an "undelete" should do in Capture becomes an open design question.
+
+### Rolling back
+
+Disable the route: `UPDATE dbo.ROUTETABLE SET ENABLED = 0 WHERE SOURCEENTITY =
+N'mserp_wtc_custpostaladdressdeletedv2entity';` Deletions are then held, not lost. To roll code
+back to a build without `CustomerAddressDelete_To_Capture`, delete the four route rows **first**;
+otherwise that build fails route validation at startup.
+
 ## Review checklist
 
 When reviewing a pull request that touches `script/SQL/`:

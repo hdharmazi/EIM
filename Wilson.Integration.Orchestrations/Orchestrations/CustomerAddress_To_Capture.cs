@@ -19,7 +19,7 @@ namespace Wilson.Integration.Orchestrations
             [200000000] = "No",
         };
 
-        private static string? ResolveYesNo(string? rawValue)
+        protected static string? ResolveYesNo(string? rawValue)
         {
             if (rawValue is null) return null;
 
