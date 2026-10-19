@@ -1,0 +1,138 @@
+{
+	"BusinessUnitId": "fed367cc-74e5-ef11-be21-002248304021",
+	"CorrelationId": "55c5f267-1dfe-49db-a0c4-902b13889304",
+	"Depth": 1,
+	"InitiatingUserAgent": "FINOPS-2653b635-8eee-eb41-beb2-19590743001e-10.0.49",
+	"InitiatingUserAzureActiveDirectoryObjectId": "0a65cc45-489b-479a-acb4-2a5487a27016",
+	"InitiatingUserId": "82719801-32ba-f011-bbd2-6045bdd6220d",
+	"InputParameters": [
+		{
+			"key": "Target",
+			"value": {
+				"__type": "Entity:http:\/\/schemas.microsoft.com\/xrm\/2011\/Contracts",
+				"Attributes": [
+					{
+						"key": "mserp_partynumber",
+						"value": "000177803"
+					},
+					{
+						"key": "mserp_electronicaddressid",
+						"value": "000188153"
+					},
+					{
+						"key": "mserp_locationid",
+						"value": "000307027"
+					},
+					{
+						"key": "mserp_description",
+						"value": "Contact3"
+					},
+					{
+						"key": "mserp_type",
+						"value": {
+							"__type": "OptionSetValue:http:\/\/schemas.microsoft.com\/xrm\/2011\/Contracts",
+							"Value": 200000001
+						}
+					},
+					{
+						"key": "mserp_countryregioncode",
+						"value": ""
+					},
+					{
+						"key": "mserp_locator",
+						"value": "333-333-3333"
+					},
+					{
+						"key": "mserp_locatorextension",
+						"value": ""
+					},
+					{
+						"key": "mserp_purpose",
+						"value": "Business"
+					},
+					{
+						"key": "mserp_ismobilephone",
+						"value": {
+							"__type": "OptionSetValue:http:\/\/schemas.microsoft.com\/xrm\/2011\/Contracts",
+							"Value": 200000000
+						}
+					},
+					{
+						"key": "mserp_isinstantmessage",
+						"value": {
+							"__type": "OptionSetValue:http:\/\/schemas.microsoft.com\/xrm\/2011\/Contracts",
+							"Value": 200000000
+						}
+					},
+					{
+						"key": "mserp_isprimary",
+						"value": {
+							"__type": "OptionSetValue:http:\/\/schemas.microsoft.com\/xrm\/2011\/Contracts",
+							"Value": 200000001
+						}
+					},
+					{
+						"key": "mserp_isprivate",
+						"value": {
+							"__type": "OptionSetValue:http:\/\/schemas.microsoft.com\/xrm\/2011\/Contracts",
+							"Value": 200000000
+						}
+					},
+					{
+						"key": "mserp_wtc_partyrole",
+						"value": "Contact"
+					},
+					{
+						"key": "mserp_dirpartycontactv3entityid",
+						"value": "00005c67-0000-0000-ba82-015001000000"
+					}
+				],
+				"EntityState": null,
+				"FormattedValues": [],
+				"Id": "00005c67-0000-0000-ba82-015001000000",
+				"KeyAttributes": [],
+				"LogicalName": "mserp_dirpartycontactv3entity",
+				"RelatedEntities": [],
+				"RowVersion": null
+			}
+		}
+	],
+	"IsExecutingOffline": false,
+	"IsInTransaction": false,
+	"IsOfflinePlayback": false,
+	"IsolationMode": 1,
+	"MessageName": "OnExternalCreated",
+	"Mode": 1,
+	"OperationCreatedOn": "\/Date(1792325652000+0000)\/",
+	"OperationId": "64c8ab6c-edca-f111-a05c-7c1e5247cae7",
+	"OrganizationId": "2a5e58a1-3cf2-f011-aa23-6045bd003e0f",
+	"OrganizationName": "unq2a5e58a13cf2f011aa236045bd003",
+	"OutputParameters": [],
+	"OwningExtension": {
+		"Id": "fd171bdd-20c7-f111-aaaf-7c1e5247cae7",
+		"KeyAttributes": [],
+		"LogicalName": "sdkmessageprocessingstep",
+		"Name": null,
+		"RowVersion": null
+	},
+	"ParentContext": null,
+	"PostEntityImages": [],
+	"PreEntityImages": [],
+	"PrimaryEntityId": "00000000-0000-0000-0000-000000000000",
+	"PrimaryEntityName": "mserp_dirpartycontactv3entity",
+	"RequestId": "557bf1e1-062c-4c41-b513-a7345d38a601",
+	"SecondaryEntityName": "none",
+	"SharedVariables": [
+		{
+			"key": "IsAutoTransact",
+			"value": false
+		},
+		{
+			"key": "AcceptLang",
+			"value": ""
+		}
+	],
+	"Stage": 40,
+	"UserAzureActiveDirectoryObjectId": "0a65cc45-489b-479a-acb4-2a5487a27016",
+	"UserId": "82719801-32ba-f011-bbd2-6045bdd6220d"
+}
