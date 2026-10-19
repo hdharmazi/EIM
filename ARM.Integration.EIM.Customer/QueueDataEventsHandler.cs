@@ -99,8 +99,7 @@ public class QueueDataEventsHandler(
     {
         ["mserp_dirpartycontactv3entity"] = new(StringComparer.OrdinalIgnoreCase)
         {
-            "mserp_wtc_contactperson",
-            "mserp_wtc_custaccount",
+            "mserp_wtc_partyrole",
         },
     };
 
@@ -196,8 +195,15 @@ public class QueueDataEventsHandler(
                 && anyFields.Any(f => attrs.TryGetValue(f, out var v) && !string.IsNullOrWhiteSpace(v?.ToString()));
             if (!hasAny)
             {
-                logger.LogInformation("Message {id} skipped: none of the required fields [{fields}] are populated.",
-                    message.MessageId, string.Join(", ", anyFields));
+                object? partyNumber = null;
+                attrs?.TryGetValue("mserp_partynumber", out partyNumber);
+                var skippedKey = attrs is null ? null : BusinessKeyResolver.GetBusinessKey(context.PrimaryEntityName, attrs);
+                // Blank means a non-customer/contact party (normal); absent means the column was lost in D365/Dataverse.
+                var level = attrs is not null && anyFields.Any(attrs.ContainsKey) ? LogLevel.Information : LogLevel.Warning;
+                logger.Log(level,
+                    "Message {id} skipped: none of the required fields [{fields}] are populated. Entity={entity}, Event={eventName}, BusinessKey={businessKey}, PartyNumber={partyNumber}",
+                    message.MessageId, string.Join(", ", anyFields), context.PrimaryEntityName, context.MessageName,
+                    skippedKey, partyNumber);
                 await messageActions.CompleteMessageAsync(message);
                 return;
             }

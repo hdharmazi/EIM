@@ -49,8 +49,10 @@ namespace Wilson.Integration.Orchestrations
         protected override CapturePartyContactMessageContract MapFields(Func<string, bool, string?> getField, string action)
         {
             var partyNumber    = getField("mserp_partynumber",        true);
-            var isContact      = !string.IsNullOrWhiteSpace(getField("mserp_wtc_contactperson", false));
-            var isCustomer     = !string.IsNullOrWhiteSpace(getField("mserp_wtc_custaccount",   false));
+            // Forced: the read-only computed role never appears in an update's changed set.
+            var partyRole      = getField("mserp_wtc_partyrole",      true);
+            var isContact      = string.Equals(partyRole, "Contact",  StringComparison.OrdinalIgnoreCase);
+            var isCustomer     = string.Equals(partyRole, "Customer", StringComparison.OrdinalIgnoreCase);
             return new CapturePartyContactMessageContract
             {
                 ContactPartyNumber  = isContact  ? partyNumber : "",
