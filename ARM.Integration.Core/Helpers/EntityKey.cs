@@ -18,12 +18,14 @@ public sealed class EntityKey
     public static EntityKey Create(string key, string value)
     {
         var ek = new EntityKey();
-        ek._segments.Add(new(key, value));
-        return ek;
+        return ek.Add(key, value);
     }
 
     public EntityKey Add(string key, string value)
     {
+        if (string.IsNullOrWhiteSpace(value))
+            throw new MissingEntityKeyException(key);
+
         _segments.Add(new(key, value));
         return this;
     }

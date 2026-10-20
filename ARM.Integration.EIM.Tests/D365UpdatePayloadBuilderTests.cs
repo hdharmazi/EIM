@@ -294,6 +294,33 @@ public class D365UpdatePayloadBuilderTests
     }
 
     [Fact]
+    public void PartyContactUpdateKey_WithoutElectronicAddressId_ThrowsMissingEntityKey()
+    {
+        var target = new TestablePartyContact().Target(new CapturePartyContactMessageContract
+        {
+            ContactPartyNumber = "000181101",
+            CustomerPartyNumber = "",
+            Locator = "7124901655",
+            Description = "Phone",
+            Type = "Phone",
+        });
+
+        var ex = Assert.Throws<MissingEntityKeyException>(() => new TestablePartyContact().Key(target));
+
+        Assert.Equal("ElectronicAddressId", ex.KeyField);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void EntityKey_RejectsBlankValues(string value)
+    {
+        var ex = Assert.Throws<MissingEntityKeyException>(() => EntityKey.Create("dataAreaId", "WTC").Add("CustomerAccount", value));
+
+        Assert.Equal("CustomerAccount", ex.KeyField);
+    }
+
+    [Fact]
     public void PartyContactCreatePayload_SendsPartyNumberWithoutWtcPartyFields()
     {
         var target = new TestablePartyContact().Target(new CapturePartyContactMessageContract

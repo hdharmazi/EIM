@@ -180,6 +180,21 @@ public class FailureClassifierTests
     }
 
     [Fact]
+    public void A_missing_entity_key_is_positively_matched_and_not_marked_unclassified()
+    {
+        var exception = new MissingEntityKeyException("ElectronicAddressId");
+
+        var verdict = Classifier().ClassifyVerdict(exception);
+        var outcome = FailureOutcomeSelector.Select(verdict, exception.Message, attempt: null, attemptsRemain: false);
+
+        Assert.True(verdict.IsTerminal);
+        Assert.Equal(TerminalReason.Rejected, verdict.Reason);
+        Assert.Equal(MessageStatus.Failed, outcome.Status);
+        Assert.Equal("Required key field 'ElectronicAddressId' is missing from the source message.", outcome.Message);
+        Assert.False(outcome.LogAsError);
+    }
+
+    [Fact]
     public void Wrapping_does_not_lose_a_positively_matched_rejection()
     {
         var wrapped = new InvalidOperationException("orchestration failed", D365(HttpStatusCode.BadRequest));
