@@ -86,6 +86,7 @@ public sealed class DefaultFailureClassifier(
     {
         D365FSCException d365 => !IsRetryableStatus(d365.StatusCode),
         JsonException => true,
+        MissingEntityKeyException => true,
         _ => false
     };
 
