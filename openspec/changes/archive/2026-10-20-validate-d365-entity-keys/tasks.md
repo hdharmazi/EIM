@@ -13,5 +13,5 @@
 
 ## 3. Deploy and verify
 
-- [ ] 3.1 Deploy the function app and the Dashboard API to BAT
-- [ ] 3.2 Reprocess EIM 78782 and confirm it fails with `Required key field 'ElectronicAddressId' is missing from the source message.` and no `(unclassified failure)` suffix
+- [x] 3.1 Deploy the function app and the Dashboard API to BAT
+- [x] 3.2 Reprocess EIM 78782 and confirm it fails with `Required key field 'ElectronicAddressId' is missing from the source message.` and no `(unclassified failure)` suffix

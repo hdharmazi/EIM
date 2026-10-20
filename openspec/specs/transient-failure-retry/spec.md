@@ -7,7 +7,7 @@ with exponential backoff, and escalate once the attempt allowance is exhausted â
 destination outage does not require operator intervention, while a genuine rejection still does.
 ## Requirements
 ### Requirement: Failures are classified as retryable or terminal
-The system SHALL classify a processing failure as either retryable or terminal. Transport-level and destination-availability failures, including request timeouts, connection failures, and destination responses indicating throttling or server error, SHALL be classified retryable. Validation rejections, authorization failures, not-found responses, and mapping or deserialization errors SHALL be classified terminal.
+The system SHALL classify a processing failure as either retryable or terminal. Transport-level and destination-availability failures, including request timeouts, connection failures, and destination responses indicating throttling or server error, SHALL be classified retryable. Validation rejections, authorization failures, not-found responses, mapping or deserialization errors, and source messages missing a required D365 entity key field SHALL be classified terminal.
 
 The classification SHALL determine the status recorded for the message. A terminal failure SHALL be recorded at status `3` (Failed). The status SHALL NOT be derived from the exception type observed at the catch site.
 
@@ -20,6 +20,10 @@ The classifier SHALL additionally report whether a terminal verdict was reached 
 #### Scenario: Validation rejection is terminal
 - **WHEN** the destination system rejects a write because the payload is invalid
 - **THEN** the failure is classified terminal, positively matched, and the message is recorded at status `3`
+
+#### Scenario: Missing entity key is terminal
+- **WHEN** a D365 update or delete cannot be built because a key field is missing from the source message
+- **THEN** the failure is classified terminal, positively matched, and the message is recorded at status `3` without the unclassified-failure marker
 
 #### Scenario: Unrecognised failures default to terminal
 - **WHEN** a failure cannot be matched to a known retryable condition
