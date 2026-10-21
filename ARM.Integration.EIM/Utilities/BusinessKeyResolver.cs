@@ -6,11 +6,11 @@ namespace ARM.Integration.EIM.Utilities;
 /// </summary>
 public static class BusinessKeyResolver
 {
-    private static readonly Dictionary<string, string> EntityKeyFields = new(StringComparer.OrdinalIgnoreCase)
+    internal static readonly Dictionary<string, string> EntityKeyFields = new(StringComparer.OrdinalIgnoreCase)
     {
         ["mserp_custcustomerv3entity"]     = "mserp_customeraccount",
         ["mserp_smmcontactpersonv2entity"]  = "mserp_contactpersonid",
-        ["mserp_custpostaladdressv2entity"] = "mserp_addresslocationid",
+        ["mserp_wtc_custpostaladdressv2entity"] = "mserp_addresslocationid",
         ["mserp_wtc_custpostaladdressdeletedv2entity"] = "mserp_addresslocationid",
         ["mserp_dirpartycontactv3entity"]   = "mserp_electronicaddressid",
     };
@@ -19,16 +19,31 @@ public static class BusinessKeyResolver
     /// Extracts the business key value from D365 target attributes for the given entity.
     /// </summary>
     /// <param name="entityName">The D365 primary entity name (e.g., "mserp_custcustomerv3entity").</param>
-    /// <param name="targetAttributes">Parsed target attributes from the data event.</param>
-    /// <returns>The business key value, or null if the entity or field is not found.</returns>
-    public static string? GetBusinessKey(string entityName, Dictionary<string, object> targetAttributes)
+    /// <param name="targetAttributes">Parsed target attributes from the data event, or null when the event has none.</param>
+    /// <returns>
+    /// The trimmed business key value, or null if the attributes are null, the entity is not registered,
+    /// the key attribute is absent, or its value is null, empty, or whitespace.
+    /// </returns>
+    public static string? GetBusinessKey(string entityName, Dictionary<string, object>? targetAttributes)
     {
+        if (targetAttributes is null)
+            return null;
+
         if (!EntityKeyFields.TryGetValue(entityName, out var keyField))
             return null;
 
         if (!targetAttributes.TryGetValue(keyField, out var value))
             return null;
 
-        return value?.ToString()?.Trim();
+        var key = value?.ToString()?.Trim();
+        return string.IsNullOrEmpty(key) ? null : key;
     }
+
+    /// <summary>
+    /// Returns the business key attribute registered for the given entity.
+    /// </summary>
+    /// <param name="entityName">The D365 primary entity name.</param>
+    /// <returns>The registered attribute name, or null if the entity is not registered.</returns>
+    public static string? GetKeyField(string entityName)
+        => EntityKeyFields.TryGetValue(entityName, out var keyField) ? keyField : null;
 }

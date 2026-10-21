@@ -377,3 +377,6 @@ AzureDeploy.AppService.ps1
 __blobstorage__/
 __queuestorage__/
 .azurite/
+
+# Claude Code personal settings
+.claude/settings.local.json

@@ -26,7 +26,9 @@ public class QueueDataEventsHandler(
 
     /// <summary>
     /// Maps D365 entity names to their orchestration type and destination queue setting.
-    /// To add a new entity, add a single entry here.
+    /// A new routed entity also needs a <see cref="BusinessKeyResolver"/> <c>EntityKeyFields</c> entry
+    /// and a <c>TestData/SourceEntities</c> fixture in the tests; <c>BusinessKeyRegistrationTests</c>
+    /// fails until both exist.
     /// </summary>
     internal static readonly Dictionary<string, (string Type, string QueueSetting)> EntityRoutes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -216,15 +218,12 @@ public class QueueDataEventsHandler(
         var connectionString = Environment.GetEnvironmentVariable("EIMDB")
             ?? throw new InvalidOperationException("EIMDB environment variable is not set.");
 
-        // Resolve business key for SourceId (e.g., CustomerAccount, ContactPersonId)
-        var targetAttrs = D365FSCEventParser.GetTargetAttributes(context.InputParameters);
-        var businessKey = BusinessKeyResolver.GetBusinessKey(context.PrimaryEntityName, targetAttrs);
-
         var controller = new EIMController(connectionString, logger, orchestrations, failureClassifier, retrySchedule);
 
         var request = new MessageRequest
         {
-            SourceId = businessKey ?? context.OperationId,
+            // Business key (e.g., CustomerAccount, ContactPersonId), else the operation id with a warning.
+            SourceId = ResolveSourceId(context, logger, message.MessageId),
             Environment = Environment.GetEnvironmentVariable("DefaultEnvironment") ?? "",
             DestinationSystem = "CAPTURE",
             SourceSystem = "D365FSC",
@@ -261,5 +260,27 @@ public class QueueDataEventsHandler(
             logger.LogError(ex, "Processing failed for message {id}. Message will be retried or dead-lettered.", message.MessageId);
             throw; // Let the Functions host handle retry/dead-letter
         }
+    }
+
+    /// <summary>
+    /// Returns the entity's business key as the message SourceId. When it cannot be resolved
+    /// (no Target attributes, key attribute absent, or blank), logs a warning and falls back to
+    /// the D365 operation id.
+    /// </summary>
+    internal static string ResolveSourceId(EventContext context, ILogger logger, string messageId)
+    {
+        var targetAttrs = D365FSCEventParser.GetTargetAttributes(context.InputParameters);
+        var businessKey = BusinessKeyResolver.GetBusinessKey(context.PrimaryEntityName, targetAttrs);
+        if (businessKey is not null)
+            return businessKey;
+
+        logger.LogWarning(
+            "Message {MessageId}: business key field {KeyField} is missing or blank for entity {Entity}; SourceId falls back to operation id {FallbackSourceId}.",
+            messageId,
+            BusinessKeyResolver.GetKeyField(context.PrimaryEntityName) ?? "(none registered)",
+            context.PrimaryEntityName,
+            context.OperationId);
+
+        return context.OperationId;
     }
 }

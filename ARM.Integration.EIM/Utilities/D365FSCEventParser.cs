@@ -61,15 +61,17 @@ namespace ARM.Integration.EIM.Utilities
         }
 
         /// <summary>
-        /// Gets the Target entity attributes from InputParameters
+        /// Gets the Target entity attributes from InputParameters.
+        /// Returns null when there is no Target parameter, its value is absent or JSON null,
+        /// or the entity carries no Attributes.
         /// </summary>
-        public static Dictionary<string, object> GetTargetAttributes(List<InputParameter> inputParameters)
+        public static Dictionary<string, object>? GetTargetAttributes(List<InputParameter> inputParameters)
         {
             var target = inputParameters.FirstOrDefault(p => p.Key == "Target");
-            if (target.Value.ValueKind == JsonValueKind.Undefined) return null;
+            if (target is null || target.Value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return null;
 
             var entity = JsonSerializer.Deserialize<EntityValue>(target.Value.GetRawText());
-            return ParseAttributes(entity.Attributes);
+            return entity?.Attributes is null ? null : ParseAttributes(entity.Attributes);
         }
 
         /// <summary>
