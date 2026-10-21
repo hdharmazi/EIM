@@ -57,7 +57,9 @@ public abstract class D365EventForwardOrchestration<TDest> : BaseForwardOrchestr
 
         _currentContext = context;
 
-        var targetAttrs = D365FSCEventParser.GetTargetAttributes(context.InputParameters);
+        // No Target means nothing to map; fail clearly rather than forward an empty envelope.
+        var targetAttrs = D365FSCEventParser.GetTargetAttributes(context.InputParameters)
+            ?? throw new JsonException($"Event {context.OperationId} for '{context.PrimaryEntityName}' has no Target attributes.");
 
         var actiontype = context.MessageName;
         string actionString;

@@ -1,0 +1,65 @@
+{
+  "BusinessUnitId": "00000000-0000-0000-0000-000000000001",
+  "CorrelationId": "00000000-0000-0000-0000-000000000002",
+  "Depth": 1,
+  "InitiatingUserAgent": "FINOPS-00000000-0000-0000-0000-000000000003-10.0.49",
+  "InitiatingUserAzureActiveDirectoryObjectId": "00000000-0000-0000-0000-000000000004",
+  "InitiatingUserId": "00000000-0000-0000-0000-000000000005",
+  "InputParameters": [
+    {
+      "key": "Target",
+      "value": {
+        "__type": "Entity:http://schemas.microsoft.com/xrm/2011/Contracts",
+        "Attributes": [
+          { "key": "mserp_electronicaddressid", "value": "000000401" },
+          { "key": "mserp_partynumber", "value": "000000101" },
+          { "key": "mserp_wtc_partyrole", "value": "Customer" },
+          { "key": "mserp_locator", "value": "555-0100" },
+          { "key": "mserp_locatorextension", "value": "" },
+          { "key": "mserp_description", "value": "EXAMPLE MAIN LINE" },
+          { "key": "mserp_type", "value": { "__type": "OptionSetValue:http://schemas.microsoft.com/xrm/2011/Contracts", "Value": 200000001 } },
+          { "key": "mserp_dirpartycontactv3entityid", "value": "00000000-0000-0000-0000-000000000036" }
+        ],
+        "EntityState": null,
+        "FormattedValues": [],
+        "Id": "00000000-0000-0000-0000-000000000036",
+        "KeyAttributes": [],
+        "LogicalName": "mserp_dirpartycontactv3entity",
+        "RelatedEntities": [],
+        "RowVersion": null
+      }
+    }
+  ],
+  "IsExecutingOffline": false,
+  "IsInTransaction": false,
+  "IsOfflinePlayback": false,
+  "IsolationMode": 1,
+  "MessageName": "OnExternalCreated",
+  "Mode": 1,
+  "OperationCreatedOn": "/Date(1792405681000+0000)/",
+  "OperationId": "00000000-0000-0000-0000-000000000037",
+  "OrganizationId": "00000000-0000-0000-0000-000000000008",
+  "OrganizationName": "unqexampleorganization",
+  "OutputParameters": [],
+  "OwningExtension": {
+    "Id": "00000000-0000-0000-0000-000000000009",
+    "KeyAttributes": [],
+    "LogicalName": "sdkmessageprocessingstep",
+    "Name": null,
+    "RowVersion": null
+  },
+  "ParentContext": null,
+  "PostEntityImages": [],
+  "PreEntityImages": [],
+  "PrimaryEntityId": "00000000-0000-0000-0000-000000000000",
+  "PrimaryEntityName": "mserp_dirpartycontactv3entity",
+  "RequestId": "00000000-0000-0000-0000-00000000003a",
+  "SecondaryEntityName": "none",
+  "SharedVariables": [
+    { "key": "IsAutoTransact", "value": false },
+    { "key": "AcceptLang", "value": "" }
+  ],
+  "Stage": 40,
+  "UserAzureActiveDirectoryObjectId": "00000000-0000-0000-0000-000000000004",
+  "UserId": "00000000-0000-0000-0000-000000000005"
+}

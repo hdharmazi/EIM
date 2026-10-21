@@ -1,0 +1,66 @@
+{
+  "BusinessUnitId": "00000000-0000-0000-0000-000000000001",
+  "CorrelationId": "00000000-0000-0000-0000-000000000002",
+  "Depth": 1,
+  "InitiatingUserAgent": "FINOPS-00000000-0000-0000-0000-000000000003-10.0.49",
+  "InitiatingUserAzureActiveDirectoryObjectId": "00000000-0000-0000-0000-000000000004",
+  "InitiatingUserId": "00000000-0000-0000-0000-000000000005",
+  "InputParameters": [
+    {
+      "key": "Target",
+      "value": {
+        "__type": "Entity:http://schemas.microsoft.com/xrm/2011/Contracts",
+        "Attributes": [
+          { "key": "mserp_contactpersonid", "value": "000000301" },
+          { "key": "mserp_dataareaid", "value": "wtc" },
+          { "key": "mserp_firstname", "value": "EXAMPLE" },
+          { "key": "mserp_middlename", "value": "" },
+          { "key": "mserp_lastname", "value": "PERSON" },
+          { "key": "mserp_wtc_associatedcustomeraccount", "value": "C000123" },
+          { "key": "mserp_associatedpartynumber", "value": "000000101" },
+          { "key": "mserp_contactpersonpartynumber", "value": "000000302" },
+          { "key": "mserp_smmcontactpersonv2entityid", "value": "00000000-0000-0000-0000-000000000026" }
+        ],
+        "EntityState": null,
+        "FormattedValues": [],
+        "Id": "00000000-0000-0000-0000-000000000026",
+        "KeyAttributes": [],
+        "LogicalName": "mserp_smmcontactpersonv2entity",
+        "RelatedEntities": [],
+        "RowVersion": null
+      }
+    }
+  ],
+  "IsExecutingOffline": false,
+  "IsInTransaction": false,
+  "IsOfflinePlayback": false,
+  "IsolationMode": 1,
+  "MessageName": "OnExternalCreated",
+  "Mode": 1,
+  "OperationCreatedOn": "/Date(1792405681000+0000)/",
+  "OperationId": "00000000-0000-0000-0000-000000000027",
+  "OrganizationId": "00000000-0000-0000-0000-000000000008",
+  "OrganizationName": "unqexampleorganization",
+  "OutputParameters": [],
+  "OwningExtension": {
+    "Id": "00000000-0000-0000-0000-000000000009",
+    "KeyAttributes": [],
+    "LogicalName": "sdkmessageprocessingstep",
+    "Name": null,
+    "RowVersion": null
+  },
+  "ParentContext": null,
+  "PostEntityImages": [],
+  "PreEntityImages": [],
+  "PrimaryEntityId": "00000000-0000-0000-0000-000000000000",
+  "PrimaryEntityName": "mserp_smmcontactpersonv2entity",
+  "RequestId": "00000000-0000-0000-0000-00000000002a",
+  "SecondaryEntityName": "none",
+  "SharedVariables": [
+    { "key": "IsAutoTransact", "value": false },
+    { "key": "AcceptLang", "value": "" }
+  ],
+  "Stage": 40,
+  "UserAzureActiveDirectoryObjectId": "00000000-0000-0000-0000-000000000004",
+  "UserId": "00000000-0000-0000-0000-000000000005"
+}
