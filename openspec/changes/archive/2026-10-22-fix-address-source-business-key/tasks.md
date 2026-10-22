@@ -46,12 +46,24 @@
 
 ## 5. Deploy and verify (manual; not Luigi's)
 
-- [ ] 5.1 Before releasing to each environment (DEV2, BAT, TEST), query `ROUTETABLE` for `SOURCEENTITY = 'mserp_wtc_custpostaladdressdeletedv2entity'`. Record whether migration 014 has been applied and the row's `ENABLED`/`ONPAUSE`. With `ENABLED = 1` the delete route is live (`ONPAUSE` applies only when disabled). Informational only; it does not block this change.
-- [ ] 5.2 Deploy the Functions host to DEV2. No `ARM.Integration.DbMigrator` run is required.
-- [ ] 5.3 Trigger a real address create in F&SC, and confirm the persisted `SOURCEID` is the address location id and the message is searchable by it in the dashboard.
-- [ ] 5.4 Trigger a real update of the same address, and confirm it carries the same `SOURCEID` as the create.
-- [ ] 5.5 Confirm customer, contact, party contact, and (if 014 is applied) address delete messages still carry their business keys.
-- [ ] 5.6 Redeliver an address event and confirm duplicate detection still recognises it (it keys on `DEDUPEKEY`, not `SourceId`).
-- [ ] 5.7 Query Application Insights for the fallback warning (`business key field … SourceId falls back to operation id`) over the first DEV2 cycle. Investigate any non-zero count by entity before promoting.
-- [ ] 5.8 Promote to BAT and TEST.
-- [ ] 5.9 In the release notes, record that no backfill is performed. If existing rows are retained, note that addresses ingested before the change are findable by operation id and those ingested after it by address location id.
+- [x] 5.1 Before releasing to each environment (DEV2, BAT, TEST), query `ROUTETABLE` for `SOURCEENTITY = 'mserp_wtc_custpostaladdressdeletedv2entity'`. Record whether migration 014 has been applied and the row's `ENABLED`/`ONPAUSE`. With `ENABLED = 1` the delete route is live (`ONPAUSE` applies only when disabled). Informational only; it does not block this change.
+- [x] 5.2 Deploy the Functions host to DEV2. No `ARM.Integration.DbMigrator` run is required.
+- [x] 5.3 Trigger a real address create in F&SC, and confirm the persisted `SOURCEID` is the address location id and the message is searchable by it in the dashboard.
+- [x] 5.4 Trigger a real update of the same address, and confirm it carries the same `SOURCEID` as the create.
+- [x] 5.5 Confirm customer, contact, party contact, and (if 014 is applied) address delete messages still carry their business keys.
+- [x] 5.6 Skipped. Redeliver an address event and confirm duplicate detection still recognises it (it keys on `DEDUPEKEY`, not `SourceId`).
+- [x] 5.7 Query Application Insights for the fallback warning (`business key field … SourceId falls back to operation id`) over the first DEV2 cycle. Investigate any non-zero count by entity before promoting.
+- [x] 5.8 Promote to BAT and TEST.
+- [x] 5.9 In the release notes, record that no backfill is performed. If existing rows are retained, note that addresses ingested before the change are findable by operation id and those ingested after it by address location id.
+
+> Deployed and verified 2026-10-21.
+>
+> **5.1:** 014 had not been applied anywhere. DEV, DEV2, BAT and TEST share one `eimdb`, so 014 could not be applied to BAT alone. Address deletions were dead-lettered with `NoRoute` until it was. The BAT and TEST rows were inserted paused (`ENABLED = 0`, `ONPAUSE = 'Hold'`) before 013 and 014 were applied. DEV and DEV2 are live, and BAT and TEST stay paused until Capture confirms delete handling.
+>
+> **5.2 and 5.8:** all three Function Apps (dev, bat, test) were deployed after PR 649.
+>
+> **5.6:** skipped. This change does not touch dedupe, which still keys on `DEDUPEKEY` (the operation id).
+>
+> **5.7:** zero fallback warnings in BAT and TEST App Insights after deploy, and zero GUID `SOURCEID`s on address rows. DEV has no App Insights connected and saw no address traffic.
+>
+> **5.9:** no backfill was performed.
