@@ -2,21 +2,28 @@
 
 ## Deployment
 
-`deployment/Deploy-Eim.ps1` is the manual nonprod deployment orchestrator. It accepts `dev`, `bat`, or `test` and deploys selected components in dependency order.
+| Script | Does |
+|---|---|
+| `deployment/Deploy-Wilson.ps1` | deploys one configuration (`nonprod`, `dev`, `bat`, `test`): infrastructure, settings, schema, code, verify, health, and the on-demand `cutover`, `rollback` and `remove` |
+| `deployment/New-DeploymentPackage.ps1` | builds the package the deploy script consumes (zips, migrator, manifest) |
+| `deployment/Test-DeployWilson.ps1` | dependency-free self-test of both scripts; with `-PackagePath`, also checks a built package |
 
 ```powershell
-# Preview all components for dev
-.\script\deployment\Deploy-Eim.ps1 -Environment dev -Component all -WhatIf
+# Build a package
+.\script\deployment\New-DeploymentPackage.ps1 -Environment nonprod, dev -Version local
 
-# Deploy one component
-.\script\deployment\Deploy-Eim.ps1 -Environment bat -Component function
+# Preview everything for dev
+.\script\deployment\Deploy-Wilson.ps1 -Environment dev -Component all -WhatIf -PackagePath artifacts\package\wtc-eim-deploy-local
+
+# Self-test
+pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1
 ```
 
-Environment files under `deployment/config/` are tracked so resource names and non-secret settings
-can be reviewed. Keep their connection-string fields as placeholders. Supply credentials at runtime
-through `EIM_DEPLOY_EIMDB` and `EIM_DEPLOY_SERVICEBUS`; never commit real secret values.
+The configurations are in `deployment/config/`: `deploy.base.json` plus one `deploy.<name>.json` per
+configuration. They are tracked so names and non-secret settings can be reviewed, and they hold no secrets.
+Supply the connection strings at run time through `EIM_DEPLOY_EIMDB` and `EIM_DEPLOY_SERVICEBUS`.
 
-`deployment/Deploy-ZipWithPublishProfile.ps1` is the generic Kudu ZIP-deploy helper used by Azure DevOps pipelines.
+The pipeline that runs these is `pipelines/eim.yml`. See [docs/deployment/deployment.md](../docs/deployment/deployment.md).
 
 ## Database
 

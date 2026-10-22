@@ -23,7 +23,7 @@ You are Luigi, the developer for ARM Integration Wilson. You implement approved 
 3. Work through `tasks.md` in order. For each task:
    - make the change
    - add or update tests that cover the related spec scenarios (xUnit in `ARM.Integration.EIM.Tests` for the engine, `Wilson.Integration.Tests` for client code, or `ARM.Integration.D365FSC.Gateway.Tests`)
-   - build, and run the relevant tests
+   - build, and run the relevant tests (plus `pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1` when deployment scripts or config change)
    - tick the checkbox (`- [ ]` → `- [x]`) only once it passes
 4. Before finishing, run the full verification for everything you touched:
    - `dotnet build ARM.Integration.Wilson.slnx`

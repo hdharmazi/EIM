@@ -1,0 +1,62 @@
+{
+  "client": "wtc",
+  "workload": "eim",
+  "sharedSuffix": "nonprod",
+  "location": "centralus",
+  "subscriptionId": "<subscription id or name>",
+  "names": {
+    "resourceGroup": "d365fsc-integration-nonprod",
+    "serviceBusNamespace": "asb-eim-wtc-nonprod",
+    "keyVault": "kv-d365fsc-wtc-nonprod",
+    "sqlServer": "azql-wtc-sandbox",
+    "sqlDatabase": "eimdb"
+  },
+  "appServicePlan": {
+    "sku": "P0v3"
+  },
+  "entra": {
+    "tenantId": "<dashboard entra tenant id>",
+    "clientId": "<dashboard entra client id>",
+    "audience": "<api://... or client id>",
+    "scope": "user_impersonation"
+  },
+  "gateway": {
+    "baseUrl": null,
+    "maxRequestBytes": 4194304,
+    "idempotencyRetention": "1.00:00:00",
+    "idempotencyPurgeSchedule": "0 15 * * * *",
+    "legacyVerificationTargets": [
+      {
+        "name": "azf-d365fsc-gateway-wtc-nonprod",
+        "baseUrl": "https://azf-d365fsc-gateway-wtc-nonprod.azurewebsites.net"
+      }
+    ]
+  },
+  "automation": {
+    "excludedUsers": "<semicolon separated user guids>",
+    "awaitingD365SweepSchedule": "0 */15 * * * *",
+    "awaitingD365StuckTimeoutHours": "4",
+    "releaseSweepSchedule": "0 */1 * * * *",
+    "releaseSweepBatchSize": "100",
+    "retrySweepSchedule": "0 */1 * * * *",
+    "retrySweepBatchSize": "100",
+    "retryMaxAttempts": "5",
+    "retryBaseDelaySeconds": "30",
+    "retryMaxDelaySeconds": "1800",
+    "gatedFunctions": [
+      "AwaitingD365SweepHandler",
+      "QueueCaptureCustomer",
+      "QueueDataEventsHandler",
+      "QueueMessageQueueBusinessEventHandler",
+      "ReleaseSweepHandler",
+      "RetrySweepHandler"
+    ],
+    "keepDisabled": [],
+    "retiredSettings": [
+      "PollSchedule"
+    ]
+  },
+  "dashboard": {
+    "simulationQueuePrefix": "bat"
+  }
+}

@@ -28,7 +28,7 @@ public class AutomationFunctionNamesTests
         "RetrySweepHandler",
     ];
 
-    private static IReadOnlyList<(string Name, MethodInfo Method)> Functions() =>
+    internal static IReadOnlyList<(string Name, MethodInfo Method)> Functions() =>
         Automation.GetTypes()
             .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
             .Select(m => (Attribute: m.GetCustomAttribute<FunctionAttribute>(), Method: m))

@@ -8,9 +8,35 @@ empty Azure SQL database does not contain the tables, indexes, routing rows, sto
 trigger used by the API, Wilson.Integration.Automation, and Gateway. Deploying code without first applying migrations
 produces table-not-found errors; it is not a supported deployment mode.
 
-`script/deployment/Deploy-Eim.ps1 -Component schema` runs the migrator. The code-only Azure DevOps
-pipelines intentionally do not run it because they promote application packages without receiving a
-database connection string.
+`script/deployment/Deploy-Wilson.ps1 -Environment nonprod -Component schema` runs the migrator, using the
+self-contained `ARM.Integration.DbMigrator.exe` carried in the deployment package. `schema` belongs to the
+shared configuration (`nonprod`) only; the per-environment configurations (`dev`, `bat`, `test`) reject it,
+because there is one `eimdb` for all of them. See [deployment.md](deployment.md).
+
+## When migrations run, and the expand/contract rule
+
+The pipeline (`pipelines/eim.yml`) runs migrations **once per run, in the `Deploy_shared` stage, before any
+environment's code**, and only on a manual run with `runMigrations` ticked. A merge to `main` never migrates.
+The stage wraps the migrator in `myip` / `myipremove`, so the agent's IP is on the SQL firewall only while
+`schema` runs.
+
+One `eimdb` holds the rows of every ENVIRONMENT value: `DEV`, `DEV2`, `BAT` and `TEST`. These are database
+values, not deployment configurations; `DEV2` has no Function App and no deployment configuration of its own,
+but its rows are migrated with everyone else's. After `Deploy_shared`, `bat` and `test` keep running the
+previous build until their stages are approved, possibly for days, and a rejected stage leaves them there.
+So every migration must work with:
+
+- the new build and the build still running in later stages, and
+- every ENVIRONMENT value's rows, including `DEV2`.
+
+That means **expand/contract**:
+
+- **Expand** in one release: add tables, procedures, nullable columns or columns with defaults.
+- **Contract** in a later release: remove or rename only after every environment runs code that no longer
+  uses the old shape.
+
+A release that cannot be expand-only, such as the `014` route seed below, has to be run by hand in separate
+steps. Do not tick `runMigrations` for it.
 
 ## Where scripts live
 
@@ -287,22 +313,23 @@ then migrate.** Wilson.Integration.Automation runs `RouteRegistryValidator` at s
 route names an orchestration it has not registered. If the route row exists while the previous build
 starts — a restart, or a Consumption scale-out — the host is down, not degraded.
 
-`Deploy-Eim.ps1` always runs `schema` before `function`, whatever order components are given in, so
-this release must be deployed in **separate invocations**. Do not use `-Component all`, and do not
-combine `schema` with `function` or `api` in one call.
-
-Per environment, lowest first:
+The pipeline runs `schema` in `Deploy_shared`, before any environment's Automation code, so this
+release must **not** be deployed with `runMigrations` ticked. Deploy the code first, then migrate in a
+separate invocation:
 
 ```powershell
 # 1. Code. The new build validates cleanly: no route names the new orchestration yet.
-./script/deployment/Deploy-Eim.ps1 -Environment <env> -Component function
-./script/deployment/Deploy-Eim.ps1 -Environment <env> -Component api   # where hostsDashboard; reprocess uses the same registry
+#    A pipeline run with runMigrations cleared, or by hand from the package:
+./Deploy-Wilson.ps1 -Environment nonprod -Component backend   # reprocess uses the same registry
+./Deploy-Wilson.ps1 -Environment dev -Component automation    # then bat, then test
 
-# 2. Confirm the host started and logged "Route validation passed" before continuing.
+# 2. Confirm each host started and logged "Route validation passed" before continuing.
 
 # 3. Schema. 014 is the only pending versioned script expected.
-./script/deployment/Deploy-Eim.ps1 -Environment <env> -Component schema
+./Deploy-Wilson.ps1 -Environment nonprod -Component myip, schema, myipremove
 ```
+
+The schema is shared, so step 3 needs every environment's Automation app to be on the new build.
 
 `014` throws unless exactly four rows exist for the new route (BAT, DEV, DEV2, TEST). Confirm:
 
@@ -387,6 +414,8 @@ When reviewing a pull request that touches `script/SQL/`:
 - [ ] Does the change modify an **existing** file under `Migrations/`? If so, is it genuinely
       behaviour-neutral? Any additive edit to an applied migration must be rejected.
 - [ ] Is the change forward-only, with no down script and no destructive rewrite of history?
+- [ ] Is it expand-only, so the previous build and every ENVIRONMENT value (including `DEV2`) keep
+      working? If not, does the PR say how it must be deployed instead of a `runMigrations` run?
 - [ ] Has it been run against a scratch database, and run twice to confirm the second run applies
       nothing?
 - [ ] If a repeatable object was edited, does the file still contain its complete definition rather

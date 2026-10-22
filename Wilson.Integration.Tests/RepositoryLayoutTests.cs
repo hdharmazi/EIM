@@ -84,6 +84,45 @@ public class RepositoryLayoutTests
         Assert.DoesNotContain("Docker", launchSettings, StringComparison.OrdinalIgnoreCase);
     }
 
+    // Built by concatenation, like OldProjectName, so this file does not match its own search.
+    private static readonly string[] RetiredDeploymentNames =
+    [
+        string.Join("-", "azf", "d365fsc", "gateway", "wtc", "nonprod"),
+        "Deploy-" + "Eim.ps1",
+        "Deploy-ZipWith" + "PublishProfile.ps1",
+    ];
+
+    // Places that name the retired gateway and scripts on purpose: change records, the cutover runbook (the
+    // old -> new table), the configs' legacy sections, and the gateway tests' fixed sample host names.
+    private static readonly string[] RetiredNameExclusions =
+    [
+        "openspec/changes/",
+        "docs/deployment/resource-rename-cutover.md",
+        "ARM.Integration.D365FSC.Gateway.Tests/",
+    ];
+
+    private static bool IsDeploymentConfig(string file) =>
+        file.StartsWith("script/deployment/config/", StringComparison.OrdinalIgnoreCase)
+        && Path.GetExtension(file).Equals(".json", StringComparison.OrdinalIgnoreCase);
+
+    [Fact]
+    public void No_file_references_the_retired_gateway_or_deployment_scripts()
+    {
+        var offenders = RepositoryPaths.CandidateFiles(Root)
+            .Where(f => TextExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+            .Where(f => !RetiredNameExclusions.Any(p => f.StartsWith(p, StringComparison.OrdinalIgnoreCase)) && !IsDeploymentConfig(f))
+            .SelectMany(f =>
+            {
+                var text = File.ReadAllText(Path.Combine(Root, f));
+                return RetiredDeploymentNames.Where(n => text.Contains(n, StringComparison.OrdinalIgnoreCase)).Select(n => $"{f}: {n}");
+            })
+            .ToList();
+
+        Assert.True(offenders.Count == 0,
+            "Files still referencing the retired gateway name or deployment scripts (see docs/deployment/resource-rename-cutover.md):\n"
+            + string.Join("\n", offenders));
+    }
+
     // A cheap text check covering both hosts. LocalSettingsPublishTests proves the behaviour for the
     // Automation host with a real publish.
     [Theory]

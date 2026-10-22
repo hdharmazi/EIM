@@ -4,7 +4,7 @@ public sealed class GatewayOptions
 {
     public const string SectionName = "Gateway";
 
-    /// <summary>Gateway root, e.g. <c>https://azf-d365fsc-gateway-wtc-nonprod.azurewebsites.net</c>.</summary>
+    /// <summary>Gateway root, e.g. <c>https://azf-eim-gateway-wtc-nonprod.azurewebsites.net</c>.</summary>
     public string BaseUrl { get; set; } = string.Empty;
 
     /// <summary>D365 environment slug issued to you, e.g. <c>DEV2</c>.</summary>

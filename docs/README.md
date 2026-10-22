@@ -2,12 +2,12 @@
 
 ## Deployment
 
-- [Azure DevOps pipeline setup](azure-deployment-pipelines-setup.md)
 - [Deployment overview](deployment/deployment.md)
+- [Azure DevOps setup](deployment/devops-setup.md)
+- [Resource rename and cutover (#5246)](deployment/resource-rename-cutover.md)
 - [Deploying from scratch](deployment/deploy-from-scratch.md)
 - [Database migrations](deployment/database-migrations.md)
 - [D365 F&SC Gateway operations](deployment/d365fsc-gateway.md)
-- [Deployment plan](deployment/deployment-plan.md)
 
 ## Integration
 
@@ -17,5 +17,5 @@
 ## Automation
 
 - [Automatic AI pull-request setup](auto-ai-pull-request-setup.md)
-- [Pipeline index](../.azure-pipelines/README.md)
+- [Pipeline index](../pipelines/README.md)
 - [Script index](../script/README.md)

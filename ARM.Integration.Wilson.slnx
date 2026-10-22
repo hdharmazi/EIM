@@ -1,7 +1,8 @@
 <Solution>
   <Folder Name="/script/">
-    <File Path="script/deployment/Deploy-Eim.ps1" />
-    <File Path="script/deployment/Deploy-ZipWithPublishProfile.ps1" />
+    <File Path="script/deployment/Deploy-Wilson.ps1" />
+    <File Path="script/deployment/New-DeploymentPackage.ps1" />
+    <File Path="script/deployment/Test-DeployWilson.ps1" />
     <File Path="script/Superseded/README.md" />
     <File Path="script/Superseded/Firewall.ps1" />
     <File Path="script/Superseded/delete-queue.ps1" />
@@ -10,9 +11,24 @@
     <File Path="script/Superseded/main-keyvault.bicep" />
     <File Path="script/Superseded/main.bicep" />
   </Folder>
+  <Folder Name="/script/config/">
+    <File Path="script/deployment/config/deploy.base.json" />
+    <File Path="script/deployment/config/deploy.nonprod.json" />
+    <File Path="script/deployment/config/deploy.dev.json" />
+    <File Path="script/deployment/config/deploy.bat.json" />
+    <File Path="script/deployment/config/deploy.test.json" />
+  </Folder>
+  <Folder Name="/pipelines/">
+    <File Path="pipelines/eim.yml" />
+    <File Path="pipelines/templates/build-package.yml" />
+    <File Path="pipelines/templates/deploy-environment.yml" />
+    <File Path="pipelines/auto-ai-pull-request.yml" />
+  </Folder>
   <Folder Name="/script/SQL/" />
   <Folder Name="/Deployment Docs/">
     <File Path="docs/deployment/deployment.md" />
+    <File Path="docs/deployment/devops-setup.md" />
+    <File Path="docs/deployment/resource-rename-cutover.md" />
     <File Path="docs/deployment/database-migrations.md" />
     <File Path="docs/deployment/deployment-plan.md" />
   </Folder>

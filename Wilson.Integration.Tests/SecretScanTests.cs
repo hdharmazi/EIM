@@ -36,9 +36,8 @@ public partial class SecretScanTests
     [
         // Describes the password pattern itself. A suffix, so the entry survives the change being archived.
         ("align-structure-and-deployment/design.md", "Password=`/`Pwd=`"),
-        // PowerShell expressions that read a password at runtime; neither is a literal.
+        // PowerShell expressions that read a password at runtime; not a literal.
         ("script/Repair-TruncatedSourceId.ps1", "password = [regex]::Match($ConnectionString,"),
-        ("script/deployment/Deploy-ZipWithPublishProfile.ps1", "password = [string]"),
     ];
 
     private static IEnumerable<(Regex Pattern, string Value)> Matches(string text) =>

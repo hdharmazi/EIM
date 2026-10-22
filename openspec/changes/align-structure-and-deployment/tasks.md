@@ -122,7 +122,7 @@
 
 ## 3. Phase 2: Implementation
 
-- [ ] 3.1 Add the configuration files `script/deployment/config/deploy.base.json`, `deploy.nonprod.json`, `deploy.dev.json`, `deploy.bat.json` and `deploy.test.json`, with the shape in design D9:
+- [x] 3.1 Add the configuration files `script/deployment/config/deploy.base.json`, `deploy.nonprod.json`, `deploy.dev.json`, `deploy.bat.json` and `deploy.test.json`, with the shape in design D9:
   - `environment`, `scope`, `gateway`, `dashboard`, `entra`
   - `names` overrides for the kept SQL server, database, Service Bus namespace, Key Vault and resource group; in `deploy.nonprod.json` also `names.dashboardApi: "wtc-dashboard-api-dev"` and `names.staticWebApp: "wtc-dashboard-frontend-dev"`
   - `automation.gatedFunctions` (six), `automation.keepDisabled: []`, `automation.retiredSettings: ["PollSchedule"]`, and no `pollSchedule` key
@@ -130,7 +130,7 @@
   - `<...>` placeholders for the subscription, Entra and excluded users, and no secrets
 
   Delete `deploy.example.json`. Proven by test 4.1.
-- [ ] 3.2 Add `script/deployment/Deploy-Wilson.ps1`. Requirements:
+- [x] 3.2 Add `script/deployment/Deploy-Wilson.ps1`. Requirements:
   - Port from Wastequip `Deploy-Wastequip.ps1`: `Invoke-Az`, `Merge-ConfigObject`, `Get-ResourceNames`/`$pick`, preflight with the drift check, `Invoke-FunctionDeploy` (stop, `config-zip --timeout 900`, start in `finally`, `syncfunctiontriggers` 6×20 s), health, cutover and remove.
   - Parameters as in D10. `-Environment` accepts any configuration that has a `deploy.<name>.json`; there is no hard-coded list of environments, and nothing reads or assumes the database's ENVIRONMENT values (`DEV`, `DEV2`, `BAT`, `TEST`).
   - Scope checks (D9). The fixed component order. `-WhatIf`.
@@ -139,7 +139,7 @@
   - Main body guarded so the file can be dot-sourced by 4.2: `if ($MyInvocation.InvocationName -ne '.') { ... }`.
 
   Proven by tests 4.2 and 4.3.
-- [ ] 3.3 In `Deploy-Wilson.ps1`, implement the `infra` component for both scopes, with the decisions in a pure planning function that takes the existing-resource state as input:
+- [x] 3.3 In `Deploy-Wilson.ps1`, implement the `infra` component for both scopes, with the decisions in a pure planning function that takes the existing-resource state as input:
   - shared: plan, Log Analytics workspace, gateway app, storage and Insights on the plan
   - shared, dashboard: create the dashboard API (on the plan) and the Standard SWA only if absent; never recreate, rename, re-plan or delete an existing `wtc-dashboard-api-dev` or `wtc-dashboard-frontend-dev`
   - environment: the five queues; Automation storage, Insights and app
@@ -148,19 +148,19 @@
   - no Flex commands
 
   Proven by test 4.2 (planned `az` calls for `nonprod` with and without existing dashboard resources, and for `dev`).
-- [ ] 3.4 In `Deploy-Wilson.ps1`, implement the `settings` component:
+- [x] 3.4 In `Deploy-Wilson.ps1`, implement the `settings` component:
   - Automation: the Deploy-Eim list minus `PollSchedule`, plus gated `AzureWebJobs.<fn>.Disabled=true` only when absent; every name in `automation.retiredSettings` is never written and is deleted from the target app if present, naming each removed setting
   - gateway (adds `FUNCTIONS_WORKER_RUNTIME`)
   - dashboard API, applied in place to `names.dashboardApi`: the Deploy-Eim list; `Gateway__BaseUrl`/`Gateway__AppName` for the new gateway; `Gateway__Applications__<n>__*` from `gateway.legacyVerificationTargets`; `Simulation__*` from `dashboard.simulationQueuePrefix`
   - the preflight drift check reports a retired setting on an app as a warning and never fails on it
 
   Proven by test 4.2 (`Get-GatedSettingsToWrite` keeps existing values; settings names per app match the D10 list; retired-settings write, delete and drift behaviour).
-- [ ] 3.5 In `Deploy-Wilson.ps1`, implement:
+- [x] 3.5 In `Deploy-Wilson.ps1`, implement:
   - `myip`/`myipremove`: rule `eim-deploy-<BUILD_BUILDID>` or `AllowDev-<USERNAME>`, server parsed from the connection string and cross-checked with `names.sqlServer`
   - `schema`: packaged `ARM.Integration.DbMigrator.exe --timeout 1800`, `--whatif` under `-WhatIf`, `EIMDB_MIGRATOR_CONNECTION` in the child environment only
 
   Proven by test 4.2 (scope rejection of `schema` for `dev`) and test 4.3.
-- [ ] 3.6 In `Deploy-Wilson.ps1`, implement the code components:
+- [x] 3.6 In `Deploy-Wilson.ps1`, implement the code components:
   - `gateway` and `automation` via `Invoke-FunctionDeploy`; `automation` refuses when gated settings are missing
   - `backend`: `az webapp deploy --type zip` to `names.dashboardApi` (in place)
   - `frontend`: unzip the SPA, `az staticwebapp backends link` to `names.dashboardApi`, SWA CLI deploy to `names.staticWebApp` (in place, existing hostname) with the token via an environment variable
@@ -168,13 +168,13 @@
   - `health` (host `Running` within 5 minutes, API < 500, SWA root)
 
   Proven by test 4.2 (refusal logic and resolved target names) and test 4.3.
-- [ ] 3.7 In `Deploy-Wilson.ps1`, implement:
+- [x] 3.7 In `Deploy-Wilson.ps1`, implement:
   - `cutover`/`rollback` for the environment scope: pure `Get-CutoverPlan` (mirror legacy states; no legacy → all except `keepDisabled`) and `Test-CutoverParity` (missing fails; `EIMDB`/`ServiceBus`/queue differences fail; others warn; names in `automation.retiredSettings` ignored; names only); disable, confirm, wait for the lock duration, then enable
   - `cutover` for `nonprod`: copy named host keys and `D365Data`/`D365Service` function keys, excluding master and system keys and `default` unless `-IncludeDefaultKeys`; key names only in output. No dashboard cutover.
   - `remove`: pure `Test-RemoveAllowed` covering `TF_BUILD`, the prior `-WhatIf` marker, the confirmation prompt, enabled legacy triggers, a legacy name equal to any derived or overridden name in use, the type allow-list (`Microsoft.Web/sites`, `Microsoft.Web/serverfarms`, `Microsoft.Storage/storageAccounts`, `Microsoft.Insights/components`), and a plan that still hosts an app (named in the output; the other entries still proceed)
 
   Proven by test 4.2.
-- [ ] 3.8 Add `script/deployment/New-DeploymentPackage.ps1`, a port of Wastequip's (design D15):
+- [x] 3.8 Add `script/deployment/New-DeploymentPackage.ps1`, a port of Wastequip's (design D15):
   - package name `wtc-eim-deploy-<version>`
   - zips `wilson-automation.zip`, `gateway.zip`, `dashboard-api.zip`, `dashboard-frontend.nonprod.zip`, built with `ZipFile`
   - self-contained single-file `dbmigrator/ARM.Integration.DbMigrator.exe` for win-x64
@@ -183,24 +183,24 @@
   - the function extraction from `functions.metadata` and the zip helper as pure functions, with the main body guarded so the file can be dot-sourced by 4.4
 
   Proven by test 4.4 and by the first pipeline Build stage (5.4).
-- [ ] 3.9 Add the pipeline:
+- [x] 3.9 Add the pipeline:
   - `pipelines/eim.yml`: parameters, trigger and pr paths, `lockBehavior: runLatest`, stages `Build → Deploy_shared → Deploy_dev → Deploy_bat → Deploy_test` with `Succeeded` conditions and no deploy on PR
   - `pipelines/templates/build-package.yml`: .NET 10, Node 22, `dotnet test ARM.Integration.Wilson.slnx -c Release` with trx, frontend `npm ci` and `npm run lint`, `pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1`, `New-DeploymentPackage.ps1 -Environment nonprod,dev,bat,test`, then `Test-DeployWilson.ps1 -PackagePath <package>`, and publish of the `package` artifact only after both checks pass
-  - `pipelines/templates/deploy-environment.yml`: preflight+WhatIf, infra, settings, myip/try schema/finally myipremove, code, then verify+health; `env:` mapping of `EIM_DEPLOY_EIMDB`, `EIM_DEPLOY_SERVICEBUS` and `EIM_DEPLOY_CONFIG_OVERRIDES`; variable group `eim-wtc-nonprod`; service connection `sc-eim-wtc-nonprod`
+  - `pipelines/templates/deploy-environment.yml`: preflight+WhatIf, infra, settings, myip/try schema/finally myipremove, code, then verify+health (skipped when nothing was deployed); `env:` mapping of `EIM_DEPLOY_EIMDB`, `EIM_DEPLOY_SERVICEBUS` and `EIM_DEPLOY_CONFIG_OVERRIDES`; variable group `eim-wtc-nonprod`; service connection `sc-eim-wtc-nonprod`
 
   Proven by test 4.5.
-- [ ] 3.10 Move `.azure-pipelines/workflows/auto-ai-pull-request.yml` → `pipelines/auto-ai-pull-request.yml` and `.azure-pipelines/README.md` → `pipelines/README.md`, rewritten for the new pipeline. Delete:
+- [x] 3.10 Move `.azure-pipelines/workflows/auto-ai-pull-request.yml` → `pipelines/auto-ai-pull-request.yml` and `.azure-pipelines/README.md` → `pipelines/README.md`, rewritten for the new pipeline. Delete:
   - `.azure-pipelines/workflows/deployment/*.yml`
   - `script/deployment/Deploy-Eim.ps1`
   - `script/deployment/Deploy-ZipWithPublishProfile.ps1`
 
   Update the `/script/` folder entries in `ARM.Integration.Wilson.slnx` (`Deploy-Wilson.ps1`, `New-DeploymentPackage.ps1`, `Test-DeployWilson.ps1`, configs). Proven by test 4.5.
-- [ ] 3.11 Update the code-side gateway references to the new gateway:
+- [x] 3.11 Update the code-side gateway references to the new gateway:
   - `ARM.Integration.Dashboard.API/appsettings.Development.json` (`Gateway:BaseUrl`, `AppName`)
   - `ARM.Integration.D365FSC.SampleClient/appsettings.json`, `GatewayOptions.cs` doc comment and `README.md`
 
   The gateway test constants stay unchanged. Proven by test 4.6.
-- [ ] 3.12 Write the deployment docs (design D17):
+- [x] 3.12 Write the deployment docs (design D17):
   - `docs/deployment/deployment.md`: rewrite, including the kept names, the dashboard deployed in place, the remaining Wastequip divergences, and that deployment configurations are not ENVIRONMENT values (`DEV2` has no Function App)
   - `docs/deployment/devops-setup.md`: new
   - `docs/deployment/resource-rename-cutover.md`: new, with the 15-step runbook from D17 (including the dashboard API plan move with its fallback and the plan CPU/memory alert; no Entra step), the old → new table and the kept-name table
@@ -211,7 +211,7 @@
 
 ## 4. Phase 2: Tests
 
-- [ ] 4.1 Add `Wilson.Integration.Tests/DeploymentConfigTests.cs`. It asserts:
+- [x] 4.1 Add `Wilson.Integration.Tests/DeploymentConfigTests.cs`. It asserts:
   - Each `script/deployment/config/deploy.*.json` parses.
   - `environment` matches the file name, and `scope` is `shared` for `nonprod` and `environment` for the others.
   - `automation.gatedFunctions` equals the reflected function set from 2.2.
@@ -219,7 +219,7 @@
   - `deploy.nonprod.json` has `names.dashboardApi` = `wtc-dashboard-api-dev` and `names.staticWebApp` = `wtc-dashboard-frontend-dev`.
   - No `legacy` name equals any `names` value or derived name in the D7 tables, and no `legacy` section lists a dashboard resource.
   - No config has a `secrets` section or a connection-string-shaped value.
-- [ ] 4.2 Add `script/deployment/Test-DeployWilson.ps1`: a dependency-free self-test that dot-sources `Deploy-Wilson.ps1`, throws on the first failed assertion and exits non-zero. It asserts:
+- [x] 4.2 Add `script/deployment/Test-DeployWilson.ps1`: a dependency-free self-test that dot-sources `Deploy-Wilson.ps1`, throws on the first failed assertion and exits non-zero. It asserts:
   - `Get-ResourceNames` for `nonprod`, `dev`, `bat` and `test` equals the D7 tables, and `names` overrides win (the dashboard resolves to `wtc-dashboard-api-dev` and `wtc-dashboard-frontend-dev`).
   - The storage and Function App length rules reject a long environment name.
   - An unknown configuration name is rejected naming it, and a new `deploy.<name>.json` fixture is accepted without code changes.
@@ -234,14 +234,14 @@
   - `Test-RemoveAllowed` refuses under `TF_BUILD`, without the WhatIf marker, with legacy triggers enabled, on a legacy name equal to a name in use (e.g. `wtc-dashboard-api-dev`), on a disallowed type (including a static web app), and keeps a plan still in use while naming the remaining app.
 
   Run: `pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1`.
-- [ ] 4.3 Check that `Deploy-Wilson.ps1`, `New-DeploymentPackage.ps1` and `Test-DeployWilson.ps1` parse with no errors (`[System.Management.Automation.Language.Parser]::ParseFile`), included as the first assertion in `Test-DeployWilson.ps1`. Also add an assertion that the script text never passes `EIM_DEPLOY_*` values as `az` arguments: a regex over the script for `--settings \$` or a connection string interpolated into an `az` command line. Run as in 4.2.
-- [ ] 4.4 Extend `Test-DeployWilson.ps1` for packaging (design D19):
+- [x] 4.3 Check that `Deploy-Wilson.ps1`, `New-DeploymentPackage.ps1` and `Test-DeployWilson.ps1` parse with no errors (`[System.Management.Automation.Language.Parser]::ParseFile`), included as the first assertion in `Test-DeployWilson.ps1`. Also add an assertion that the script text never passes `EIM_DEPLOY_*` values as `az` arguments: a regex over the script for `--settings \$` or a connection string interpolated into an `az` command line. Run as in 4.2.
+- [x] 4.4 Extend `Test-DeployWilson.ps1` for packaging (design D19):
   - Dot-source `New-DeploymentPackage.ps1`. The function extraction over a committed fixture `script/deployment/testdata/functions.metadata` returns exactly the six non-HTTP functions.
   - The zip helper, run on a temp folder that contains `.azurefunctions/`, produces a zip that still contains `.azurefunctions/`.
   - With `-PackagePath <folder>` only: `wilson-automation.zip` contains `.azurefunctions/` and a `functions.metadata` listing exactly the six gated functions; `manifest.json` lists the six; `dbmigrator/ARM.Integration.DbMigrator.exe` exists. Failures name the zip and the missing entry or function.
 
   Luigi runs only the parameterless form (`pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1`). The `-PackagePath` form is proven in the pipeline Build stage (3.9, checked in 5.4).
-- [ ] 4.5 Add `Wilson.Integration.Tests/PipelineDefinitionTests.cs`, text and YAML assertions over `pipelines/eim.yml` and `pipelines/templates/*.yml`:
+- [x] 4.5 Add `Wilson.Integration.Tests/PipelineDefinitionTests.cs`, text and YAML assertions over `pipelines/eim.yml` and `pipelines/templates/*.yml`:
   - stage names and the `dependsOn` order
   - DevOps environments `eim-wtc-nonprod/dev/bat/test`
   - `runMigrations` passed true-able only to `Deploy_shared`
@@ -251,8 +251,8 @@
   - `.azure-pipelines/` absent
 
   Uses `YamlDotNet` if needed, as a test-only package.
-- [ ] 4.6 Extend `RepositoryLayoutTests` (2.6). Outside `openspec/changes/**`, `docs/deployment/resource-rename-cutover.md` (which lists legacy names on purpose), `script/deployment/config/*.json` (`legacy` sections) and `ARM.Integration.D365FSC.Gateway.Tests/**`, no tracked file references `azf-d365fsc-gateway-wtc-nonprod`, `Deploy-Eim.ps1` or `Deploy-ZipWithPublishProfile.ps1`. The kept names `wtc-dashboard-api-dev` and `wtc-dashboard-frontend-dev` are allowed.
-- [ ] 4.7 Run the final checks:
+- [x] 4.6 Extend `RepositoryLayoutTests` (2.6). Outside `openspec/changes/**`, `docs/deployment/resource-rename-cutover.md` (which lists legacy names on purpose), `script/deployment/config/*.json` (`legacy` sections) and `ARM.Integration.D365FSC.Gateway.Tests/**`, no tracked file references `azf-d365fsc-gateway-wtc-nonprod`, `Deploy-Eim.ps1` or `Deploy-ZipWithPublishProfile.ps1`. The kept names `wtc-dashboard-api-dev` and `wtc-dashboard-frontend-dev` are allowed.
+- [x] 4.7 Run the final checks:
   - `dotnet build ARM.Integration.Wilson.slnx`
   - `dotnet test ARM.Integration.EIM.Tests/ARM.Integration.EIM.Tests.csproj`
   - `dotnet test Wilson.Integration.Tests/Wilson.Integration.Tests.csproj`
@@ -273,7 +273,7 @@
   - variable group `eim-wtc-nonprod` with secret `EIM_DEPLOY_EIMDB`, secret `EIM_DEPLOY_SERVICEBUS`, and `EIM_DEPLOY_CONFIG_OVERRIDES`
   - create the pipeline from `pipelines/eim.yml`
   - repoint the auto-AI PR pipeline to `pipelines/auto-ai-pull-request.yml`
-- [ ] 5.3 MANUAL: fill the non-secret placeholders (subscription, Entra tenant/client/audience, `ExcludedUsers`), either by a commit to the config or through `EIM_DEPLOY_CONFIG_OVERRIDES`. Check that preflight passes with a manual run that has `deployCode` cleared.
+- [ ] 5.3 MANUAL: commit the Entra tenant/client/audience values to `deploy.base.json` (the Build stage has no variable group, so only committed values reach the SPA build). Supply the subscription and `ExcludedUsers` by a commit or through `EIM_DEPLOY_CONFIG_OVERRIDES`. Check that preflight passes in every stage with a manual run that has `deployCode` cleared and nothing else selected (verify and health are skipped on such a run). That run checks the subscription, names, resource group and gated functions only; confirm the Entra values from the absence of an "entra is incomplete" warning in the Build log, and `excludedUsers` and the secrets in the 5.4 preview step.
 - [ ] 5.4 MANUAL: start a manual run with `deployInfra` and `applySettings` selected, `deployCode` on and `runMigrations` off, and approve each stage. Check:
   - the Build stage ran `Test-DeployWilson.ps1` and `Test-DeployWilson.ps1 -PackagePath` green
   - the new plan, Log Analytics workspace, gateway and per-environment Automation apps exist, with the Automation triggers disabled

@@ -355,7 +355,7 @@ This replaces `Deploy-Eim.ps1`. It ports these Wastequip functions, adapted:
 
 `cutover`, `rollback` and `remove` are on-demand only. They are never part of `all`, and each must be requested alone.
 
-**`preflight`** (always runs first when anything changes, and is the only work done under `-WhatIf` besides the preview):
+**`preflight`** (always runs first when anything changes, except before `myipremove` requested alone, which only removes a firewall rule and must not be blocked by a failing preflight; preflight is the only work done under `-WhatIf` besides the preview):
 - Fails on any `<...>` placeholder in a value the requested components need.
 - Fails if `EIM_DEPLOY_EIMDB` or `EIM_DEPLOY_SERVICEBUS` is needed and missing. They are prompted for with `Read-Host -AsSecureString` when interactive and `TF_BUILD` is unset.
 - Fails if a derived name violates the D7 rules, or a derived name equals a `legacy` name.
@@ -563,7 +563,7 @@ Legacy resources are untagged, so `remove` targets them by explicit name and typ
   3. `settings` (if `applySettings`)
   4. `myip` → try `schema` finally `myipremove` (if `runMigrations`)
   5. code components (if `deployCode`)
-  6. `verify` + `health`
+  6. `verify` + `health`, only when something was deployed (a run with nothing selected is preflight only)
 - `UseNode@1` 22.x when `frontend` is in the components.
 - No release tag step.
 - Every `AzureCLI@2` step (pscore, `windows-latest`) maps the secrets explicitly:
@@ -683,7 +683,7 @@ The user decided to delete the inactive template rather than move it.
 
 **Tests:** `AutomationFunctionNamesTests` asserts that no `PollSourceHandler` type exists; `RequiredSettingsTests` asserts the sample has no retired keys; `RepositoryLayoutTests` asserts the file is gone; `Test-DeployWilson.ps1` asserts the retired-settings behaviour of `settings`, drift and parity.
 
-### D19. Testing the PowerShell, and delivery as two PRs
+### D19. Testing the PowerShell, and delivery in two commits
 
 **Script tests.** Pester is not installed, and the tests must run on the build agent and for Luigi without extra modules. `script/deployment/Test-DeployWilson.ps1` is a dependency-free self-test:
 - It parses `Deploy-Wilson.ps1`, `New-DeploymentPackage.ps1` and itself with `[System.Management.Automation.Language.Parser]::ParseFile` and fails on any parse error.
@@ -696,7 +696,7 @@ The user has added `Bash(pwsh -NoProfile -File script/deployment/Test-DeployWils
 
 **C# tests** in `Wilson.Integration.Tests` cover the non-PowerShell artefacts: config files (`DeploymentConfigTests`), pipeline YAML (`PipelineDefinitionTests`) and repository layout and stale names (`RepositoryLayoutTests`).
 
-**Delivery.** Phase 1 ships as its own PR (`feature/5246/align-structure-and-deployment`, the rename, layout, tests and `PollSourceHandler` deletion) and is merged before Phase 2 starts. Phase 2 ships as a second PR (pipeline, scripts, config, docs). Each PR is green on its own: build, the three test projects, and (for Phase 2) the script self-test. Creating branches, commits and PRs stays with the user and the main session.
+**Delivery.** Both phases ship on `feature/5246/align-structure-and-deployment`. Phase 1 (the rename, layout, tests and `PollSourceHandler` deletion) is its own commit; Phase 2 (pipeline, scripts, config, docs) follows on the same branch. Each phase is green on its own: build, the three test projects, and (for Phase 2) the script self-test. Creating branches, commits and PRs stays with the user and the main session.
 
 ## Failure behaviour
 
@@ -774,9 +774,10 @@ The user has added `Bash(pwsh -NoProfile -File script/deployment/Test-DeployWils
 8. `PollSourceHandler` is deleted in Phase 1 and `PollSchedule` is retired (D18).
 9. `azql-wtc-sandbox` is in `d365fsc-integration-nonprod`; the single RG-scoped service connection is enough (D14).
 10. The `pwsh` permission rule for `Test-DeployWilson.ps1` exists in `.claude/settings.json` (D19).
-11. Phase 1 and Phase 2 ship as two PRs, Phase 1 first (D19).
+11. Phase 1 and Phase 2 ship on one branch, `feature/5246/align-structure-and-deployment`, with Phase 1 as its own commit (D19).
+12. `wtc-dashboard-api-dev` moves onto `asp-eim-wtc-nonprod` as a manual runbook step (one restart), so the old plan `asp-appservice-p0v3-linux-dev` can be deleted. If Azure refuses the move, the API stays on the old plan and that plan is scaled down (task 5.11, Risks).
+13. `SamplePoll_To_Target` is kept; only its doc comment changes (D18). Deleting it is left to a separate clean-up.
 
 ## Open Questions
 
-1. **Dashboard API plan move.** This design moves `wtc-dashboard-api-dev` onto `asp-eim-wtc-nonprod` (a manual step with one restart) so the old plan can be deleted. The alternative is to leave it on `asp-appservice-p0v3-linux-dev` and keep paying for that plan, or scale it down. Recommendation: move it.
-2. **`SamplePoll_To_Target`.** It is unregistered and only mentions `PollSourceHandler` in a comment, so this change keeps the class and rewords the comment. Delete it too? Recommendation: keep it in this change and delete it in a separate clean-up if wanted.
+None.

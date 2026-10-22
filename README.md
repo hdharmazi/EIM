@@ -22,7 +22,7 @@ Local Functions use Azurite on ports `10000` through `10002`. Deployed nonprod e
 - Access to the required Azure SQL database and Service Bus namespace
 - Microsoft Entra application settings for Dashboard authentication
 
-Keep connection strings, keys, publish profiles, and environment-specific settings out of source control. Review each project's development settings before starting; the launch scripts do not create queues, run database migrations, or populate secrets.
+Keep connection strings, keys, and environment-specific settings out of source control. Review each project's development settings before starting; the launch scripts do not create queues, run database migrations, or populate secrets.
 
 ## Local setup
 
@@ -85,10 +85,15 @@ npm --prefix ARM.Integration.Dashboard.Frontend run lint
 
 ## Deployment
 
-- [Azure DevOps pipeline setup](docs/azure-deployment-pipelines-setup.md)
-- [Manual deployment](docs/deployment/deployment.md)
-- [Deploying from scratch](docs/deployment/deploy-from-scratch.md)
-- [D365 F&SC Gateway operations](docs/deployment/d365fsc-gateway.md)
-- [Deployment plan](docs/deployment/deployment-plan.md)
+Non-production is deployed by one pipeline, [`pipelines/eim.yml`](pipelines/eim.yml), running one script,
+`script/deployment/Deploy-Wilson.ps1`, with configurations in `script/deployment/config/`. The pipeline builds one
+package and promotes it through `Deploy_shared` (gateway, dashboard, migrations), then `dev`, `bat` and `test`
+(Wilson Automation). A merge to `main` deploys code only; infrastructure, settings and migrations run on a manual
+run.
 
-The Azure DevOps workflows build immutable code packages and do not create or migrate the database. Provision and migrate `eimdb` before the first code deployment. Wilson Automation promotes one package through `dev`, `bat`, and `test`; the Dashboard and Gateway are shared nonprod deployments.
+- [Deployment overview](docs/deployment/deployment.md)
+- [Azure DevOps setup](docs/deployment/devops-setup.md)
+- [Resource rename and cutover (#5246)](docs/deployment/resource-rename-cutover.md)
+- [Deploying from scratch](docs/deployment/deploy-from-scratch.md)
+- [Database migrations](docs/deployment/database-migrations.md)
+- [D365 F&SC Gateway operations](docs/deployment/d365fsc-gateway.md)

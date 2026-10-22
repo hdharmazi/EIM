@@ -1,18 +1,18 @@
 # Superseded
 
-These files provisioned or maintained Azure resources before `script/deployment/Deploy-Eim.ps1` covered them.
-They are kept because they record what was done historically, not because they should be run.
+These files provisioned or maintained Azure resources before the deployment script covered them. They are kept
+because they record what was done historically, not because they should be run.
 
 | File | Replaced by |
 |---|---|
-| `main.bicep`, `main-addqueue.bicep`, `main-addqueueTest.bicep` | `Deploy-Eim.ps1 -Component queues` |
-| `main-keyvault.bicep` | `Deploy-Eim.ps1 -Component keyvault` |
-| `Firewall.ps1` | `Deploy-Eim.ps1 -Component firewall` |
-| `delete-queue.ps1` | nothing, deliberately — see below |
+| `main.bicep`, `main-addqueue.bicep`, `main-addqueueTest.bicep` | `Deploy-Wilson.ps1 -Environment <env> -Component infra`, which creates the five queues per environment |
+| `main-keyvault.bicep` | nothing; retired (see below) |
+| `Firewall.ps1` | `Deploy-Wilson.ps1 -Environment nonprod -Component myip`, and `myipremove` to delete the rule |
+| `delete-queue.ps1` | nothing, deliberately (see below) |
 
-There is no Bicep in this repository any more. Everything Azure-side is a component of
-`script/deployment/Deploy-Eim.ps1`, so there is one way to deploy and one place that reads an environment's
-configuration.
+There is no Bicep in this repository any more. Everything on the Azure side is a component of
+`script/deployment/Deploy-Wilson.ps1`, so there is one way to deploy and one place that reads a configuration.
+See [docs/deployment/deployment.md](../../docs/deployment/deployment.md).
 
 ## Queue templates
 
@@ -27,14 +27,15 @@ configuration.
 
 ## `Firewall.ps1`
 
-Added the running machine's public IP to the sandbox SQL server. Replaced by
-`Deploy-Eim.ps1 -Component firewall`, which differs in three ways that matter:
+Added the running machine's public IP to the sandbox SQL server. Replaced by the `myip` component, which differs
+in three ways that matter:
 
-- The server is read from the environment's connection string rather than hard-coded, so the rule
-  cannot be added to one server while deploying against another.
+- The server is read from the `EIM_DEPLOY_EIMDB` connection string and cross-checked against the configured SQL
+  server, so a rule cannot be added to one server while deploying against another.
 - It uses `az` like the rest of the script, rather than requiring the `Az` PowerShell module.
-- The rule is named for the developer rather than `AllowMyIP`, so rules can be attributed and
-  removed. A single shared name silently moves to whoever ran it last.
+- The rule is named for the caller (`AllowDev-<username>`, or `eim-deploy-<build id>` in the pipeline) rather
+  than `AllowMyIP`, so rules can be attributed and removed. A single shared name silently moves to whoever ran it
+  last. `myipremove` deletes the rule, and the pipeline always runs it.
 
 ## `delete-queue.ps1`
 
@@ -47,15 +48,8 @@ from discarding live traffic. Deleting a queue should stay a considered act.
 
 ## `main-keyvault.bicep`
 
-Provisioned a vault and stored the Service Bus connection string as a secure deployment parameter.
-Replaced by `Deploy-Eim.ps1 -Component keyvault`.
-
-One behavioural difference to be aware of. The template passed the secret as an ARM parameter, so
-control-plane rights were enough to write it. The script uses `az keyvault secret set`, which is a
-data-plane call — so creating the vault no longer implies being able to write secrets into it. The
-component detects that failure and prints the role assignment needed.
-
-**Still true either way: nothing in the system reads from the vault.** Connection strings remain in
-`ENVIRONMENTTABLE` and app settings in plaintext. Provisioning the vault creates a second copy of
-each secret that must be rotated alongside the first. The component exists so the capability is not
-lost, not because the work is finished.
+Provisioned a vault and stored the Service Bus connection string as a secure deployment parameter. Retired with
+no replacement: **nothing in the system reads from the vault.** Connection strings come from `ENVIRONMENTTABLE`
+and app settings, and the deployment script takes its two secrets from the environment. A vault populated by a
+deployment would only be a second copy of each secret to rotate alongside the first. The existing vault,
+`kv-d365fsc-wtc-nonprod`, is kept; Key Vault references are designed for and deferred.

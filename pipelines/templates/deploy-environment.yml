@@ -1,0 +1,151 @@
+# Deploys the package artifact for one configuration with Deploy-Wilson.ps1 (package mode).
+# Windows agent: the packaged migrator is a win-x64 executable.
+# Order: preflight and preview, infrastructure, settings, migrations, code, then verify and health. With nothing
+# selected (a manual run with deployCode cleared) only preflight runs.
+#
+# Secret variables are not exposed to scripts unless mapped, so every AzureCLI@2 step maps the three deployment
+# variables explicitly through env:. Deploy-Wilson.ps1 reads them from the environment only and never puts them on
+# a command line.
+
+parameters:
+  - name: environment          # deploy.<environment>.json in the package
+    type: string
+  - name: devopsEnvironment    # Azure DevOps environment (approvals and the exclusive lock live there)
+    type: string
+  - name: serviceConnection    # Azure Resource Manager service connection
+    type: string
+    default: sc-eim-wtc-nonprod
+  - name: variableGroup        # EIM_DEPLOY_EIMDB, EIM_DEPLOY_SERVICEBUS, EIM_DEPLOY_CONFIG_OVERRIDES
+    type: string
+    default: eim-wtc-nonprod
+  - name: deployInfra
+    type: boolean
+    default: false
+  - name: applySettings
+    type: boolean
+    default: false
+  - name: runMigrations        # shared configuration only; the environment scope rejects 'schema'
+    type: boolean
+    default: false
+  - name: components           # Deploy-Wilson.ps1 code components, e.g. 'gateway, backend, frontend'; empty skips the step
+    type: string
+    default: ''
+
+jobs:
+  - deployment: Deploy_${{ parameters.environment }}
+    displayName: Deploy ${{ parameters.environment }} (${{ parameters.components }})
+    environment: ${{ parameters.devopsEnvironment }}
+    variables:
+      - group: ${{ parameters.variableGroup }}
+    pool:
+      vmImage: windows-latest
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - download: current
+              artifact: package
+
+            - ${{ if contains(parameters.components, 'frontend') }}:
+              - task: UseNode@1
+                displayName: Node 22 (Static Web Apps CLI)
+                inputs:
+                  version: 22.x
+
+            - task: AzureCLI@2
+              displayName: Preflight and preview (changes nothing)
+              env:
+                EIM_DEPLOY_EIMDB: $(EIM_DEPLOY_EIMDB)
+                EIM_DEPLOY_SERVICEBUS: $(EIM_DEPLOY_SERVICEBUS)
+                EIM_DEPLOY_CONFIG_OVERRIDES: $(EIM_DEPLOY_CONFIG_OVERRIDES)
+              inputs:
+                azureSubscription: ${{ parameters.serviceConnection }}
+                scriptType: pscore
+                scriptLocation: inlineScript
+                inlineScript: |
+                  $components = @('preflight')
+                  if ('${{ parameters.deployInfra }}' -eq 'True') { $components += 'infra' }
+                  if ('${{ parameters.applySettings }}' -eq 'True') { $components += 'settings' }
+                  if ('${{ parameters.runMigrations }}' -eq 'True') { $components += 'myip', 'schema', 'myipremove' }
+                  $components += @('${{ parameters.components }}' -split '\s*,\s*' | Where-Object { $_ })
+                  # Like the last step: health only when something is deployed.
+                  if ($components.Count -gt 1) { $components += 'health' }
+                  & '$(Pipeline.Workspace)/package/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component $components -WhatIf
+
+            - ${{ if parameters.deployInfra }}:
+              - task: AzureCLI@2
+                displayName: Infrastructure
+                env:
+                  EIM_DEPLOY_EIMDB: $(EIM_DEPLOY_EIMDB)
+                  EIM_DEPLOY_SERVICEBUS: $(EIM_DEPLOY_SERVICEBUS)
+                  EIM_DEPLOY_CONFIG_OVERRIDES: $(EIM_DEPLOY_CONFIG_OVERRIDES)
+                inputs:
+                  azureSubscription: ${{ parameters.serviceConnection }}
+                  scriptType: pscore
+                  scriptLocation: inlineScript
+                  inlineScript: |
+                    & '$(Pipeline.Workspace)/package/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component infra
+
+            - ${{ if parameters.applySettings }}:
+              - task: AzureCLI@2
+                displayName: App settings
+                env:
+                  EIM_DEPLOY_EIMDB: $(EIM_DEPLOY_EIMDB)
+                  EIM_DEPLOY_SERVICEBUS: $(EIM_DEPLOY_SERVICEBUS)
+                  EIM_DEPLOY_CONFIG_OVERRIDES: $(EIM_DEPLOY_CONFIG_OVERRIDES)
+                inputs:
+                  azureSubscription: ${{ parameters.serviceConnection }}
+                  scriptType: pscore
+                  scriptLocation: inlineScript
+                  inlineScript: |
+                    & '$(Pipeline.Workspace)/package/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component settings
+
+            - ${{ if parameters.runMigrations }}:
+              - task: AzureCLI@2
+                displayName: Database migrations
+                env:
+                  EIM_DEPLOY_EIMDB: $(EIM_DEPLOY_EIMDB)
+                  EIM_DEPLOY_SERVICEBUS: $(EIM_DEPLOY_SERVICEBUS)
+                  EIM_DEPLOY_CONFIG_OVERRIDES: $(EIM_DEPLOY_CONFIG_OVERRIDES)
+                inputs:
+                  azureSubscription: ${{ parameters.serviceConnection }}
+                  scriptType: pscore
+                  scriptLocation: inlineScript
+                  inlineScript: |
+                    $deploy = '$(Pipeline.Workspace)/package/Deploy-Wilson.ps1'
+                    & $deploy -Environment ${{ parameters.environment }} -Component myip
+                    # The agent's IP changes per run; never leave it on the firewall.
+                    try { & $deploy -Environment ${{ parameters.environment }} -Component schema }
+                    finally { & $deploy -Environment ${{ parameters.environment }} -Component myipremove }
+
+            - ${{ if ne(parameters.components, '') }}:
+              - task: AzureCLI@2
+                displayName: Deploy ${{ parameters.components }}
+                env:
+                  EIM_DEPLOY_EIMDB: $(EIM_DEPLOY_EIMDB)
+                  EIM_DEPLOY_SERVICEBUS: $(EIM_DEPLOY_SERVICEBUS)
+                  EIM_DEPLOY_CONFIG_OVERRIDES: $(EIM_DEPLOY_CONFIG_OVERRIDES)
+                inputs:
+                  azureSubscription: ${{ parameters.serviceConnection }}
+                  scriptType: pscore
+                  scriptLocation: inlineScript
+                  inlineScript: |
+                    & '$(Pipeline.Workspace)/package/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component ${{ parameters.components }}
+
+            # Only after something was deployed. A preflight-only run (deployCode cleared, nothing else ticked) stops
+            # after preflight, so it passes before the apps exist. eim.yml passes deployCode as a non-empty components.
+            - ${{ if or(parameters.deployInfra, parameters.applySettings, parameters.runMigrations, ne(parameters.components, '')) }}:
+              - task: AzureCLI@2
+                displayName: Verify and health
+                env:
+                  EIM_DEPLOY_EIMDB: $(EIM_DEPLOY_EIMDB)
+                  EIM_DEPLOY_SERVICEBUS: $(EIM_DEPLOY_SERVICEBUS)
+                  EIM_DEPLOY_CONFIG_OVERRIDES: $(EIM_DEPLOY_CONFIG_OVERRIDES)
+                inputs:
+                  azureSubscription: ${{ parameters.serviceConnection }}
+                  scriptType: pscore
+                  scriptLocation: inlineScript
+                  inlineScript: |
+                    $deploy = '$(Pipeline.Workspace)/package/Deploy-Wilson.ps1'
+                    & $deploy -Environment ${{ parameters.environment }} -Component verify
+                    & $deploy -Environment ${{ parameters.environment }} -Component health

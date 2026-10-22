@@ -1,0 +1,141 @@
+# Wilson EIM: one build of the Automation host, gateway, dashboard and migrator, deployed to the shared
+# nonprod resources and then promoted dev -> bat -> test.
+#
+# One-time setup (docs/deployment/devops-setup.md):
+#   - Azure DevOps environments: eim-wtc-nonprod (approval + exclusive lock), eim-wtc-dev (exclusive lock),
+#     eim-wtc-bat and eim-wtc-test (approval + exclusive lock)
+#   - ARM service connection 'sc-eim-wtc-nonprod' (workload identity, Contributor on d365fsc-integration-nonprod)
+#   - Library variable group 'eim-wtc-nonprod': EIM_DEPLOY_EIMDB (secret), EIM_DEPLOY_SERVICEBUS (secret) and
+#     optional EIM_DEPLOY_CONFIG_OVERRIDES (JSON merged over the configuration)
+# A merge deploys code only. Infrastructure, app settings and migrations run only when ticked on a manual run.
+# Migrations run once, in Deploy_shared, before any environment's code: they must be expand-only
+# (docs/deployment/database-migrations.md).
+
+parameters:
+  - name: deployInfra
+    displayName: Infrastructure (plan, apps, storage, Insights, queues)
+    type: boolean
+    default: false
+  - name: applySettings
+    displayName: Apply app settings
+    type: boolean
+    default: false
+  - name: runMigrations
+    displayName: Run database migrations (shared stage only)
+    type: boolean
+    default: false
+  - name: deployCode
+    displayName: Deploy code (gateway, dashboard, Automation)
+    type: boolean
+    default: true
+
+name: eim-$(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - Wilson.Integration.*
+      - ARM.Integration.*
+      - script/SQL
+      - script/deployment
+      - pipelines
+    exclude:
+      - '**/*.md'
+
+# Pull requests run the Build stage only; every deploy stage is skipped for them.
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - Wilson.Integration.*
+      - ARM.Integration.*
+      - script/SQL
+      - script/deployment
+      - pipelines
+    exclude:
+      - '**/*.md'
+
+# A newer run waiting at an environment replaces an older one that was never approved.
+lockBehavior: runLatest
+
+stages:
+  - stage: Build
+    jobs:
+      - template: templates/build-package.yml
+        parameters:
+          environments: nonprod,dev,bat,test
+          # Runs that change settings or the schema are recognisable in the run list.
+          ${{ if and(parameters.applySettings, parameters.runMigrations) }}:
+            buildNumberSuffix: +settings+migrations
+          ${{ elseif parameters.applySettings }}:
+            buildNumberSuffix: +settings
+          ${{ elseif parameters.runMigrations }}:
+            buildNumberSuffix: +migrations
+
+  # Shared resources: gateway, dashboard API and SPA (in place), and the one eimdb every ENVIRONMENT value reads.
+  - stage: Deploy_shared
+    displayName: Deploy shared (nonprod)
+    dependsOn: Build
+    condition: and(eq(dependencies.Build.result, 'Succeeded'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - template: templates/deploy-environment.yml
+        parameters:
+          environment: nonprod
+          devopsEnvironment: eim-wtc-nonprod
+          deployInfra: ${{ parameters.deployInfra }}
+          applySettings: ${{ parameters.applySettings }}
+          runMigrations: ${{ parameters.runMigrations }}
+          ${{ if parameters.deployCode }}:
+            components: gateway, backend, frontend
+
+  - stage: Deploy_dev
+    displayName: Deploy dev
+    dependsOn: Deploy_shared
+    # Succeeded, not skipped: a rejected or failed shared stage stops every environment.
+    condition: and(eq(dependencies.Deploy_shared.result, 'Succeeded'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - template: templates/deploy-environment.yml
+        parameters:
+          environment: dev
+          devopsEnvironment: eim-wtc-dev
+          deployInfra: ${{ parameters.deployInfra }}
+          applySettings: ${{ parameters.applySettings }}
+          # The environment scope rejects 'schema'; migrations run in Deploy_shared only.
+          runMigrations: false
+          ${{ if parameters.deployCode }}:
+            components: automation
+
+  - stage: Deploy_bat
+    displayName: Deploy bat
+    dependsOn: Deploy_dev
+    condition: and(eq(dependencies.Deploy_dev.result, 'Succeeded'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - template: templates/deploy-environment.yml
+        parameters:
+          environment: bat
+          devopsEnvironment: eim-wtc-bat
+          deployInfra: ${{ parameters.deployInfra }}
+          applySettings: ${{ parameters.applySettings }}
+          runMigrations: false
+          ${{ if parameters.deployCode }}:
+            components: automation
+
+  - stage: Deploy_test
+    displayName: Deploy test
+    dependsOn: Deploy_bat
+    condition: and(eq(dependencies.Deploy_bat.result, 'Succeeded'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - template: templates/deploy-environment.yml
+        parameters:
+          environment: test
+          devopsEnvironment: eim-wtc-test
+          deployInfra: ${{ parameters.deployInfra }}
+          applySettings: ${{ parameters.applySettings }}
+          runMigrations: false
+          ${{ if parameters.deployCode }}:
+            components: automation

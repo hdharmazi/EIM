@@ -1,0 +1,17 @@
+{
+  "environment": "nonprod",
+  "scope": "shared",
+  "names": {
+    "dashboardApi": "wtc-dashboard-api-dev",
+    "staticWebApp": "wtc-dashboard-frontend-dev"
+  },
+  "legacy": {
+    "gatewayApp": "azf-d365fsc-gateway-wtc-nonprod",
+    "resources": [
+      { "name": "azf-d365fsc-gateway-wtc-nonprod", "type": "Microsoft.Web/sites", "removePlan": true },
+      { "name": "stwtcd365gwnonprod", "type": "Microsoft.Storage/storageAccounts" },
+      { "name": "appins-d365fsc-gateway-wtc-nonprod", "type": "Microsoft.Insights/components" },
+      { "name": "asp-appservice-p0v3-linux-dev", "type": "Microsoft.Web/serverfarms" }
+    ]
+  }
+}

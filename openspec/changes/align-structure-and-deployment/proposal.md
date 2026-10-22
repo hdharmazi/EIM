@@ -106,7 +106,7 @@ Aligning now keeps the two code bases mergeable. It also gives Wilson one review
 
 ### Delivery
 
-Phase 1 ships as its own PR and is merged first. Phase 2 follows as a second PR.
+Both phases ship on one branch. Phase 1 is its own commit, and Phase 2 follows on the same branch.
 
 ## Non-goals
 

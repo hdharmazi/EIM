@@ -23,6 +23,10 @@ default; it must always be supplied.
 One gateway serves every non-production environment. The environment in the path selects the D365
 profile, so the host name does not change when you target a different one — only the path does.
 
+The non-production gateway is `https://azf-eim-gateway-wtc-nonprod.azurewebsites.net`. During the
+#5246 overlap the previous gateway app still answers with the same keys; move to the new address when
+asked. See [resource-rename-cutover.md](resource-rename-cutover.md).
+
 ### Headers
 
 | Header | When | Notes |
@@ -253,13 +257,30 @@ the caller sends, so it is a coordinated change rather than a tidy-up.
 
 To move one consumer:
 
-1. Issue a host key for them on `azf-d365fsc-gateway-wtc-nonprod`.
+1. Issue a host key for them on `azf-eim-gateway-wtc-nonprod`.
 2. Register it in the dashboard with **Set key**.
 3. Give them the new base address in the same step.
 
 Steps 2 and 3 are one operation, not two. Registering the new key replaces the stored hash
 immediately, so between those steps the consumer's old key is still accepted by the old app but no
 longer matches the consumer — a 403 with a confusing message.
+
+### Moving to `azf-eim-gateway-wtc-nonprod` (#5246)
+
+The #5246 move is the exception to "keys do not cross applications": `Deploy-Wilson.ps1 -Environment
+nonprod -Component cutover` copies every named host key and `D365Data`/`D365Service` function key, with
+the same name and value, from the previous gateway app to the new one. The stored `KEYHASH` still matches,
+so consumers change only the base address. The dashboard verifies keys against both apps during the
+overlap (`gateway.legacyVerificationTargets` in `script/deployment/config/deploy.base.json`). Update
+`GATEWAYCONSUMER.GATEWAYURL` as each consumer confirms. See
+[resource-rename-cutover.md](resource-rename-cutover.md).
+
+### Hosting
+
+The gateway runs on the shared App Service plan `asp-eim-wtc-nonprod` (P0v3, Linux) with Always On,
+alongside the Automation apps and the dashboard API. It is deployed by the `gateway` component of
+`Deploy-Wilson.ps1` and the `Deploy_shared` pipeline stage ([deployment.md](deployment.md)). Always On
+keeps the host warm, so there are no cold starts and `IdempotencyPurge` fires on schedule.
 
 ### Revoking access
 
@@ -309,10 +330,12 @@ traces | where message contains "UNVERIFIED identity"
 - **Keep the gateway service principal's D365 security role as tight as the granted operations
   allow.** It cannot be read-only now that writes are in scope, so it is a backstop rather than a
   guarantee — but it still caps the worst outcome.
-- **`maximumInstanceCount` is the only rate limiter.** The gateway and the capture pipeline share a
-  D365 tenant, so an unbounded burst here can throttle the tenant and degrade order processing.
-  Raise it deliberately. Now that one gateway serves every non-production environment, this bound is
-  also shared between them — a load test in one environment can throttle another.
+- **The plan size is the rate limiter.** The gateway and the capture pipeline share a D365 tenant, so
+  an unbounded burst here can throttle the tenant and degrade order processing. On Flex Consumption
+  `maximumInstanceCount` bounded this; on the shared single-instance P0v3 plan, throughput is bounded by
+  one vCPU shared with the other apps, which is tighter. Scaling the plan out or up loosens it, so do
+  that deliberately. The bound is shared between every non-production environment — a load test in one
+  environment can throttle another.
 - **A consumer's host key reaches every HTTP function in the gateway app.** No HTTP function may be
   added to this app unless it authorizes the caller against their grants, or is harmless to every
   consumer holding a key.
