@@ -12,7 +12,7 @@ The Dashboard API and frontend are one shared non-production application, and th
 another. Logical environments are selected through UI/API configuration for the dashboard, and from the
 request path for the gateway, so neither needs a copy per environment.
 
-The EIM.Customer Function has one Function App per environment because its Service Bus triggers bind to
+The Wilson.Integration.Automation Function has one Function App per environment because its Service Bus triggers bind to
 environment-specific queues at startup — that is the one component that genuinely cannot be shared.
 
 Databases: `eimdb` is the shared non-production database used by every deployed environment. `eimdb_dev`
@@ -30,7 +30,7 @@ For each YAML file:
 4. Select the YAML path.
 5. Save without running until its secrets are configured.
 
-## EIM.Customer pipeline variables
+## Wilson.Integration.Automation pipeline variables
 
 Download each Function App's publish profile from Azure Portal and add these Azure DevOps pipeline variables with **Keep this value secret** enabled:
 
@@ -90,13 +90,13 @@ The YAML references these Azure DevOps Environments:
 - `dashboard-nonprod-api`
 - `dashboard-nonprod-frontend`
 
-Azure DevOps can create them on first use if the pipeline author has permission. The EIM.Customer pipeline already contains manual validation tasks after `dev` and `bat`; additional environment approvals can be configured in Azure DevOps when required.
+Azure DevOps can create them on first use if the pipeline author has permission. The Wilson.Integration.Automation pipeline already contains manual validation tasks after `dev` and `bat`; additional environment approvals can be configured in Azure DevOps when required.
 
 1. Open **Pipelines** → **Environments** → the target environment.
 2. Open **Approvals and checks**.
 3. Add **Approvals** and select the responsible reviewer(s).
 
-Azure DevOps Environment approvals are configured in Azure DevOps, not stored in YAML. The EIM.Customer `ManualValidation` promotion gates are stored in YAML.
+Azure DevOps Environment approvals are configured in Azure DevOps, not stored in YAML. The Wilson.Integration.Automation `ManualValidation` promotion gates are stored in YAML.
 
 ## Running deployments
 

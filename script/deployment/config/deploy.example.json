@@ -18,7 +18,7 @@
     "gatewayStorage": null,
     "queuePrefix": null
   },
-  "//gateway": "The D365 F&SC pass-through gateway, shared across all non-production environments. It takes the D365 environment from the request path, so unlike EIM.Customer it needs no per-environment copy. Exactly one environment sets hostsGateway true; an explicit 'gateway' request is refused against the others, and 'all' skips it there.",
+  "//gateway": "The D365 F&SC pass-through gateway, shared across all non-production environments. It takes the D365 environment from the request path, so unlike Wilson.Integration.Automation it needs no per-environment copy. Exactly one environment sets hostsGateway true; an explicit 'gateway' request is refused against the others, and 'all' skips it there.",
   "gateway": {
     "//hostsGateway": "Required in every environment file. Absent and false both read as falsy, so the script demands it explicitly rather than letting a forgotten flag mean nobody deploys the gateway.",
     "hostsGateway": false,

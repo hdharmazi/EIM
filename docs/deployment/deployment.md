@@ -200,7 +200,7 @@ changes to the linked backend and the Entra redirect URIs.
 **The gateway is shared, and named `-nonprod` because it could be.** One
 `azf-d365fsc-gateway-wtc-nonprod` serves dev, bat and test. It can be shared because the D365
 environment arrives in the request path and is resolved against `ENVIRONMENTTABLE` at request time, so
-nothing about the deployment is environment-specific. `EIM.Customer` cannot be shared for the opposite
+nothing about the deployment is environment-specific. `Wilson.Integration.Automation` cannot be shared for the opposite
 reason: its Service Bus triggers bind to environment-specific queues at startup.
 
 The name was chosen before the resource existed, rather than inheriting the `-dev` suffix the

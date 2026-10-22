@@ -11,7 +11,7 @@
       queues    Service Bus queues for the environment
       schema    database migrations
       api       dashboard API          (shared - only from the hosting environment)
-      function  EIM.Customer Function App
+      function  Wilson.Integration.Automation Function App
       frontend  dashboard SPA          (shared - only from the hosting environment)
 
 .PARAMETER Environment
@@ -141,7 +141,7 @@ function Get-ResourceNames {
         FunctionApp     = Resolve-Name $names.functionApp    "azf-eim-customer-wtc-$env"
         StorageAccount  = Resolve-Name $names.storageAccount "stwtceimcustomer$env"
         FunctionInsights = Resolve-Name $names.functionInsights "appins-eim-customer-wtc-$env"
-        # Shared across every non-production environment. Unlike EIM.Customer, whose Service Bus
+        # Shared across every non-production environment. Unlike Wilson Automation, whose Service Bus
         # triggers bind to environment-specific queues, the gateway takes the D365 environment from
         # the request path, so nothing about it is per-environment. Named -nonprod rather than
         # inheriting an environment suffix, which the dashboard did and now regrets.
@@ -273,7 +273,7 @@ function Invoke-FunctionComponent {
         Write-Host "  would ensure storage  $($Names.StorageAccount)"
         Write-Host "  would ensure function $($Names.FunctionApp)"
         Write-Host "  would ensure insights $($Names.FunctionInsights)"
-        Write-Host "  would apply settings, publish, zip and deploy ARM.Integration.EIM.Customer"
+        Write-Host "  would apply settings, publish, zip and deploy Wilson.Integration.Automation"
         return
     }
 
@@ -356,10 +356,10 @@ function Invoke-FunctionComponent {
         Remove-Item $settingsFile -ErrorAction SilentlyContinue
     }
 
-    $publishDir = Join-Path $RepoRoot "artifacts/eim-customer-publish-$($Names.Environment)"
-    $zipPath    = Join-Path $RepoRoot "artifacts/eim-customer-$($Names.Environment).zip"
+    $publishDir = Join-Path $RepoRoot "artifacts/wilson-automation-publish-$($Names.Environment)"
+    $zipPath    = Join-Path $RepoRoot "artifacts/wilson-automation-$($Names.Environment).zip"
 
-    dotnet publish (Join-Path $RepoRoot 'ARM.Integration.EIM.Customer/ARM.Integration.EIM.Customer.csproj') `
+    dotnet publish (Join-Path $RepoRoot 'Wilson.Integration.Automation/Wilson.Integration.Automation.csproj') `
         --configuration Release --output $publishDir
     if ($LASTEXITCODE -ne 0) { throw "Publish failed." }
 

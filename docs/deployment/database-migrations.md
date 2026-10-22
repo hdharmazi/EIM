@@ -5,7 +5,7 @@ No application process changes the schema at startup.
 
 The migrator is required for a new database and for every later release that adds a migration. An
 empty Azure SQL database does not contain the tables, indexes, routing rows, stored procedure, or
-trigger used by the API, EIM.Customer, and Gateway. Deploying code without first applying migrations
+trigger used by the API, Wilson.Integration.Automation, and Gateway. Deploying code without first applying migrations
 produces table-not-found errors; it is not a supported deployment mode.
 
 `script/deployment/Deploy-Eim.ps1 -Component schema` runs the migrator. The code-only Azure DevOps
@@ -283,7 +283,7 @@ clear it.
 
 Migration `014_seed_customer_address_delete_route.sql` seeds a route naming
 `CustomerAddressDelete_To_Capture`. This release **reverses the usual order: deploy code first,
-then migrate.** EIM.Customer runs `RouteRegistryValidator` at startup and refuses to start when a
+then migrate.** Wilson.Integration.Automation runs `RouteRegistryValidator` at startup and refuses to start when a
 route names an orchestration it has not registered. If the route row exists while the previous build
 starts — a restart, or a Consumption scale-out — the host is down, not degraded.
 
@@ -349,7 +349,7 @@ ORDER BY d.ID;
 Expect `SOURCEID` equal to the address location id, a `DetermineAction` step of `Delete`, and a
 `Result` step whose envelope has `"Action":"Delete"` and `"Entity":"CustomerAddress"`. Save the
 payload from `MESSAGEQUEUETABLE.PAYLOAD` over the test fixture
-`ARM.Integration.EIM.Tests/TestData/CustomerAddressDeleted.OnExternalUpdated.json` and re-run the
+`Wilson.Integration.Tests/TestData/CustomerAddressDeleted.OnExternalUpdated.json` and re-run the
 tests.
 
 ### Watching the deleted-flag guard

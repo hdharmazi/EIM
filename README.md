@@ -8,11 +8,11 @@ Integration services for moving data between Capture, Microsoft Dynamics 365 Fin
 |---|---|---|
 | `ARM.Integration.Dashboard.API` | Dashboard and simulation API | `http://localhost:5060` |
 | `ARM.Integration.Dashboard.Frontend` | React/Vite operations UI | `http://localhost:5173` |
-| `ARM.Integration.EIM.Customer` | Service Bus and timer-triggered integration worker | Functions host on port `7071` |
+| `Wilson.Integration.Automation` | Service Bus and timer-triggered integration worker | Functions host on port `7071` |
 | `ARM.Integration.D365FSC.Gateway` | Shared D365 F&SC HTTP gateway | `http://localhost:7072` |
 | `ARM.Integration.DbMigrator` | Applies versioned and repeatable SQL migrations | Command line |
 
-Local Functions use Azurite on ports `10000` through `10002`. Deployed nonprod environments share the Dashboard, Gateway, and `eimdb`; EIM.Customer has separate `dev`, `bat`, and `test` Function Apps.
+Local Functions use Azurite on ports `10000` through `10002`. Deployed nonprod environments share the Dashboard, Gateway, and `eimdb`; Wilson Automation has separate `dev`, `bat`, and `test` Function Apps.
 
 ## Prerequisites
 
@@ -39,11 +39,30 @@ Start the full local stack:
 .\run.bat
 ```
 
-This starts Azurite, the Dashboard API and frontend, EIM.Customer, and the D365 F&SC Gateway in separate windows. To run only the Dashboard:
+This starts Azurite, the Dashboard API and frontend, Wilson Automation (port `7071`), and the D365 F&SC Gateway (port `7072`) in separate windows. To run only the Dashboard:
 
 ```powershell
 .\run-dashboard.bat
 ```
+
+### Local settings
+
+Each Functions project reads `local.settings.json`, which is gitignored and never committed. Start from the tracked sample and fill in the placeholders:
+
+```powershell
+Copy-Item Wilson.Integration.Automation\local.settings.sample.json Wilson.Integration.Automation\local.settings.json
+Copy-Item ARM.Integration.D365FSC.Gateway\local.settings.sample.json ARM.Integration.D365FSC.Gateway\local.settings.json
+```
+
+If you already have a `local.settings.json` in the worker's pre-rename folder (the old EIM Customer project), move it to `Wilson.Integration.Automation\local.settings.json` and remove `PollSchedule`, which nothing reads. The old folder then holds only build output and can be deleted.
+
+To keep several settings files side by side, name them `local.settings.<name>.json` (also gitignored) and select one at build time; it is copied to the output as `local.settings.json`:
+
+```powershell
+dotnet build Wilson.Integration.Automation -p:LocalSettings=mydev
+```
+
+The Automation host refuses to start, naming each missing setting, when a required setting is absent.
 
 ## Database migrations
 
@@ -59,6 +78,7 @@ dotnet run --project ARM.Integration.DbMigrator -- --connection "<connection-str
 
 ```powershell
 dotnet test ARM.Integration.EIM.Tests/ARM.Integration.EIM.Tests.csproj
+dotnet test Wilson.Integration.Tests/Wilson.Integration.Tests.csproj
 dotnet test ARM.Integration.D365FSC.Gateway.Tests/ARM.Integration.D365FSC.Gateway.Tests.csproj
 npm --prefix ARM.Integration.Dashboard.Frontend run lint
 ```
@@ -71,4 +91,4 @@ npm --prefix ARM.Integration.Dashboard.Frontend run lint
 - [D365 F&SC Gateway operations](docs/deployment/d365fsc-gateway.md)
 - [Deployment plan](docs/deployment/deployment-plan.md)
 
-The Azure DevOps workflows build immutable code packages and do not create or migrate the database. Provision and migrate `eimdb` before the first code deployment. EIM.Customer promotes one package through `dev`, `bat`, and `test`; the Dashboard and Gateway are shared nonprod deployments.
+The Azure DevOps workflows build immutable code packages and do not create or migrate the database. Provision and migrate `eimdb` before the first code deployment. Wilson Automation promotes one package through `dev`, `bat`, and `test`; the Dashboard and Gateway are shared nonprod deployments.

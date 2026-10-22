@@ -6,6 +6,7 @@
       "Bash(dotnet test:*)",
       "Bash(npm --prefix ARM.Integration.Dashboard.Frontend run lint)",
       "Bash(npm --prefix ARM.Integration.Dashboard.Frontend run build)",
+      "Bash(pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1:*)",
       "Bash(openspec list:*)",
       "Bash(openspec show:*)",
       "Bash(openspec status:*)",

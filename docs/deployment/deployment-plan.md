@@ -7,12 +7,12 @@
 Add three Azure DevOps pipelines:
 
 1. Deploy the shared non-production Dashboard API and frontend.
-2. Build `ARM.Integration.EIM.Customer` once and promote the package through `dev`, `bat`, and `test`.
+2. Build `Wilson.Integration.Automation` once and promote the package through `dev`, `bat`, and `test`.
 3. Test and deploy the shared non-production D365 F&SC Gateway.
 
 ## Current understanding
 
-- Application: `ARM.Integration.EIM.Customer`
+- Application: `Wilson.Integration.Automation`
 - Runtime: .NET 10 isolated worker, Azure Functions v4, Linux
 - Promotion targets: `dev` (`azf-eim-customer-wtc-dev`), `bat` (`azf-eim-customer-wtc-bat`), and `test` (`azf-eim-customer-wtc-test`)
 - Existing deployment style: Release publish followed by ZIP deployment
@@ -29,7 +29,7 @@ Add three Azure DevOps pipelines:
 
 - All three pipelines are manual-only.
 - Dashboard supports component selection: API, frontend, or both.
-- EIM.Customer promotes one package in order through `dev`, `bat`, and `test`.
+- Wilson.Integration.Automation promotes one package in order through `dev`, `bat`, and `test`.
 - Manual validation gates after `dev` and `bat` reject after 24 hours if no decision is made.
 - Gateway always deploys to the shared nonprod Function App after successful tests.
 - Pipelines deploy code only and do not overwrite Azure runtime settings.
@@ -39,7 +39,7 @@ Add three Azure DevOps pipelines:
 
 1. Start manually with no environment parameter.
 2. Restore, build, and test the .NET solution.
-3. Publish `ARM.Integration.EIM.Customer` in Release mode.
+3. Publish `Wilson.Integration.Automation` in Release mode.
 4. Publish an immutable ZIP artifact.
 5. Deploy the ZIP to `dev`, then pause for manual validation.
 6. After approval, deploy the same ZIP to `bat`, then pause for manual validation.
@@ -88,7 +88,7 @@ Add three Azure DevOps pipelines:
 	- [x] Dashboard API ZIP contains the application DLL at ZIP root.
 	- [x] All three Azure DevOps deployment YAML files have no editor diagnostics.
 	- [x] Target names and required secret-variable names match the setup guide.
-	- [x] One EIM.Customer artifact is referenced by all three deployment stages.
+	- [x] One Wilson.Integration.Automation artifact is referenced by all three deployment stages.
 	- [x] Gateway tests run before the Gateway artifact is published and deployed.
 	- [x] No runtime application settings are changed by any pipeline.
 
@@ -100,7 +100,7 @@ Retain pipeline artifacts so a previously successful ZIP can be redeployed. Do n
 
 - EIM and Gateway test projects through the VS Code test adapter
 	- Passed: 61 tests, 0 failures.
-- Release publish and ZIP validation for `ARM.Integration.EIM.Customer` and `ARM.Integration.D365FSC.Gateway`
+- Release publish and ZIP validation for `Wilson.Integration.Automation` and `ARM.Integration.D365FSC.Gateway`
 	- Passed; both archives contain `host.json` at ZIP root.
 - `dotnet build ARM.Integration.Wilson.slnx --configuration Release`
 	- Passed with existing nullable/package warnings.

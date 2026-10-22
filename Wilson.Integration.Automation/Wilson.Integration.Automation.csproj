@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AzureFunctionsVersion>v4</AzureFunctionsVersion>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Wilson.Integration.Automation</RootNamespace>
+    <AssemblyName>Wilson.Integration.Automation</AssemblyName>
+  </PropertyGroup>
+
+  <!-- The Functions host only reads local.settings.json; -p:LocalSettings=mydev copies local.settings.mydev.json in its place. -->
+  <PropertyGroup>
+    <LocalSettingsFile>local.settings.json</LocalSettingsFile>
+    <LocalSettingsFile Condition="'$(LocalSettings)' != '' And Exists('local.settings.$(LocalSettings).json')">local.settings.$(LocalSettings).json</LocalSettingsFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(LocalSettingsFile)" Condition="Exists('$(LocalSettingsFile)')" Link="local.settings.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.51.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.ServiceBus" Version="5.24.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="2.0.7" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ARM.Integration.EIM\ARM.Integration.EIM.csproj" />
+    <ProjectReference Include="..\Wilson.Integration.Orchestrations\Wilson.Integration.Orchestrations.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Wilson.Integration.Tests" />
+  </ItemGroup>
+
+</Project>

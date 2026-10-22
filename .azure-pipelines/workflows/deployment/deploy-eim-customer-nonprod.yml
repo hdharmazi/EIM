@@ -1,4 +1,4 @@
-# Manual, code-only promotion of one EIM.Customer package through dev, bat, and test.
+# Manual, code-only promotion of one Wilson.Integration.Automation package through dev, bat, and test.
 trigger: none
 pr: none
 
@@ -8,14 +8,15 @@ pool:
 variables:
   DOTNET_VERSION: 10.0.x
   CONFIGURATION: Release
-  FUNCTION_PROJECT: ARM.Integration.EIM.Customer/ARM.Integration.EIM.Customer.csproj
+  FUNCTION_PROJECT: Wilson.Integration.Automation/Wilson.Integration.Automation.csproj
   TEST_PROJECT: ARM.Integration.EIM.Tests/ARM.Integration.EIM.Tests.csproj
+  CLIENT_TEST_PROJECT: Wilson.Integration.Tests/Wilson.Integration.Tests.csproj
   ARTIFACT_NAME: eim-customer
   PACKAGE_FILE: eim-customer-$(Build.BuildId).zip
 
 stages:
   - stage: Build
-    displayName: Build and package EIM.Customer
+    displayName: Build and package Wilson.Integration.Automation
     jobs:
       - job: Build
         steps:
@@ -38,6 +39,13 @@ stages:
             inputs:
               command: test
               projects: $(TEST_PROJECT)
+              arguments: --configuration $(CONFIGURATION)
+
+          - task: DotNetCoreCLI@2
+            displayName: Run Wilson client tests
+            inputs:
+              command: test
+              projects: $(CLIENT_TEST_PROJECT)
               arguments: --configuration $(CONFIGURATION)
 
           - task: DotNetCoreCLI@2
@@ -66,11 +74,11 @@ stages:
               artifact: $(ARTIFACT_NAME)
 
   - stage: DeployDev
-    displayName: Deploy EIM.Customer to dev
+    displayName: Deploy Wilson.Integration.Automation to dev
     dependsOn: Build
     jobs:
       - deployment: DeployDev
-        displayName: Deploy EIM.Customer to dev
+        displayName: Deploy Wilson.Integration.Automation to dev
         environment: eim-customer-dev
         strategy:
           runOnce:
@@ -112,11 +120,11 @@ stages:
               onTimeout: reject
 
   - stage: DeployBat
-    displayName: Deploy EIM.Customer to bat
+    displayName: Deploy Wilson.Integration.Automation to bat
     dependsOn: ValidateDev
     jobs:
       - deployment: DeployBat
-        displayName: Deploy EIM.Customer to bat
+        displayName: Deploy Wilson.Integration.Automation to bat
         environment: eim-customer-bat
         strategy:
           runOnce:
@@ -158,11 +166,11 @@ stages:
               onTimeout: reject
 
   - stage: DeployTest
-    displayName: Deploy EIM.Customer to test
+    displayName: Deploy Wilson.Integration.Automation to test
     dependsOn: ValidateBat
     jobs:
       - deployment: DeployTest
-        displayName: Deploy EIM.Customer to test
+        displayName: Deploy Wilson.Integration.Automation to test
         environment: eim-customer-test
         strategy:
           runOnce:

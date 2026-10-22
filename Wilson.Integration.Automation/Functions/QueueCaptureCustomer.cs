@@ -1,0 +1,30 @@
+using ARM.Integration.EIM.Orchestration;
+using ARM.Integration.EIM.Retry;
+using ARM.Integration.EIM.Routing;
+using Azure.Messaging.ServiceBus;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Logging;
+using Wilson.Integration.Automation.Inbound;
+
+namespace Wilson.Integration.Automation.Functions;
+
+public class QueueCaptureCustomer(
+    ILoggerFactory loggerFactory,
+    IReadOnlyDictionary<string, IOrchestration> orchestrations,
+    IngestGate gate,
+    IFailureClassifier failureClassifier,
+    RetryScheduleCalculator retrySchedule)
+{
+    private readonly ILogger logger = loggerFactory.CreateLogger<QueueCaptureCustomer>();
+
+    [Function(nameof(QueueCaptureCustomer))]
+    public async Task Run(
+        [ServiceBusTrigger("%CaptureToD365Queue%", Connection = "ServiceBus")]
+        ServiceBusReceivedMessage message,
+        ServiceBusMessageActions messageActions)
+    {
+        await CaptureMessageProcessor.ProcessAsync(
+            message, messageActions, logger, orchestrations, gate, failureClassifier, retrySchedule,
+            responseQueueSetting: "CaptureToD365QueueResponse");
+    }
+}
