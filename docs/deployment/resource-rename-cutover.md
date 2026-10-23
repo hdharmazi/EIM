@@ -8,8 +8,11 @@ This file names the old resources on purpose. Elsewhere in the repository a test
 
 **What changes**
 
-- Each environment's Automation Function App is recreated under a new name on a new plan, and its queue and
-  timer triggers move to it with `cutover`.
+- Each deployed environment's (`bat`, `test`) Automation Function App is recreated under a new name on a new
+  plan, and its queue and timer triggers move to it with `cutover`.
+- The legacy dev Automation app `azf-eim-customer-wtc-dev` is **retired with no replacement**: development runs
+  locally, so there is no new dev app, no dev stage and no dev configuration. Its triggers are disabled by hand
+  (step 7) and the app, its storage and its Insights are deleted with `remove -Environment nonprod` (step 13).
 - The gateway is recreated on the new plan with Always On. Its consumers' keys are copied, so consumers change
   only the base URL.
 - The dashboard is **not** replaced. `wtc-dashboard-api-dev` and `wtc-dashboard-frontend-dev` keep their names,
@@ -63,10 +66,10 @@ dashboard can verify keys against both during the overlap.
 
 ## 3. Provision each environment
 
-In the same run, `Deploy_dev`, then (approved) `Deploy_bat` and `Deploy_test` create, per environment, the
+In the same run, `Deploy_bat` and then `Deploy_test` (each approved) create, per environment, the
 storage `stwtceimauto{env}`, Insights `appins-eim-automation-wtc-{env}` and the Function App
 `azf-eim-automation-wtc-{env}` on `asp-eim-wtc-nonprod`, write its settings, and deploy the Automation code. The
-queues already exist and are kept.
+queues already exist and are kept. Nothing is created for dev.
 
 Every queue and timer trigger on a new Automation app starts **disabled** (`AzureWebJobs.<fn>.Disabled=true`).
 The old app keeps consuming the queues until `cutover`. Never enable a trigger by hand: two apps consuming the
@@ -81,7 +84,8 @@ The new plan and the new gateway may use outbound IPs the SQL firewall does not 
 
 ```powershell
 ./script/deployment/Deploy-Wilson.ps1 -Environment nonprod -Component verify
-./script/deployment/Deploy-Wilson.ps1 -Environment dev -Component verify
+./script/deployment/Deploy-Wilson.ps1 -Environment bat -Component verify
+./script/deployment/Deploy-Wilson.ps1 -Environment test -Component verify
 ```
 
 `verify` prints each app's outbound IPs. Unless **Allow Azure services and resources to access this server** is
@@ -103,7 +107,7 @@ From now on, a merge to `main` deploys code only.
 ## 6. Verify
 
 ```powershell
-foreach ($name in 'nonprod', 'dev', 'bat', 'test') {
+foreach ($name in 'nonprod', 'bat', 'test') {
     ./script/deployment/Deploy-Wilson.ps1 -Environment $name -Component verify
     ./script/deployment/Deploy-Wilson.ps1 -Environment $name -Component health
 }
@@ -111,11 +115,12 @@ foreach ($name in 'nonprod', 'dev', 'bat', 'test') {
 
 - [ ] Every Function App: state Running, Always On, plan `asp-eim-wtc-nonprod`.
 - [ ] Gated triggers: disabled on each new Automation app, enabled as before on each old one.
+- [ ] `verify -Environment nonprod` lists `azf-eim-customer-wtc-dev` as "retired Automation (no replacement)".
 - [ ] The static web app's linked backend is `wtc-dashboard-api-dev`.
 - [ ] `health` passes for every configuration.
 
 Then check the data the database holds about the old apps, across **every** row, whatever its ENVIRONMENT value
-(`DEV`, `DEV2`, `BAT`, `TEST`), not only the three deployed configurations. The query returns keys only, because
+(`DEV`, `DEV2`, `BAT`, `TEST`), not only the deployed configurations. The query returns keys only, because
 the values hold credentials:
 
 ```sql
@@ -130,12 +135,71 @@ WHERE [VALUE] LIKE N'%azf-d365fsc-gateway%' OR [VALUE] LIKE N'%azf-eim-customer%
 
 - [ ] No rows, or each row found is updated to the new host name.
 
-## 7. Cut over each environment: dev, then bat, then test
+## 7. Retire legacy dev, then cut over bat, then test
+
+### Retire legacy dev
+
+There is no dev cutover and no new dev app: development runs on a developer's machine. Do this before the bat
+cutover. `azf-eim-customer-wtc-dev` stays in place, with its triggers disabled, until step 13.
+
+1. Record the active and dead-letter counts of the five `dev-*` queues:
+
+   ```powershell
+   foreach ($queue in 'dev-d365fsc-dataevent', 'dev-d365fsc-businessevents', 'dev-d365fsc-to-capture',
+           'dev-capture-to-d365fsc', 'dev-capture-to-d365fsc-response') {
+       az servicebus queue show -g d365fsc-integration-nonprod --namespace-name asb-eim-wtc-nonprod -n $queue `
+           --query "{queue: name, counts: countDetails}" -o json
+   }
+   ```
+
+2. Disable the six gated functions (`automation.gatedFunctions` in `deploy.base.json`) on the retired app.
+   Stopping the app is **not** enough: `remove` refuses until these settings say disabled.
+
+   ```powershell
+   az functionapp config appsettings set -g d365fsc-integration-nonprod -n azf-eim-customer-wtc-dev -o none --settings `
+       AzureWebJobs.AwaitingD365SweepHandler.Disabled=true `
+       AzureWebJobs.QueueCaptureCustomer.Disabled=true `
+       AzureWebJobs.QueueDataEventsHandler.Disabled=true `
+       AzureWebJobs.QueueMessageQueueBusinessEventHandler.Disabled=true `
+       AzureWebJobs.ReleaseSweepHandler.Disabled=true `
+       AzureWebJobs.RetrySweepHandler.Disabled=true
+   ```
+
+3. Check it:
+
+   ```powershell
+   ./script/deployment/Deploy-Wilson.ps1 -Environment nonprod -Component verify
+   ```
+
+   `azf-eim-customer-wtc-dev` is listed as "retired Automation (no replacement)" with every gated function
+   disabled.
+
+4. Drain what is left on the `dev-*` queues with a local Automation host (see "Local development" in the
+   repository `README.md`), or record that losing it is accepted. **Never delete the queues**, and never delete or
+   change a `DEV` or `DEV2` row in `eimdb`. The timer sweeps on the bat and test apps are global across
+   ENVIRONMENT values, so they keep releasing, retrying and escalating `DEV` and `DEV2` rows.
+
+5. In the dashboard's configuration screen, set the Simulation `DEV` row inactive, so nobody simulates into the
+   `dev-*` queues that no deployed app consumes. This is a data change; no migration.
+
+6. Capture dev and the D365 dev endpoints may keep publishing to the `dev-*` queues. Messages wait there for a
+   local host or expire (14-day TTL, dead-lettered on expiry). If the queue depth keeps growing, ask their owners
+   to stop publishing.
+
+- [ ] The `dev-*` queue counts were recorded before the triggers were disabled.
+- [ ] `verify -Environment nonprod` shows every gated function on `azf-eim-customer-wtc-dev` disabled.
+- [ ] The `dev-*` queues were drained locally, or losing what is left was accepted and recorded.
+- [ ] The dashboard Simulation `DEV` row is inactive.
+- [ ] No queue and no `DEV`/`DEV2` row was deleted.
+
+### Cut over bat, then test
 
 ```powershell
-./script/deployment/Deploy-Wilson.ps1 -Environment dev -Component cutover -WhatIf   # preview
-./script/deployment/Deploy-Wilson.ps1 -Environment dev -Component cutover
+./script/deployment/Deploy-Wilson.ps1 -Environment bat -Component cutover -WhatIf   # preview
+./script/deployment/Deploy-Wilson.ps1 -Environment bat -Component cutover
 ```
+
+Then the same for `test`. `cutover` never touches a retired app.
 
 `cutover`:
 
@@ -158,7 +222,7 @@ Checks, for each environment:
 - [ ] The queues drain on the new app (Service Bus active message counts fall back to normal).
 - [ ] The dashboard shows new message rows for the environment.
 - [ ] No failures in `appins-eim-automation-wtc-{env}`.
-- [ ] Observe dev for one day before bat; then bat before test.
+- [ ] Observe bat for one day before test.
 
 ## 8. Gateway: copy the keys and switch the consumers
 
@@ -270,6 +334,7 @@ Before step 13, every move can be undone:
 | A gateway consumer | the consumer goes back to the old base URL (the old gateway still runs with the same keys); set its gateway address in the dashboard to the old URL. `rollback -Environment nonprod` is refused on purpose. |
 | The dashboard | it has no old copy; rerun `Deploy_shared` of an earlier run for its code. During the overlap it verifies keys against both gateways. |
 | The dashboard API's plan | `az webapp update ... --set serverFarmId=<old plan id>`, as in step 11 |
+| The legacy dev retirement (step 7) | set the six `AzureWebJobs.<fn>.Disabled` settings on `azf-eim-customer-wtc-dev` back to `false` (stop any local host consuming the `dev-*` queues first), and set the Simulation `DEV` row active again. Impossible after step 13. |
 | The schema | none; migrations only move forward, and this change adds none |
 
 After step 13 there is nothing to roll back to. Recreate from the pipeline instead.
@@ -286,11 +351,11 @@ requests
 | summarize count() by bin(timestamp, 1d)
 ```
 
-From an **operator machine** (`remove` refuses to run in a pipeline), for `dev`, `bat`, `test`, and then `nonprod`:
+From an **operator machine** (`remove` refuses to run in a pipeline), for `bat`, `test`, and then `nonprod`:
 
 ```powershell
-./script/deployment/Deploy-Wilson.ps1 -Environment dev -Component remove -WhatIf
-./script/deployment/Deploy-Wilson.ps1 -Environment dev -Component remove
+./script/deployment/Deploy-Wilson.ps1 -Environment bat -Component remove -WhatIf
+./script/deployment/Deploy-Wilson.ps1 -Environment bat -Component remove
 ```
 
 - `remove` deletes only the resources listed under `legacy` in that configuration, and only of four types:
@@ -301,9 +366,14 @@ From an **operator machine** (`remove` refuses to run in a pipeline), for `dev`,
 - It refuses while any gated trigger on the old Automation app is enabled (cut over first), and if a `legacy`
   name equals a name in use. The dashboard is never `legacy`, so it can never be deleted.
 - For `nonprod` it deletes the old gateway, its Flex Consumption plan (read from the app), its storage and its
-  Insights, and `asp-appservice-p0v3-linux-dev` **only if no app is left on it**. Otherwise it keeps the plan and
-  names the app still on it (`wtc-dashboard-api-dev` if step 11 fell back).
+  Insights; the retired dev Automation app `azf-eim-customer-wtc-dev`, its storage `stwtceimcustomerdev` and its
+  Insights `appins-eim-customer-wtc-dev`; and `asp-appservice-p0v3-linux-dev` **only if no app is left on it**.
+  Otherwise it keeps the plan and names the app still on it (`wtc-dashboard-api-dev` if step 11 fell back).
+- For `nonprod` it also refuses while any gated function on `azf-eim-customer-wtc-dev` is enabled; if that
+  happens, repeat step 7 "Retire legacy dev". `appins-eim-customer-wtc-dev` may never have existed; it is then
+  reported as "not found (already removed)" and the other entries are processed.
 
+- [ ] The retired dev app, its storage and (if it existed) its Insights were deleted.
 - [ ] The old plan was deleted, or was kept and named because the dashboard API is still on it.
 
 ## 14. Clean up
@@ -312,14 +382,17 @@ From an **operator machine** (`remove` refuses to run in a pipeline), for `dev`,
       ([devops-setup.md](devops-setup.md), section 8).
 - [ ] Remove the old SQL firewall rules for IPs no app uses any more.
 - [ ] In a follow-up commit: empty `gateway.legacyVerificationTargets` in `deploy.base.json`, remove the `legacy`
-      sections from the configurations, remove the legacy-name exceptions from `RepositoryLayoutTests`, and
-      archive the OpenSpec change `align-structure-and-deployment`.
+      sections from the configurations (including `legacy.retiredAutomationApps` in `deploy.nonprod.json`), remove
+      the legacy-name exceptions from `RepositoryLayoutTests`, and archive the OpenSpec change
+      `align-structure-and-deployment`.
+- [ ] Later, by hand and outside this change: drop the `eimdb_dev` catalog on `azql-wtc-sandbox`. It is not a
+      deployment target; local development uses a local SQL Server.
 
 ## 15. Names
 
 ### Old to new
 
-Per environment (`{env}` is `dev`, `bat` or `test`: deployment configurations, not ENVIRONMENT values; `DEV2` has
+Per environment (`{env}` is `bat` or `test`: deployment configurations, not ENVIRONMENT values; `DEV2` has
 no Function App):
 
 | Resource | Old | New |
@@ -328,6 +401,15 @@ no Function App):
 | Automation storage | `stwtceimcustomer{env}` | `stwtceimauto{env}` |
 | Automation Insights | `appins-eim-customer-wtc-{env}` | `appins-eim-automation-wtc-{env}` |
 | Service Bus queues | `{env}-d365fsc-dataevent`, `{env}-d365fsc-businessevents`, `{env}-d365fsc-to-capture`, `{env}-capture-to-d365fsc`, `{env}-capture-to-d365fsc-response` | unchanged |
+
+Legacy dev (development is local; no replacement):
+
+| Resource | Old | New |
+|---|---|---|
+| Automation Function App | `azf-eim-customer-wtc-dev` | retired, no replacement (deleted by `remove -Environment nonprod`) |
+| Automation storage | `stwtceimcustomerdev` | retired, no replacement (deleted by `remove -Environment nonprod`) |
+| Automation Insights | `appins-eim-customer-wtc-dev` (may not exist) | retired, no replacement (deleted by `remove -Environment nonprod`) |
+| Service Bus queues | `dev-d365fsc-dataevent` and the other four `dev-*` queues | kept; consumed only by a local host |
 
 Shared (`nonprod`):
 
@@ -348,7 +430,7 @@ Shared (`nonprod`):
 | Service Bus namespace | `asb-eim-wtc-nonprod` | `sbns-eim-wtc-nonprod` |
 | Key Vault | `kv-d365fsc-wtc-nonprod` | `kv-eim-wtc-nonprod` |
 | SQL server | `azql-wtc-sandbox` | `sql-eim-wtc-nonprod` |
-| Database | `eimdb` (and `eimdb_dev`, local development only) | `sqldb-eim-wtc-nonprod` |
+| Database | `eimdb` (`eimdb_dev` is not a deployment target and is dropped later by hand) | `sqldb-eim-wtc-nonprod` |
 | Dashboard API | `wtc-dashboard-api-dev` (moves to `asp-eim-wtc-nonprod` in step 11) | `app-eim-dashboard-api-wtc-nonprod` |
 | Dashboard static web app | `wtc-dashboard-frontend-dev` | `swa-eim-dashboard-wtc-nonprod` |
 | Region | `centralus` | |

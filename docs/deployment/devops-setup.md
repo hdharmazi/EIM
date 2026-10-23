@@ -13,9 +13,11 @@ group, marked secret.
 | Environment | Used by | Approvals | Exclusive lock |
 |---|---|---|---|
 | `eim-wtc-nonprod` | `Deploy_shared` | yes | yes |
-| `eim-wtc-dev` | `Deploy_dev` | no | yes |
 | `eim-wtc-bat` | `Deploy_bat` | yes | yes |
 | `eim-wtc-test` | `Deploy_test` | yes | yes |
+
+There is no development environment or stage: development runs locally. If an environment for a development
+stage was created ahead of the pipeline, delete it.
 
 - **Approvals:** add the responsible reviewers. Approvals live in Azure DevOps, not in the YAML, so there is no
   `ManualValidation` step.
@@ -24,7 +26,8 @@ group, marked secret.
   never approved.
 - `eim-wtc-nonprod` needs an approval because the shared stage changes the gateway (used by external consumers),
   the dashboard used by every environment and, on manual runs, the one `eimdb` every ENVIRONMENT value reads. It
-  sits in front of dev, so dev waits for that approval on every merge. That was accepted.
+  sits in front of bat, so every merge waits for two approvals, shared then bat, before any Automation code is
+  deployed. That was accepted: nothing deployed is less gated than bat.
 
 ## 2. Service connection
 
@@ -95,7 +98,7 @@ The pipeline only reads the repository and publishes an artifact; it does not pu
 build service identity needs:
 
 - **Read** on the `ARM.Integration.Wilson` repository (the default)
-- **Use** permission on `sc-eim-wtc-nonprod`, the `eim-wtc-nonprod` variable group and the four environments
+- **Use** permission on `sc-eim-wtc-nonprod`, the `eim-wtc-nonprod` variable group and the three environments
   (granted by **Permit** on the first run, or under each resource's **Security** / **Pipeline permissions**)
 
 ## 8. The old pipeline definitions

@@ -13,7 +13,8 @@ public partial class DeploymentConfigTests
 {
     private static readonly string ConfigDirectory = Path.Combine(RepositoryPaths.Root(), "script", "deployment", "config");
 
-    private static readonly string[] EnvironmentConfigurations = ["dev", "bat", "test"];
+    // Development runs locally: there is no dev deployment configuration.
+    private static readonly string[] EnvironmentConfigurations = ["bat", "test"];
 
     private static IReadOnlyList<string> ConfigFileNames() =>
         Directory.GetFiles(ConfigDirectory, "deploy.*.json").Select(f => Path.GetFileName(f)).Order(StringComparer.Ordinal).ToList();
@@ -75,10 +76,17 @@ public partial class DeploymentConfigTests
         foreach (var key in new[] { "automationApp", "gatewayApp" })
             if (legacy.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
                 yield return value.GetString()!;
+        foreach (var retired in Strings(root, "legacy", "retiredAutomationApps"))
+            yield return retired;
         if (legacy.TryGetProperty("resources", out var resources))
             foreach (var resource in resources.EnumerateArray())
                 yield return resource.GetProperty("name").GetString()!;
     }
+
+    private static IEnumerable<(string Name, string Type)> LegacyResources(JsonElement root) =>
+        root.TryGetProperty("legacy", out var legacy) && legacy.TryGetProperty("resources", out var resources)
+            ? resources.EnumerateArray().Select(r => (r.GetProperty("name").GetString()!, r.GetProperty("type").GetString()!)).ToList()
+            : [];
 
     // The design D7 tables: every derived name, plus the pattern defaults the kept names override.
     private static IEnumerable<string> DerivedNames()
@@ -107,7 +115,32 @@ public partial class DeploymentConfigTests
     public void The_expected_configurations_exist()
     {
         var names = ConfigFileNames().Select(ConfigName).Order(StringComparer.Ordinal);
-        Assert.Equal(["base", "bat", "dev", "nonprod", "test"], names);
+        Assert.Equal(["base", "bat", "nonprod", "test"], names);
+    }
+
+    [Fact]
+    public void No_configuration_deploys_a_dev_environment()
+    {
+        Assert.False(File.Exists(Path.Combine(ConfigDirectory, "deploy.dev.json")), "deploy.dev.json must not exist; development runs locally.");
+        foreach (var fileName in ConfigFileNames())
+            Assert.NotEqual("dev", StringAt(Load(fileName), "environment"));
+    }
+
+    [Fact]
+    public void Nonprod_retires_the_dev_automation_app()
+    {
+        Assert.Equal(["azf-eim-customer-wtc-dev"], Strings(Load("deploy.nonprod.json"), "legacy", "retiredAutomationApps"));
+    }
+
+    [Theory]
+    [MemberData(nameof(ConfigFiles))]
+    public void Each_retired_automation_app_is_a_legacy_site(string fileName)
+    {
+        var config = Load(fileName);
+        var resources = LegacyResources(config).ToList();
+        foreach (var retired in Strings(config, "legacy", "retiredAutomationApps"))
+            Assert.True(resources.Contains((retired, "Microsoft.Web/sites")),
+                $"{fileName}: retired Automation app '{retired}' must also be a Microsoft.Web/sites entry in legacy.resources so remove deletes it.");
     }
 
     [Theory]

@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: A single entry point deploys the system
-The system SHALL provide one deployment script, `script/deployment/Deploy-Wilson.ps1`, that deploys every component to any supported non-production configuration (`nonprod`, `dev`, `bat`, `test`). Deploying SHALL NOT require selecting between alternative scripts or knowing which of several scripts is current. `Deploy-Eim.ps1` and `Deploy-ZipWithPublishProfile.ps1` SHALL NOT remain in the repository. The script SHALL deploy application code only from a package produced by `New-DeploymentPackage.ps1` and SHALL NOT build from source.
+The system SHALL provide one deployment script, `script/deployment/Deploy-Wilson.ps1`, that deploys every component to any supported non-production configuration (`nonprod`, `bat`, `test`). There SHALL be no `dev` configuration; development runs on a developer's machine. Deploying SHALL NOT require selecting between alternative scripts or knowing which of several scripts is current. `Deploy-Eim.ps1` and `Deploy-ZipWithPublishProfile.ps1` SHALL NOT remain in the repository. The script SHALL deploy application code only from a package produced by `New-DeploymentPackage.ps1` and SHALL NOT build from source.
 
 #### Scenario: Full deployment to an environment
 - **WHEN** an operator runs the deployment script for a configuration requesting `all`
@@ -14,6 +14,10 @@ The system SHALL provide one deployment script, `script/deployment/Deploy-Wilson
 #### Scenario: Unsupported environment is rejected
 - **WHEN** an operator requests an environment that is not configured
 - **THEN** the script stops with a message naming the unconfigured environment, and no action is taken
+
+#### Scenario: Dev is not a configuration
+- **WHEN** an operator runs the deployment script with `-Environment dev`
+- **THEN** the script stops naming `dev` as unknown and listing the configurations `bat`, `nonprod` and `test`, and no action is taken
 
 #### Scenario: Deployment configurations are independent of database ENVIRONMENT values
 - **WHEN** the shared database holds ENVIRONMENT values that have no deployment configuration, such as `DEV2`
@@ -70,11 +74,11 @@ When multiple components are deployed together, the system SHALL apply them in t
 - **THEN** the script runs `preflight`, `settings`, `automation`, then `health`
 
 ### Requirement: Shared components are not deployed per environment
-The system SHALL distinguish the `shared` scope, owned by the `nonprod` configuration, from the `environment` scope, owned by `dev`, `bat` and `test`. The dashboard API, the dashboard frontend, the D365 F&SC gateway, the App Service plan, the Log Analytics workspace and database schema migrations SHALL be shared. Queues, Automation storage, Automation Insights and the Automation Function App SHALL be per environment. Requesting a component outside the configuration's scope SHALL be rejected, and `all` SHALL expand only to the components the scope owns.
+The system SHALL distinguish the `shared` scope, owned by the `nonprod` configuration, from the `environment` scope, owned by `bat` and `test`. The dashboard API, the dashboard frontend, the D365 F&SC gateway, the App Service plan, the Log Analytics workspace and database schema migrations SHALL be shared. Queues, Automation storage, Automation Insights and the Automation Function App SHALL be per environment. Requesting a component outside the configuration's scope SHALL be rejected, and `all` SHALL expand only to the components the scope owns.
 
 #### Scenario: Per-environment component
-- **WHEN** the Automation host, queues or storage is deployed for `dev`
-- **THEN** it is deployed to resources specific to `dev`
+- **WHEN** the Automation host, queues or storage is deployed for `bat`
+- **THEN** it is deployed to resources specific to `bat`
 
 #### Scenario: Shared component requested for the wrong environment
 - **WHEN** the `backend` or `frontend` component is requested against `bat`
@@ -85,7 +89,7 @@ The system SHALL distinguish the `shared` scope, owned by the `nonprod` configur
 - **THEN** the script rejects the request rather than creating a second gateway application
 
 #### Scenario: Schema requested for an environment
-- **WHEN** the `schema` component is requested against `dev`
+- **WHEN** the `schema` component is requested against `bat`
 - **THEN** the script rejects the request, because the database is shared and migrated from `nonprod`
 
 #### Scenario: Automation requested for the shared configuration
@@ -108,7 +112,7 @@ The deployment script SHALL support a `gateway` component that deploys the D365 
 - **THEN** the gateway is deployed together with the other shared components
 
 #### Scenario: Gateway skipped in a full deployment elsewhere
-- **WHEN** the deployment script is run with `all` against `dev`
+- **WHEN** the deployment script is run with `all` against `bat`
 - **THEN** the gateway is not deployed and the remaining components succeed
 
 #### Scenario: Existing components unaffected
@@ -162,8 +166,8 @@ Every Function App deployment SHALL stop the app, deploy the package zip, start 
 Every Function App created by the script SHALL run on the shared App Service plan with Always On, HTTPS only, minimum TLS 1.2, FTPS disabled, workspace-based Application Insights, and tags identifying workload, client, scope and environment.
 
 #### Scenario: Automation app hosting
-- **WHEN** `infra` creates `azf-eim-automation-wtc-dev`
-- **THEN** it is on `asp-eim-wtc-nonprod` with Always On, HTTPS only and Insights `appins-eim-automation-wtc-dev` linked to `log-eim-wtc-nonprod`
+- **WHEN** `infra` creates `azf-eim-automation-wtc-bat`
+- **THEN** it is on `asp-eim-wtc-nonprod` with Always On, HTTPS only and Insights `appins-eim-automation-wtc-bat` linked to `log-eim-wtc-nonprod`
 
 #### Scenario: Tags applied
 - **WHEN** `infra` creates any resource
@@ -184,8 +188,8 @@ The `infra` component SHALL create the dashboard API and the dashboard static we
 The base configuration SHALL list retired application settings in `automation.retiredSettings`, initially `PollSchedule`. The script SHALL never write a retired setting. The `settings` component SHALL delete each retired setting that is present on a target Automation app. The drift check SHALL report a retired setting that is present as a warning and SHALL NOT fail because of it.
 
 #### Scenario: Retired setting not written
-- **WHEN** `settings` runs for `dev`
-- **THEN** the settings written to `azf-eim-automation-wtc-dev` do not include `PollSchedule`
+- **WHEN** `settings` runs for `test`
+- **THEN** the settings written to `azf-eim-automation-wtc-test` do not include `PollSchedule`
 
 #### Scenario: Retired setting removed from a target app
 - **WHEN** `settings` runs for `bat` and `azf-eim-automation-wtc-bat` has a `PollSchedule` setting

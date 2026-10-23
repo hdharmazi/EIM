@@ -121,9 +121,10 @@ try {
 
     # ---------------------------------------------------------------------------------------------
     Write-Host '== configurations and names'
-    Assert-Equal @('bat', 'dev', 'nonprod', 'test') $configNames 'the configured names are read from deploy.*.json (base excluded)'
+    Assert-Equal @('bat', 'nonprod', 'test') $configNames 'the configured names are read from deploy.*.json (base excluded); there is no dev configuration'
     Assert-Equal 'shared' $configs.nonprod.scope 'nonprod is the shared scope'
-    foreach ($name in 'dev', 'bat', 'test') { Assert-Equal 'environment' $configs[$name].scope "$name is an environment scope" }
+    foreach ($name in 'bat', 'test') { Assert-Equal 'environment' $configs[$name].scope "$name is an environment scope" }
+    Assert-Throws { Get-DeployConfig 'dev' $ConfigDirectory } "'dev'.*Configured: bat, nonprod, test" 'dev is rejected as an unknown configuration, naming it and the configured names'
 
     $shared = Get-ResourceNames $configs.nonprod
     $expectedShared = [ordered]@{
@@ -142,7 +143,7 @@ try {
     }
     foreach ($key in $expectedShared.Keys) { Assert-Equal $expectedShared[$key] $shared.$key "nonprod $key" }
 
-    foreach ($name in 'dev', 'bat', 'test') {
+    foreach ($name in 'bat', 'test') {
         $n = Get-ResourceNames $configs[$name]
         Assert-Equal "azf-eim-automation-wtc-$name" $n.AutomationApp "$name AutomationApp"
         Assert-Equal "stwtceimauto$name" $n.AutomationStorage "$name AutomationStorage"
@@ -153,6 +154,13 @@ try {
         }
     }
 
+    # No configuration derives (or overrides to) a dev Automation resource.
+    $devAutomationNames = @('azf-eim-automation-wtc-dev', 'stwtceimautodev', 'appins-eim-automation-wtc-dev')
+    foreach ($name in $configNames) {
+        $derived = foreach ($names in (Get-ResourceNames $configs[$name]), (Get-ResourceNames $configs[$name] -NoOverrides)) { $names.PSObject.Properties | ForEach-Object { "$($_.Value)" } }
+        Assert-Equal @() @($derived | Where-Object { $devAutomationNames -contains $_ }) "$name derives no dev Automation resource name"
+    }
+
     $patterns = Get-ResourceNames $configs.nonprod -NoOverrides
     Assert-Equal 'rg-eim-wtc-nonprod' $patterns.ResourceGroup 'pattern resource group'
     Assert-Equal 'sbns-eim-wtc-nonprod' $patterns.ServiceBusNamespace 'pattern Service Bus namespace'
@@ -160,7 +168,7 @@ try {
     Assert-Equal 'swa-eim-dashboard-wtc-nonprod' $patterns.StaticWebApp 'pattern static web app'
 
     $inUse = @(foreach ($name in $configNames) { Get-NamesInUse $configs[$name] }) | Sort-Object -Unique
-    foreach ($kept in 'wtc-dashboard-api-dev', 'wtc-dashboard-frontend-dev', 'app-eim-dashboard-api-wtc-nonprod', 'azf-eim-automation-wtc-dev', 'azql-wtc-sandbox') {
+    foreach ($kept in 'wtc-dashboard-api-dev', 'wtc-dashboard-frontend-dev', 'app-eim-dashboard-api-wtc-nonprod', 'azf-eim-automation-wtc-bat', 'azql-wtc-sandbox') {
         Assert-True ($inUse -contains $kept) "names in use include '$kept'"
     }
     foreach ($name in $configNames) {
@@ -178,7 +186,7 @@ try {
     $qa = Get-DeployConfig 'qa' $fixtureDir
     Assert-Equal 'azf-eim-automation-wtc-qa' (Get-ResourceNames $qa).AutomationApp 'a new deploy.qa.json is accepted and named by convention'
     Assert-Equal @('environment', 'preflight', 'infra', 'settings', 'automation', 'verify', 'health') (@($qa.scope) + @(Resolve-Components @('all') $qa.scope $qa.sharedSuffix)) 'the new configuration gets the environment scope components'
-    Assert-Throws { Get-DeployConfig 'staging' $ConfigDirectory } "'staging'.*bat, dev, nonprod, test" 'an unknown configuration is rejected, naming it and the configured names'
+    Assert-Throws { Get-DeployConfig 'staging' $ConfigDirectory } "'staging'.*bat, nonprod, test" 'an unknown configuration is rejected, naming it and the configured names'
     Assert-Throws { Get-DeployConfig 'base' $ConfigDirectory } "'base'" 'base is not a configuration'
     Assert-Throws { Get-DeployConfig 'mismatch' $fixtureDir } "declares environment 'other'" 'environment must equal the file name'
     Assert-Throws { Get-ResourceNames (Get-DeployConfig 'abcdefghijk' $fixtureDir) } "Function App name 'azf-eim-automation-wtc-abcdefghijk' exceeds 32" 'a long environment name breaks the Function App length rule'
@@ -195,15 +203,15 @@ try {
 
     $overridesFile = Join-Path $fixtureDir 'overrides.json'
     '{ "gateway": { "maxRequestBytes": 1 }, "automation": { "retryMaxAttempts": "7", "keepDisabled": ["RetrySweepHandler"] } }' | Set-Content $overridesFile
-    $layered = Get-DeployConfig 'dev' $ConfigDirectory $overridesFile '{ "automation": { "retryMaxAttempts": "9" } }'
+    $layered = Get-DeployConfig 'bat' $ConfigDirectory $overridesFile '{ "automation": { "retryMaxAttempts": "9" } }'
     Assert-Equal 9 $layered.automation.retryMaxAttempts 'EIM_DEPLOY_CONFIG_OVERRIDES is applied last'
     Assert-Equal 1 $layered.gateway.maxRequestBytes 'the overrides file is applied'
     Assert-Equal @('RetrySweepHandler') $layered.automation.keepDisabled 'the overrides file replaces lists'
     Assert-Equal 6 @($layered.automation.gatedFunctions).Count 'unpatched keys survive the overrides'
     Assert-Equal '30' $layered.automation.retryBaseDelaySeconds 'sibling keys survive an object patch'
-    Assert-Equal 5 (Get-DeployConfig 'dev' $ConfigDirectory $null '$(EIM_DEPLOY_CONFIG_OVERRIDES)').automation.retryMaxAttempts 'an undefined pipeline variable is ignored'
-    Assert-Throws { Get-DeployConfig 'dev' $ConfigDirectory $null '{ "environment": "bat" }' } "cannot change 'environment'" 'overrides cannot change the environment'
-    Assert-Throws { Get-DeployConfig 'dev' $ConfigDirectory $null '[1]' } 'must be a JSON object' 'overrides must be an object'
+    Assert-Equal 5 (Get-DeployConfig 'bat' $ConfigDirectory $null '$(EIM_DEPLOY_CONFIG_OVERRIDES)').automation.retryMaxAttempts 'an undefined pipeline variable is ignored'
+    Assert-Throws { Get-DeployConfig 'bat' $ConfigDirectory $null '{ "environment": "test" }' } "cannot change 'environment'" 'overrides cannot change the environment'
+    Assert-Throws { Get-DeployConfig 'bat' $ConfigDirectory $null '[1]' } 'must be a JSON object' 'overrides must be an object'
 
     # ---------------------------------------------------------------------------------------------
     Write-Host '== components, scope and order'
@@ -216,7 +224,7 @@ try {
     Assert-Equal @('preflight', 'myip', 'schema', 'myipremove') (Resolve-Components @('myip', 'schema', 'myipremove') 'shared' 'nonprod') "'myip' and 'schema' still get preflight"
     Assert-Equal @('preflight', 'myipremove', 'gateway') (Resolve-Components @('gateway', 'myipremove') 'shared' 'nonprod') "'myipremove' with a changing component still gets preflight"
     foreach ($component in 'schema', 'gateway', 'backend', 'frontend', 'myip', 'myipremove') {
-        Assert-Throws { Resolve-Components @($component) 'environment' 'nonprod' } "'$component' is a shared component.*-Environment nonprod" "'$component' is rejected for dev, naming the shared configuration"
+        Assert-Throws { Resolve-Components @($component) 'environment' 'nonprod' } "'$component' is a shared component.*-Environment nonprod" "'$component' is rejected for bat, naming the shared configuration"
     }
     Assert-Throws { Resolve-Components @('automation') 'shared' 'nonprod' } "'automation' is a per-environment component.*environment configurations" "'automation' is rejected for nonprod"
     Assert-Equal @('cutover') (Resolve-Components @('cutover') 'environment' 'nonprod') 'cutover runs on its own'
@@ -227,13 +235,13 @@ try {
     Assert-Equal @('EIM_DEPLOY_EIMDB') (Get-RequiredSecrets @('preflight', 'myip', 'schema', 'myipremove') 'shared') 'schema needs only EIMDB'
     Assert-Equal @() (Get-RequiredSecrets @('preflight', 'automation') 'environment') 'code-only runs need no secrets'
     Assert-Equal @('dbmigrator/ARM.Integration.DbMigrator.exe', 'gateway.zip', 'dashboard-api.zip', 'dashboard-frontend.nonprod.zip') (Get-RequiredArtifacts @('schema', 'gateway', 'backend', 'frontend') $configs.nonprod) 'package artifacts per component'
-    Assert-Equal @('wilson-automation.zip') (Get-RequiredArtifacts @('preflight', 'automation') $configs.dev) 'automation artifact'
+    Assert-Equal @('wilson-automation.zip') (Get-RequiredArtifacts @('preflight', 'automation') $configs.bat) 'automation artifact'
 
     $frontendProblems = @(Get-PlaceholderProblems $configs.nonprod @('preflight', 'frontend'))
     Assert-True (($frontendProblems -join ' ') -match 'entra\.tenantId' -and ($frontendProblems -join ' ') -match 'entra\.clientId') 'frontend needs the Entra tenant and client'
     Assert-True (($frontendProblems -join ' ') -notmatch 'entra\.audience|excludedUsers') 'frontend does not need the audience or excluded users'
-    Assert-True ((@(Get-PlaceholderProblems $configs.dev @('preflight', 'settings')) -join ' ') -match 'automation\.excludedUsers') 'Automation settings need excludedUsers'
-    Assert-Equal @("'subscriptionId' is still a placeholder; fill it in the configuration or EIM_DEPLOY_CONFIG_OVERRIDES") @(Get-PlaceholderProblems $configs.dev @('preflight', 'automation')) 'a code-only run needs only the subscription'
+    Assert-True ((@(Get-PlaceholderProblems $configs.bat @('preflight', 'settings')) -join ' ') -match 'automation\.excludedUsers') 'Automation settings need excludedUsers'
+    Assert-Equal @("'subscriptionId' is still a placeholder; fill it in the configuration or EIM_DEPLOY_CONFIG_OVERRIDES") @(Get-PlaceholderProblems $configs.bat @('preflight', 'automation')) 'a code-only run needs only the subscription'
 
     # ---------------------------------------------------------------------------------------------
     Write-Host '== infra plan'
@@ -262,23 +270,23 @@ try {
         Assert-True ($text -notmatch '\bdelete\b|serverFarmId|appservice plan update|--flexconsumption|FlexConsumption|webapp update .*--set') "infra never deletes, re-plans or uses Flex: $text"
     }
 
-    $devNames = Get-ResourceNames $configs.dev
-    $devPlan = @(Get-InfraPlan $configs.dev $devNames @{ Plan = $true; LogAnalytics = $true; ServiceBusNamespace = $true; Queues = @{ 'dev-d365fsc-dataevent' = $true } })
-    $devText = ($devPlan | ForEach-Object { $_.Args -join ' ' }) -join "`n"
-    foreach ($queue in 'dev-d365fsc-businessevents', 'dev-d365fsc-to-capture', 'dev-capture-to-d365fsc', 'dev-capture-to-d365fsc-response') {
-        Assert-True ($devText -match "servicebus queue create -g d365fsc-integration-nonprod --namespace-name asb-eim-wtc-nonprod -n $queue --max-size 1024 --default-message-time-to-live P14D --lock-duration PT60S") "dev creates queue $queue"
+    $batNames = Get-ResourceNames $configs.bat
+    $batPlan = @(Get-InfraPlan $configs.bat $batNames @{ Plan = $true; LogAnalytics = $true; ServiceBusNamespace = $true; Queues = @{ 'bat-d365fsc-dataevent' = $true } })
+    $batText = ($batPlan | ForEach-Object { $_.Args -join ' ' }) -join "`n"
+    foreach ($queue in 'bat-d365fsc-businessevents', 'bat-d365fsc-to-capture', 'bat-capture-to-d365fsc', 'bat-capture-to-d365fsc-response') {
+        Assert-True ($batText -match "servicebus queue create -g d365fsc-integration-nonprod --namespace-name asb-eim-wtc-nonprod -n $queue --max-size 1024 --default-message-time-to-live P14D --lock-duration PT60S") "bat creates queue $queue"
     }
-    Assert-True ($devText -notmatch 'queue create .*-n dev-d365fsc-dataevent ') 'an existing queue is not recreated'
-    Assert-True ($devText -match 'functionapp create -g d365fsc-integration-nonprod -n azf-eim-automation-wtc-dev --plan asp-eim-wtc-nonprod --storage-account stwtceimautodev') 'dev creates its Automation app on the shared plan'
-    Assert-True ($devText -match 'eim-scope=environment eim-environment=dev') 'dev resources are tagged with the environment'
-    Assert-True ($devText -notmatch 'appservice plan create|gateway|dashboard|staticwebapp') 'dev creates no shared resource'
-    $devMissing = @(Get-InfraPlan $configs.dev $devNames @{ Plan = $false; LogAnalytics = $true; ServiceBusNamespace = $true; Queues = @{} })
-    Assert-True (@($devMissing | Where-Object { $_.Kind -eq 'require' -and $_.Label -match 'asp-eim-wtc-nonprod.*nonprod' }).Count -eq 1) 'dev requires the shared plan from nonprod'
+    Assert-True ($batText -notmatch 'queue create .*-n bat-d365fsc-dataevent ') 'an existing queue is not recreated'
+    Assert-True ($batText -match 'functionapp create -g d365fsc-integration-nonprod -n azf-eim-automation-wtc-bat --plan asp-eim-wtc-nonprod --storage-account stwtceimautobat') 'bat creates its Automation app on the shared plan'
+    Assert-True ($batText -match 'eim-scope=environment eim-environment=bat') 'bat resources are tagged with the environment'
+    Assert-True ($batText -notmatch 'appservice plan create|gateway|dashboard|staticwebapp') 'bat creates no shared resource'
+    $batMissing = @(Get-InfraPlan $configs.bat $batNames @{ Plan = $false; LogAnalytics = $true; ServiceBusNamespace = $true; Queues = @{} })
+    Assert-True (@($batMissing | Where-Object { $_.Kind -eq 'require' -and $_.Label -match 'asp-eim-wtc-nonprod.*nonprod' }).Count -eq 1) 'bat requires the shared plan from nonprod'
 
     # ---------------------------------------------------------------------------------------------
     Write-Host '== settings'
     $fakeSecrets = @{ EIMDB = 'fake-eimdb-value'; ServiceBus = 'fake-servicebus-value' }
-    $automation = Get-AutomationSettings $configs.dev $devNames $fakeSecrets 'fake-insights'
+    $automation = Get-AutomationSettings $configs.bat $batNames $fakeSecrets 'fake-insights'
     $expectedAutomationNames = @(
         'FUNCTIONS_WORKER_RUNTIME', 'APPLICATIONINSIGHTS_CONNECTION_STRING', 'ServiceBus', 'EIMDB',
         'D365FscDataEventQueue', 'D365BusinessEventQueue', 'D365ToCaptureQueue', 'CaptureToD365Queue', 'CaptureToD365QueueResponse',
@@ -287,13 +295,13 @@ try {
         'DefaultEnvironment', 'ExcludedUsers')
     Assert-Equal $expectedAutomationNames @($automation.Keys) 'Automation setting names'
     Assert-True (-not $automation.Contains('PollSchedule')) 'Automation settings never include PollSchedule'
-    Assert-Equal 'dev-capture-to-d365fsc-response' $automation.CaptureToD365QueueResponse 'Automation queues use the environment prefix'
-    Assert-Equal 'dev' $automation.DefaultEnvironment 'DefaultEnvironment is the configuration name'
+    Assert-Equal 'bat-capture-to-d365fsc-response' $automation.CaptureToD365QueueResponse 'Automation queues use the environment prefix'
+    Assert-Equal 'bat' $automation.DefaultEnvironment 'DefaultEnvironment is the configuration name'
 
-    $retiring = Get-DeployConfig 'dev' $ConfigDirectory $null '{ "automation": { "retiredSettings": ["PollSchedule", "RetryMaxAttempts"] } }'
-    Assert-True (-not (Get-AutomationSettings $retiring $devNames $fakeSecrets 'fake-insights').Contains('RetryMaxAttempts')) 'a retired setting is never written'
-    $emptyValue = Get-DeployConfig 'dev' $ConfigDirectory $null '{ "automation": { "retryMaxAttempts": "" } }'
-    Assert-Throws { Get-AutomationSettings $emptyValue $devNames $fakeSecrets 'fake-insights' } "'RetryMaxAttempts' for 'azf-eim-automation-wtc-dev'" 'an empty setting value fails, naming the setting and app'
+    $retiring = Get-DeployConfig 'bat' $ConfigDirectory $null '{ "automation": { "retiredSettings": ["PollSchedule", "RetryMaxAttempts"] } }'
+    Assert-True (-not (Get-AutomationSettings $retiring $batNames $fakeSecrets 'fake-insights').Contains('RetryMaxAttempts')) 'a retired setting is never written'
+    $emptyValue = Get-DeployConfig 'bat' $ConfigDirectory $null '{ "automation": { "retryMaxAttempts": "" } }'
+    Assert-Throws { Get-AutomationSettings $emptyValue $batNames $fakeSecrets 'fake-insights' } "'RetryMaxAttempts' for 'azf-eim-automation-wtc-bat'" 'an empty setting value fails, naming the setting and app'
 
     Assert-Equal @('PollSchedule') @(Get-RetiredSettingsToDelete @('PollSchedule') @((New-Setting 'PollSchedule' '0 */5 * * * *'), (New-Setting 'EIMDB' 'x'))) 'PollSchedule is deleted when present'
     Assert-Equal @() @(Get-RetiredSettingsToDelete @('PollSchedule') @((New-Setting 'EIMDB' 'x'))) 'nothing is deleted when PollSchedule is absent'
@@ -320,20 +328,20 @@ try {
     Assert-Equal @('Gateway__Applications__1__Name') @(Get-StaleVerificationTargetSettings $dashboard @((New-Setting 'Gateway__Applications__0__Name' 'x'), (New-Setting 'Gateway__Applications__1__Name' 'y'), (New-Setting 'Other' 'z'))) 'verification targets no longer configured are deleted'
 
     Write-Host '== drift'
-    $expected = Get-AutomationSettings $configs.dev $devNames @{ EIMDB = '<EIM_DEPLOY_EIMDB>'; ServiceBus = '<EIM_DEPLOY_SERVICEBUS>' } '<insights>'
+    $expected = Get-AutomationSettings $configs.bat $batNames @{ EIMDB = '<EIM_DEPLOY_EIMDB>'; ServiceBus = '<EIM_DEPLOY_SERVICEBUS>' } '<insights>'
     $current = @($expected.Keys | ForEach-Object { New-Setting $_ "$($expected[$_])" })
     $current = @($current | Where-Object name -notin 'EIMDB', 'ServiceBus', 'APPLICATIONINSIGHTS_CONNECTION_STRING') + @(
         (New-Setting 'EIMDB' 'real-db-value'), (New-Setting 'ServiceBus' 'real-sb-value'), (New-Setting 'APPLICATIONINSIGHTS_CONNECTION_STRING' 'real-insights'),
         (New-Setting 'PollSchedule' '0 */5 * * * *'))
-    $drift = Get-SettingsDrift 'azf-eim-automation-wtc-dev' $expected $current @('PollSchedule')
+    $drift = Get-SettingsDrift 'azf-eim-automation-wtc-bat' $expected $current @('PollSchedule')
     Assert-Equal 0 $drift.Failures.Count 'a retired setting never fails the drift check'
     Assert-Equal 1 $drift.Warnings.Count 'a retired setting is a warning (secrets and Insights compare by name only)'
     Assert-True ($drift.Warnings[0] -match "retired setting 'PollSchedule'") 'the warning names the retired setting'
 
     $changed = @($current | ForEach-Object { if ($_.name -eq 'RetryMaxAttempts') { New-Setting 'RetryMaxAttempts' '99' } elseif ($_.name -ne 'ExcludedUsers' -and $_.name -ne 'D365ToCaptureQueue') { $_ } })
-    $drift = Get-SettingsDrift 'azf-eim-automation-wtc-dev' $expected $changed @('PollSchedule')
+    $drift = Get-SettingsDrift 'azf-eim-automation-wtc-bat' $expected $changed @('PollSchedule')
     Assert-Equal 1 $drift.Failures.Count 'missing settings fail'
-    Assert-True ($drift.Failures[0] -match 'azf-eim-automation-wtc-dev: missing D365ToCaptureQueue, ExcludedUsers; a manual run with applySettings') 'the failure names the app and every missing setting'
+    Assert-True ($drift.Failures[0] -match 'azf-eim-automation-wtc-bat: missing D365ToCaptureQueue, ExcludedUsers; a manual run with applySettings') 'the failure names the app and every missing setting'
     Assert-True (($drift.Warnings -join ' ') -match "'RetryMaxAttempts' differs") 'a different value warns'
     Assert-True ((@($drift.Failures) + @($drift.Warnings) -join ' ') -notmatch 'real-db-value|real-sb-value|99|0 \*/5') 'drift messages never contain values'
 
@@ -350,9 +358,9 @@ try {
 
     $legacySettings = @(
         (New-Setting 'EIMDB' 'db-value-1'), (New-Setting 'ServiceBus' 'sb-value-1'),
-        (New-Setting 'D365FscDataEventQueue' 'dev-d365fsc-dataevent'), (New-Setting 'D365BusinessEventQueue' 'dev-d365fsc-businessevents'),
-        (New-Setting 'D365ToCaptureQueue' 'dev-d365fsc-to-capture'), (New-Setting 'CaptureToD365Queue' 'dev-capture-to-d365fsc'),
-        (New-Setting 'CaptureToD365QueueResponse' 'dev-capture-to-d365fsc-response'), (New-Setting 'RetryMaxAttempts' '5'),
+        (New-Setting 'D365FscDataEventQueue' 'bat-d365fsc-dataevent'), (New-Setting 'D365BusinessEventQueue' 'bat-d365fsc-businessevents'),
+        (New-Setting 'D365ToCaptureQueue' 'bat-d365fsc-to-capture'), (New-Setting 'CaptureToD365Queue' 'bat-capture-to-d365fsc'),
+        (New-Setting 'CaptureToD365QueueResponse' 'bat-capture-to-d365fsc-response'), (New-Setting 'RetryMaxAttempts' '5'),
         (New-Setting 'PollSchedule' '0 */5 * * * *'), (New-Setting 'WEBSITE_RUN_FROM_PACKAGE' '1'), (New-Setting 'AzureWebJobsStorage' 'storage-1'),
         (New-Setting 'APPLICATIONINSIGHTS_CONNECTION_STRING' 'insights-1'), (New-Setting 'AzureWebJobs.RetrySweepHandler.Disabled' 'false'))
     $newSettings = @($legacySettings | Where-Object name -notin 'PollSchedule', 'AzureWebJobsStorage', 'APPLICATIONINSIGHTS_CONNECTION_STRING', 'AzureWebJobs.RetrySweepHandler.Disabled') +
@@ -387,10 +395,10 @@ try {
     # Move-GatedTriggers with the Azure calls stubbed. PowerShell resolves commands through the caller's scopes, so
     # stubs defined inside & { } replace the real functions for that block only.
     $stateDir = New-TempFolder
-    $statePath = Join-Path $stateDir 'wtc-eim-cutover-dev.json'
+    $statePath = Join-Path $stateDir 'wtc-eim-cutover-bat.json'
     $movePlan = @(Get-CutoverPlan $null $gatedSix @('RetrySweepHandler'))
     $moveCalls = [System.Collections.Generic.List[string]]::new()
-    $rerunHint = './Deploy-Wilson.ps1 -Environment dev'
+    $rerunHint = './Deploy-Wilson.ps1 -Environment bat'
     & {
         function Set-GatedTriggers([string]$ResourceGroup, [string]$App, $Plan) {
             $recorded = if (Test-Path $statePath) { @((Get-Content $statePath -Raw | ConvertFrom-Json).enabled) -join ',' } else { '(no state file)' }
@@ -399,7 +407,7 @@ try {
         function Wait-GatedDisabled { }
         function Get-QueueLockSeconds { 0 }
         function Start-Sleep { }
-        Move-GatedTriggers $devNames 'legacy-app' 'new-app' $gatedSix $movePlan @('QueueCaptureCustomer', 'RetrySweepHandler') $statePath $false $rerunHint
+        Move-GatedTriggers $batNames 'legacy-app' 'new-app' $gatedSix $movePlan @('QueueCaptureCustomer', 'RetrySweepHandler') $statePath $false $rerunHint
     }
     Assert-Equal @('legacy-app [QueueCaptureCustomer,RetrySweepHandler]', 'new-app [QueueCaptureCustomer,RetrySweepHandler]') $moveCalls 'cutover records the legacy states before disabling, then enables on the new app'
     Assert-True (-not (Test-Path $statePath)) 'the cutover state file is deleted once the new app is set'
@@ -411,7 +419,7 @@ try {
         function Wait-GatedDisabled { }
         function Get-QueueLockSeconds { 0 }
         function Start-Sleep { }
-        Move-GatedTriggers $devNames 'legacy-app' 'new-app' $gatedSix $movePlan @() $statePath $false $rerunHint
+        Move-GatedTriggers $batNames 'legacy-app' 'new-app' $gatedSix $movePlan @() $statePath $false $rerunHint
     }
     Assert-True (-not (Test-Path $statePath)) 'a rerun deletes the state file it used once the new app is set'
 
@@ -425,7 +433,7 @@ try {
         function Wait-GatedDisabled { }
         function Get-QueueLockSeconds { 0 }
         function Start-Sleep { }
-        Assert-Throws { Move-GatedTriggers $devNames 'legacy-app' 'new-app' $gatedSix $movePlan @('QueueCaptureCustomer') $statePath $false $rerunHint } 'Cutover failed: simulated failure(?s).*Rerun: .*-Component cutover' 'a failed cutover names the rerun'
+        Assert-Throws { Move-GatedTriggers $batNames 'legacy-app' 'new-app' $gatedSix $movePlan @('QueueCaptureCustomer') $statePath $false $rerunHint } 'Cutover failed: simulated failure(?s).*Rerun: .*-Component cutover' 'a failed cutover names the rerun'
     }
     Assert-Equal @('legacy-app', 'new-app') $moveCalls 'the failure happened while setting the new app'
     Assert-True (Test-Path $statePath) 'a failed cutover keeps the state file for the rerun'
@@ -433,34 +441,121 @@ try {
 
     # ---------------------------------------------------------------------------------------------
     Write-Host '== remove'
-    $legacyDev = @(
+    # The retired dev Automation app and the old dev plan are nonprod's legacy entries.
+    $retiredDev = @(
         [pscustomobject]@{ Name = 'azf-eim-customer-wtc-dev'; Type = 'Microsoft.Web/sites'; Exists = $true; HostedApps = @() }
         [pscustomobject]@{ Name = 'asp-appservice-p0v3-linux-dev'; Type = 'Microsoft.Web/serverfarms'; Exists = $true; HostedApps = @('azf-eim-customer-wtc-dev', 'wtc-dashboard-api-dev') }
         [pscustomobject]@{ Name = 'stwtceimcustomerdev'; Type = 'Microsoft.Storage/storageAccounts'; Exists = $true; HostedApps = @() }
         [pscustomobject]@{ Name = 'appins-eim-customer-wtc-dev'; Type = 'Microsoft.Insights/components'; Exists = $false; HostedApps = @() }
     )
-    $removeArgs = @{ Environment = 'dev'; Entries = $legacyDev; NamesInUse = $inUse; IsPipeline = $false; Preview = $true; MarkerExists = $false }
+    $removeArgs = @{ Environment = 'nonprod'; Entries = $retiredDev; NamesInUse = $inUse; IsPipeline = $false; Preview = $true; MarkerExists = $false }
     $decision = Test-RemoveAllowed @removeArgs
     Assert-Equal 0 $decision.Refusals.Count 'a preview with legacy entries only is allowed'
     Assert-Equal @('azf-eim-customer-wtc-dev', 'stwtceimcustomerdev') @($decision.Proceed.Name) 'sites go first, then storage; the busy plan is not deleted'
     Assert-True (@($decision.Kept | Where-Object { $_.Name -eq 'asp-appservice-p0v3-linux-dev' -and $_.Reason -match 'wtc-dashboard-api-dev' }).Count -eq 1) 'a plan still hosting an app is kept, naming the app'
     Assert-True (@($decision.Kept | Where-Object { $_.Name -eq 'appins-eim-customer-wtc-dev' -and $_.Reason -match 'not found' }).Count -eq 1) 'an absent entry is reported as not found'
 
-    $emptyPlan = @($legacyDev[0], [pscustomobject]@{ Name = 'asp-appservice-p0v3-linux-dev'; Type = 'Microsoft.Web/serverfarms'; Exists = $true; HostedApps = @('azf-eim-customer-wtc-dev') })
+    $emptyPlan = @($retiredDev[0], [pscustomobject]@{ Name = 'asp-appservice-p0v3-linux-dev'; Type = 'Microsoft.Web/serverfarms'; Exists = $true; HostedApps = @('azf-eim-customer-wtc-dev') })
     Assert-Equal @('azf-eim-customer-wtc-dev', 'asp-appservice-p0v3-linux-dev') @((Test-RemoveAllowed @removeArgs -Entries $emptyPlan).Proceed.Name) 'a plan hosting only deleted sites is deleted last'
 
     Assert-True (((Test-RemoveAllowed @removeArgs -IsPipeline $true).Refusals -join ' ') -match 'TF_BUILD') 'remove refuses in a pipeline'
     Assert-True (((Test-RemoveAllowed @removeArgs -Preview $false).Refusals -join ' ') -match "remove -WhatIf") 'remove refuses without a prior -WhatIf marker'
     Assert-True (((Test-RemoveAllowed @removeArgs -ConfirmDisabled $true).Refusals -join ' ') -match 'Confirm') 'remove refuses -Confirm:$false'
     Assert-True (((Test-RemoveAllowed @removeArgs -EnabledLegacyFunctions @('QueueCaptureCustomer')).Refusals -join ' ') -match 'QueueCaptureCustomer') 'remove refuses while legacy triggers are enabled, naming them'
-    Assert-True (((Test-RemoveAllowed @removeArgs -Preview $false -MarkerExists $true -CheckConfirmation $true -Confirmation 'bat').Refusals -join ' ') -match "did not match 'dev'") 'remove refuses a wrong confirmation'
-    Assert-Equal 0 (Test-RemoveAllowed @removeArgs -Preview $false -MarkerExists $true -CheckConfirmation $true -Confirmation 'dev').Refusals.Count 'the right confirmation after a preview is accepted'
+    Assert-True (((Test-RemoveAllowed @removeArgs -Preview $false -MarkerExists $true -CheckConfirmation $true -Confirmation 'bat').Refusals -join ' ') -match "did not match 'nonprod'") 'remove refuses a wrong confirmation'
+    Assert-Equal 0 (Test-RemoveAllowed @removeArgs -Preview $false -MarkerExists $true -CheckConfirmation $true -Confirmation 'nonprod').Refusals.Count 'the right confirmation after a preview is accepted'
+    $retiredRefusal = (Test-RemoveAllowed @removeArgs -EnabledLegacyFunctions @('azf-eim-customer-wtc-dev/QueueCaptureCustomer')).Refusals -join ' '
+    Assert-True ($retiredRefusal -match 'azf-eim-customer-wtc-dev/QueueCaptureCustomer' -and $retiredRefusal -match 'retired') 'remove refuses while a retired app has an enabled gated function, naming the app, the function and the retired case'
     $inUseEntry = @([pscustomobject]@{ Name = 'wtc-dashboard-api-dev'; Type = 'Microsoft.Web/sites'; Exists = $true; HostedApps = @() })
     Assert-True (((Test-RemoveAllowed @removeArgs -Entries $inUseEntry).Refusals -join ' ') -match "'wtc-dashboard-api-dev' is a name in use") 'remove refuses a name in use (the kept dashboard API)'
     $swaEntry = @([pscustomobject]@{ Name = 'some-old-swa'; Type = 'Microsoft.Web/staticSites'; Exists = $true; HostedApps = @() })
     Assert-True (((Test-RemoveAllowed @removeArgs -Entries $swaEntry).Refusals -join ' ') -match "'Microsoft.Web/staticSites', which remove never deletes") 'remove refuses a static web app (type allow-list)'
     $vaultEntry = @([pscustomobject]@{ Name = 'some-old-vault'; Type = 'Microsoft.KeyVault/vaults'; Exists = $true; HostedApps = @() })
     Assert-True ((Test-RemoveAllowed @removeArgs -Entries $vaultEntry).Refusals.Count -eq 1) 'remove refuses any type outside the allow-list'
+
+    # Trigger guard: the legacy Automation app per environment, plus nonprod's retired Automation apps.
+    Assert-Equal @('azf-eim-customer-wtc-dev') @(Get-TriggerGuardApps $configs.nonprod) 'nonprod guards the retired dev Automation app'
+    Assert-Equal @('azf-eim-customer-wtc-bat') @(Get-TriggerGuardApps $configs.bat) 'bat guards its legacy Automation app'
+    Assert-Equal @('azf-eim-customer-wtc-test') @(Get-TriggerGuardApps $configs.test) 'test guards its legacy Automation app'
+    $guardFixture = '{ "legacy": { "automationApp": "app-a", "retiredAutomationApps": ["app-a", " ", "app-b", ""] } }' | ConvertFrom-Json
+    Assert-Equal @('app-a', 'app-b') @(Get-TriggerGuardApps $guardFixture) 'duplicate and blank guard apps collapse to one entry each'
+    Assert-Equal @() @(Get-TriggerGuardApps ('{ "scope": "environment" }' | ConvertFrom-Json)) 'no legacy section, no guard apps'
+
+    $nonprodLegacy = @(Get-LegacyNames $configs.nonprod)
+    foreach ($name in 'azf-eim-customer-wtc-dev', 'stwtceimcustomerdev', 'appins-eim-customer-wtc-dev') {
+        Assert-True ($nonprodLegacy -contains $name) "nonprod legacy names include '$name'"
+    }
+    foreach ($app in @($configs.nonprod.legacy.retiredAutomationApps)) {
+        Assert-True (@($configs.nonprod.legacy.resources | Where-Object { $_.name -eq $app -and $_.type -eq 'Microsoft.Web/sites' }).Count -eq 1) "retired app '$app' is also a Microsoft.Web/sites legacy resource"
+    }
+
+    # Invoke-RemoveComponent with Azure stubbed: the guard reads every trigger-guard app, stopped or not.
+    $markerDir = New-TempFolder
+    # The legacy gateway name is read from the config: outside the configs and the runbook it must not be written.
+    $legacyGateway = $configs.nonprod.legacy.gatewayApp
+    $nonprodEntries = @(
+        [pscustomobject]@{ Name = $legacyGateway; Type = 'Microsoft.Web/sites'; Exists = $true; Id = 'id-gw'; HostedApps = @() }
+        [pscustomobject]@{ Name = 'stwtcd365gwnonprod'; Type = 'Microsoft.Storage/storageAccounts'; Exists = $true; Id = 'id-gwst'; HostedApps = @() }
+        [pscustomobject]@{ Name = 'appins-d365fsc-gateway-wtc-nonprod'; Type = 'Microsoft.Insights/components'; Exists = $true; Id = 'id-gwai'; HostedApps = @() }
+        [pscustomobject]@{ Name = 'azf-eim-customer-wtc-dev'; Type = 'Microsoft.Web/sites'; Exists = $true; Id = 'id-dev'; HostedApps = @() }
+        [pscustomobject]@{ Name = 'stwtceimcustomerdev'; Type = 'Microsoft.Storage/storageAccounts'; Exists = $true; Id = 'id-devst'; HostedApps = @() }
+        [pscustomobject]@{ Name = 'appins-eim-customer-wtc-dev'; Type = 'Microsoft.Insights/components'; Exists = $false; Id = $null; HostedApps = @() }
+        [pscustomobject]@{ Name = 'asp-appservice-p0v3-linux-dev'; Type = 'Microsoft.Web/serverfarms'; Exists = $true; Id = 'id-plan'; HostedApps = @('azf-eim-customer-wtc-dev', 'wtc-dashboard-api-dev') }
+    )
+    $removeOutput = [System.Collections.Generic.List[string]]::new()
+    $guardReads = [System.Collections.Generic.List[string]]::new()
+    $savedTfBuild = $env:TF_BUILD
+    try {
+        $env:TF_BUILD = $null
+        $runRemove = {
+            param($Config, $Names, [hashtable]$SettingsByApp)
+            $Preview = $true
+            $ConfirmDisabled = $false
+            function Get-RemoveMarkerPath([string]$Environment) { Join-Path $markerDir "remove-$Environment.marker" }
+            function Get-RemoveEntries { if ($Config.environment -eq 'nonprod') { $nonprodEntries } else { @() } }
+            function Test-WebApp([string]$ResourceGroup, [string]$Name) { $guardReads.Add($Name); $SettingsByApp.ContainsKey($Name) }
+            # A stopped app cannot list its functions: only the gated settings decide.
+            function Invoke-AzProcess { [pscustomobject]@{ ExitCode = 1; StdOut = ''; StdErr = 'stopped' } }
+            function Get-AppSettingList([string]$ResourceGroup, [string]$Name) { @($SettingsByApp[$Name]) }
+            function Write-Host { $removeOutput.Add("$args") }
+            Invoke-RemoveComponent $Config $Names
+        }
+        $allDisabled = @($gatedSix | ForEach-Object { New-Setting "AzureWebJobs.$_.Disabled" 'true' })
+        $oneEnabled = @($allDisabled | ForEach-Object { if ($_.name -eq 'AzureWebJobs.QueueCaptureCustomer.Disabled') { New-Setting $_.name 'false' } else { $_ } })
+
+        Assert-Throws { & $runRemove $configs.nonprod $shared @{ 'azf-eim-customer-wtc-dev' = $oneEnabled } } 'azf-eim-customer-wtc-dev/QueueCaptureCustomer' "remove for nonprod refuses while QueueCaptureCustomer is enabled on the retired app"
+        Assert-Equal @('azf-eim-customer-wtc-dev') @($guardReads) 'the nonprod guard reads the retired app'
+        Assert-True (@($removeOutput | Where-Object { $_ -match 'would delete' }).Count -eq 0) 'a refused remove lists nothing for deletion'
+        Assert-True (-not (Test-Path (Join-Path $markerDir 'remove-nonprod.marker'))) 'a refused remove records no preview'
+
+        $stoppedRefusal = $null
+        try { & $runRemove $configs.nonprod $shared @{ 'azf-eim-customer-wtc-dev' = @() } } catch { $stoppedRefusal = $_.Exception.Message }
+        Assert-True ($null -ne $stoppedRefusal -and @($gatedSix | Where-Object { $stoppedRefusal -notmatch "azf-eim-customer-wtc-dev/$_" }).Count -eq 0) 'a stopped retired app without Disabled settings is refused, naming every enabled function'
+
+        $removeOutput.Clear()
+        & $runRemove $configs.nonprod $shared @{ 'azf-eim-customer-wtc-dev' = $allDisabled }
+        $listed = @($removeOutput | Where-Object { $_ -match 'would delete' })
+        foreach ($name in 'azf-eim-customer-wtc-dev', 'stwtceimcustomerdev', $legacyGateway, 'stwtcd365gwnonprod', 'appins-d365fsc-gateway-wtc-nonprod') {
+            Assert-True (@($listed | Where-Object { $_ -match [regex]::Escape($name) }).Count -eq 1) "with the retired app disabled, remove -WhatIf for nonprod lists '$name'"
+        }
+        Assert-True (@($removeOutput | Where-Object { $_ -match 'keep .*appins-eim-customer-wtc-dev .*not found' }).Count -eq 1) 'an absent retired Insights is reported as not found'
+        Assert-True (@($removeOutput | Where-Object { $_ -match 'keep .*asp-appservice-p0v3-linux-dev .*wtc-dashboard-api-dev' }).Count -eq 1) 'the old dev plan is kept while the dashboard API is on it'
+        Assert-True (Test-Path (Join-Path $markerDir 'remove-nonprod.marker')) 'an allowed preview records the marker'
+
+        $guardReads.Clear()
+        Assert-Throws { & $runRemove $configs.bat (Get-ResourceNames $configs.bat) @{ 'azf-eim-customer-wtc-bat' = $oneEnabled } } 'azf-eim-customer-wtc-bat/QueueCaptureCustomer' 'remove for bat refuses while its legacy app consumes, naming the function'
+        Assert-Equal @('azf-eim-customer-wtc-bat') @($guardReads) 'the bat guard reads only its legacy app'
+    }
+    finally { $env:TF_BUILD = $savedTfBuild }
+
+    # ---------------------------------------------------------------------------------------------
+    Write-Host '== verify targets'
+    $verifyNonprod = @(Get-VerifyTargets $configs.nonprod $shared)
+    $retiredTarget = @($verifyNonprod | Where-Object { $_.Name -eq 'azf-eim-customer-wtc-dev' })
+    Assert-Equal 1 $retiredTarget.Count 'verify for nonprod reports the retired dev Automation app'
+    Assert-True ($retiredTarget[0].Kind -eq 'app' -and $retiredTarget[0].Gated -and $retiredTarget[0].Label -match 'retired') 'the retired app is reported with its gated trigger states and a retired label'
+    Assert-Equal @('azf-eim-gateway-wtc-nonprod', $configs.nonprod.legacy.gatewayApp, 'wtc-dashboard-api-dev', 'wtc-dashboard-frontend-dev', 'azf-eim-customer-wtc-dev') @($verifyNonprod.Name) 'verify for nonprod: gateways, dashboard, then retired apps'
+    Assert-Equal @('azf-eim-automation-wtc-bat', 'azf-eim-customer-wtc-bat') @((Get-VerifyTargets $configs.bat (Get-ResourceNames $configs.bat)).Name) 'verify for bat: the new and legacy Automation apps'
 
     # ---------------------------------------------------------------------------------------------
     Write-Host '== SQL firewall helpers'
@@ -501,11 +596,17 @@ try {
     Write-Host '== packaging helpers'
     $metadataJson = Get-Content $metadataFixture -Raw
     Assert-Equal $gatedSix (Get-QueueAndTimerFunctions $metadataJson) 'the fixture yields exactly the six queue and timer functions'
-    Assert-Equal @() @(Compare-GatedFunctions (Get-QueueAndTimerFunctions $metadataJson) @($configs.dev.automation.gatedFunctions)) 'the fixture matches automation.gatedFunctions'
+    Assert-Equal @() @(Compare-GatedFunctions (Get-QueueAndTimerFunctions $metadataJson) @($configs.bat.automation.gatedFunctions)) 'the fixture matches automation.gatedFunctions'
     Assert-True ((@(Compare-GatedFunctions (@($gatedSix) + 'NewQueueHandler') $gatedSix) -join ' ') -match "'NewQueueHandler' is not in automation.gatedFunctions") 'a new queue function not in the config is named'
     Assert-True ((@(Compare-GatedFunctions @($gatedSix | Select-Object -Skip 1) $gatedSix) -join ' ') -match "'AwaitingD365SweepHandler', which the package does not contain") 'a configured function missing from the package is named'
     Assert-True ((Get-FunctionNames $metadataJson) -contains 'HealthProbe') 'Get-FunctionNames lists HTTP functions too'
-    Assert-True ((Get-PackageReadme 'v1' 'abc1234' @('nonprod', 'dev')) -match 'Deploy-Wilson\.ps1 -Environment nonprod -Component all -WhatIf') 'README.txt carries the operator steps'
+    $readme = Get-PackageReadme 'v1' 'abc1234' @('nonprod', 'bat', 'test')
+    Assert-True ($readme -match 'Deploy-Wilson\.ps1 -Environment nonprod -Component all -WhatIf') 'README.txt carries the operator steps'
+    Assert-True ($readme -cnotmatch '\bdev\b') 'README.txt names no dev environment'
+    $packageAst = [System.Management.Automation.Language.Parser]::ParseFile($packageScriptPath, [ref]$null, [ref]$null)
+    $environmentParam = $packageAst.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Environment' }
+    $defaultEnvironments = @($environmentParam.DefaultValue.FindAll({ param($node) $node -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true) | ForEach-Object { $_.Value })
+    Assert-Equal @('nonprod', 'bat', 'test') $defaultEnvironments 'New-DeploymentPackage.ps1 packages nonprod, bat and test by default'
 
     $zipSource = New-TempFolder
     New-Item -ItemType Directory -Path (Join-Path $zipSource '.azurefunctions') | Out-Null

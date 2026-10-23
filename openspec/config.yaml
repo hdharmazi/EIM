@@ -9,7 +9,7 @@ context: |
   Azure Service Bus, Azure SQL (eimdb, DbUp migrations), ASP.NET Core Dashboard API,
   React 18 + Vite + TypeScript + Tailwind/Radix dashboard frontend, xUnit tests.
   Orchestrations are named <Entity>_To_<Target> and registered in OrchestrationRegistry.
-  Environments: local (Azurite), dev, bat, test. Dashboard and Gateway are shared nonprod deployments.
+  Environments: local (local SQL eimdb, Azurite, dev-* queues), bat, test. Dashboard and Gateway are shared nonprod deployments.
   See CLAUDE.md for conventions and pitfalls.
 
 # Per-artifact rules

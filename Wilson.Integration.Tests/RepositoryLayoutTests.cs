@@ -123,6 +123,45 @@ public class RepositoryLayoutTests
             + string.Join("\n", offenders));
     }
 
+    // Spec resource-naming-cutover, "No dev Automation resources": development runs locally, so nothing names a dev
+    // stage, DevOps environment, configuration or new dev Automation resource. Built by concatenation, like
+    // OldProjectName, so this file does not match its own search.
+    private static readonly string[] DevDeploymentNames =
+    [
+        "Deploy_" + "dev",
+        "eim-wtc-" + "dev",
+        "deploy." + "dev.json",
+        "azf-eim-automation-wtc-" + "dev",
+        "stwtceimauto" + "dev",
+        "appins-eim-automation-wtc-" + "dev",
+    ];
+
+    // Change records, the tests that assert these names are absent, and the self-test that asserts the same.
+    private static readonly string[] DevNameExclusions =
+    [
+        "openspec/changes/",
+        "Wilson.Integration.Tests/",
+        "script/deployment/Test-DeployWilson.ps1",
+    ];
+
+    [Fact]
+    public void No_file_names_a_dev_deployment()
+    {
+        var offenders = RepositoryPaths.CandidateFiles(Root)
+            .Where(f => TextExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+            .Where(f => !DevNameExclusions.Any(p => f.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+            .SelectMany(f =>
+            {
+                var text = File.ReadAllText(Path.Combine(Root, f));
+                return DevDeploymentNames.Where(n => text.Contains(n, StringComparison.OrdinalIgnoreCase)).Select(n => $"{f}: {n}");
+            })
+            .ToList();
+
+        Assert.True(offenders.Count == 0,
+            "Files still naming a dev deployment stage, environment, configuration or Automation resource (development runs locally):\n"
+            + string.Join("\n", offenders));
+    }
+
     // A cheap text check covering both hosts. LocalSettingsPublishTests proves the behaviour for the
     // Automation host with a real publish.
     [Theory]

@@ -39,7 +39,7 @@ pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1   # deploy script 
 - **Failure classification**: new exception types must be classified in `DefaultFailureClassifier` (terminal vs transient) and covered in `FailureClassifierTests`.
 - **SQL**: versioned scripts go in `script/SQL/Migrations/NNN_description.sql` with the next number. `CREATE OR ALTER` objects go in `script/SQL/Repeatable/R__<object>.sql`. Never rename or edit an applied migration. See `docs/deployment/database-migrations.md`.
 - **Secrets**: never commit connection strings, keys, or `local.settings.json` values.
-- **Deployment**: one pipeline (`pipelines/eim.yml`: Build → Deploy_shared → Deploy_dev → Deploy_bat → Deploy_test) runs one script, `script/deployment/Deploy-Wilson.ps1`, configured by `script/deployment/config/deploy.base.json` + `deploy.<name>.json` (no secrets). New Automation queue or timer functions must be added to `automation.gatedFunctions`. See `docs/deployment/deployment.md` and `docs/deployment/resource-rename-cutover.md`.
+- **Deployment**: one pipeline (`pipelines/eim.yml`: Build → Deploy_shared → Deploy_bat → Deploy_test) runs one script, `script/deployment/Deploy-Wilson.ps1`, configured by `script/deployment/config/deploy.base.json` + `deploy.<name>.json` (no secrets). New Automation queue or timer functions must be added to `automation.gatedFunctions`. See `docs/deployment/deployment.md` and `docs/deployment/resource-rename-cutover.md`.
 - **Branches**: `feature/<ticket>/<slug>` or `bug/<ticket>/<slug>`. Commit messages start with `#<ticket>` when there is one.
 
 ## Spec-driven workflow (OpenSpec)

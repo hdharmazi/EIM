@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Migrations are applied as an explicit deployment step
-Migrations SHALL be applied by an explicit step in the deployment process. Application processes SHALL NOT apply migrations at startup. In the pipeline, migrations SHALL run at most once per run, from the shared stage, before any environment's application code is deployed, and only when the run was started manually with database migrations selected. The deployment agent's address SHALL be allowed on the SQL server firewall only for the duration of the migration step, and the rule SHALL be removed even when the migration fails.
+Migrations SHALL be applied by an explicit step in the deployment process. Application processes SHALL NOT apply migrations at startup. In the pipeline, migrations SHALL run at most once per run, from the shared stage, before any environment's application code is deployed, and only when the run was started manually with database migrations selected. The deployment agent's address SHALL be allowed on the SQL server firewall only for the duration of the migration step, and the rule SHALL be removed even when the migration fails. There SHALL be no per-developer or `dev` deployment database: developers apply migrations to a local SQL Server database by running `ARM.Integration.DbMigrator` on their own machine, and only migrations merged to `main` reach the shared `eimdb`, through the pipeline.
 
 #### Scenario: Application startup does not alter schema
 - **WHEN** an application process starts against a database that is behind
@@ -16,8 +16,12 @@ Migrations SHALL be applied by an explicit step in the deployment process. Appli
 - **THEN** only one applies migrations and the other does not corrupt or duplicate the journal
 
 #### Scenario: Migrations run once per run from the shared stage
-- **WHEN** a manual run with "run database migrations" selected deploys to `nonprod`, `dev`, `bat` and `test`
-- **THEN** the migrator runs once, in the `Deploy_shared` stage, after its approval and before any code is deployed, and the `dev`, `bat` and `test` stages do not run it
+- **WHEN** a manual run with "run database migrations" selected deploys to `nonprod`, `bat` and `test`
+- **THEN** the migrator runs once, in the `Deploy_shared` stage, after its approval and before any code is deployed, and the `bat` and `test` stages do not run it
+
+#### Scenario: Local migration does not touch the shared database
+- **WHEN** a developer runs `ARM.Integration.DbMigrator` with `EIMDB_MIGRATOR_CONNECTION` pointing at a local SQL Server `eimdb`
+- **THEN** the migrations are applied to the local database only, and the shared `eimdb` journal is unchanged
 
 #### Scenario: Merge run leaves the schema alone
 - **WHEN** a run is triggered by a merge to `main`

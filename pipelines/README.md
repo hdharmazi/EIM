@@ -2,12 +2,12 @@
 
 | Pipeline | Trigger | Purpose |
 |---|---|---|
-| `eim.yml` | `main` (code, SQL, deployment script and pipeline paths); pull requests run the Build stage only | Build and test once, package, then deploy the shared nonprod resources and promote the Automation host through `dev`, `bat` and `test` |
+| `eim.yml` | `main` (code, SQL, deployment script and pipeline paths); pull requests run the Build stage only | Build and test once, package, then deploy the shared nonprod resources and promote the Automation host through `bat` and `test` |
 | `auto-ai-pull-request.yml` | `feature/*` push | Create a draft pull request with Microsoft Foundry-generated metadata |
 
 ## `eim.yml`
 
-Stages: `Build` → `Deploy_shared` (DevOps environment `eim-wtc-nonprod`) → `Deploy_dev` (`eim-wtc-dev`) → `Deploy_bat` (`eim-wtc-bat`) → `Deploy_test` (`eim-wtc-test`). Each deploy stage runs only when the previous stage succeeded, and never for a pull request.
+Stages: `Build` → `Deploy_shared` (DevOps environment `eim-wtc-nonprod`) → `Deploy_bat` (`eim-wtc-bat`) → `Deploy_test` (`eim-wtc-test`). Each deploy stage runs only when the previous stage succeeded, and never for a pull request. There is no development stage: development runs locally (see "Local development" in the repository [README](../README.md)).
 
 | Template | Purpose |
 |---|---|

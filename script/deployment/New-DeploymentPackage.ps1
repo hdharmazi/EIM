@@ -18,13 +18,13 @@
     ./script/deployment/New-DeploymentPackage.ps1
 
 .EXAMPLE
-    ./script/deployment/New-DeploymentPackage.ps1 -Environment nonprod, dev -Version local
+    ./script/deployment/New-DeploymentPackage.ps1 -Environment nonprod, bat -Version local
 #>
 # After the help block: a #Requires line above it stops Get-Help from finding the help.
 #Requires -Version 7.2
 param(
     [ValidatePattern('^[a-z0-9]+$')]
-    [string[]]$Environment = @('nonprod', 'dev', 'bat', 'test'),
+    [string[]]$Environment = @('nonprod', 'bat', 'test'),
 
     [string]$OutputPath,
     [string]$Version
@@ -104,9 +104,9 @@ REQUIREMENTS
 CONFIGURATIONS
   nonprod  shared scope: App Service plan, Log Analytics, gateway, dashboard API and SPA (deployed in
            place), database migrations.
-  dev, bat, test  environment scope: the five queues and the Automation Function App.
+  bat, test  environment scope: the five queues and the Automation Function App.
   These are deployment configurations, not ENVIRONMENT values in eimdb (DEV2, for example, has no
-  Function App).
+  Function App). Development runs locally; no configuration deploys a development environment.
 
 STEPS
   Open PowerShell 7 (pwsh) in this folder and run the commands there; 'pwsh -File' would not accept
@@ -121,10 +121,10 @@ STEPS
        .\Deploy-Wilson.ps1 -Environment nonprod -Component all -WhatIf
   2. Shared resources, settings, migrations and the shared apps:
        .\Deploy-Wilson.ps1 -Environment nonprod -Component all
-  3. Each environment (dev, bat, test):
-       .\Deploy-Wilson.ps1 -Environment dev -Component all
+  3. Each environment (bat, then test):
+       .\Deploy-Wilson.ps1 -Environment bat -Component all
      The queue and timer triggers of a new Automation app stay disabled until cutover:
-       .\Deploy-Wilson.ps1 -Environment dev -Component cutover     (rollback undoes it)
+       .\Deploy-Wilson.ps1 -Environment bat -Component cutover     (rollback undoes it)
   4. Gateway keys (once, after the shared apps run):
        .\Deploy-Wilson.ps1 -Environment nonprod -Component cutover
   5. 'verify' prints the state of every app; 'health' fails unless the hosts run and the dashboard
@@ -133,7 +133,9 @@ STEPS
 REMOVE (after cutover and the observation window; operator machine only)
        .\Deploy-Wilson.ps1 -Environment <name> -Component remove -WhatIf
        .\Deploy-Wilson.ps1 -Environment <name> -Component remove
-  Deletes only the resources listed under "legacy" in the configuration.
+  Deletes only the resources listed under "legacy" in the configuration. For nonprod that includes the
+  retired Automation apps in legacy.retiredAutomationApps; remove refuses until every gated function on
+  them is disabled (see the runbook).
 
 Runbook: docs/deployment/resource-rename-cutover.md in the repository.
 Full help: Get-Help .\Deploy-Wilson.ps1 -Full

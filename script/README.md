@@ -4,16 +4,16 @@
 
 | Script | Does |
 |---|---|
-| `deployment/Deploy-Wilson.ps1` | deploys one configuration (`nonprod`, `dev`, `bat`, `test`): infrastructure, settings, schema, code, verify, health, and the on-demand `cutover`, `rollback` and `remove` |
+| `deployment/Deploy-Wilson.ps1` | deploys one configuration (`nonprod`, `bat`, `test`): infrastructure, settings, schema, code, verify, health, and the on-demand `cutover`, `rollback` and `remove` |
 | `deployment/New-DeploymentPackage.ps1` | builds the package the deploy script consumes (zips, migrator, manifest) |
 | `deployment/Test-DeployWilson.ps1` | dependency-free self-test of both scripts; with `-PackagePath`, also checks a built package |
 
 ```powershell
 # Build a package
-.\script\deployment\New-DeploymentPackage.ps1 -Environment nonprod, dev -Version local
+.\script\deployment\New-DeploymentPackage.ps1 -Environment nonprod, bat -Version local
 
-# Preview everything for dev
-.\script\deployment\Deploy-Wilson.ps1 -Environment dev -Component all -WhatIf -PackagePath artifacts\package\wtc-eim-deploy-local
+# Preview everything for bat
+.\script\deployment\Deploy-Wilson.ps1 -Environment bat -Component all -WhatIf -PackagePath artifacts\package\wtc-eim-deploy-local
 
 # Self-test
 pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1

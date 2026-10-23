@@ -12,14 +12,15 @@ Integration services for moving data between Capture, Microsoft Dynamics 365 Fin
 | `ARM.Integration.D365FSC.Gateway` | Shared D365 F&SC HTTP gateway | `http://localhost:7072` |
 | `ARM.Integration.DbMigrator` | Applies versioned and repeatable SQL migrations | Command line |
 
-Local Functions use Azurite on ports `10000` through `10002`. Deployed nonprod environments share the Dashboard, Gateway, and `eimdb`; Wilson Automation has separate `dev`, `bat`, and `test` Function Apps.
+Local Functions use Azurite on ports `10000` through `10002`. Deployed nonprod environments share the Dashboard, Gateway, and `eimdb`; Wilson Automation has separate `bat` and `test` Function Apps. There is no deployed development environment: development runs locally (see [Local development](#local-development)).
 
 ## Prerequisites
 
 - .NET 10 SDK
 - Node.js 22 and npm
 - Azurite available on `PATH`
-- Access to the required Azure SQL database and Service Bus namespace
+- A local SQL Server (Developer, Express or LocalDB) for your own `eimdb`
+- Access to the Service Bus namespace
 - Microsoft Entra application settings for Dashboard authentication
 
 Keep connection strings, keys, and environment-specific settings out of source control. Review each project's development settings before starting; the launch scripts do not create queues, run database migrations, or populate secrets.
@@ -64,6 +65,30 @@ dotnet build Wilson.Integration.Automation -p:LocalSettings=mydev
 
 The Automation host refuses to start, naming each missing setting, when a required setting is absent.
 
+## Local development
+
+Development runs on your machine; there is no deployed development environment. A local host must never touch
+what the deployed environments use.
+
+1. **Database**: create a local `eimdb` on SQL Server or LocalDB and apply every migration with the migrator, as
+   described in "Local database" in [database migrations](docs/deployment/database-migrations.md). Never point a
+   queue-consuming local host at the shared `eimdb`: the deployed release and retry sweeps would then pick up the
+   rows it writes. The `eimdb_dev` catalog on the shared server is a leftover and will be dropped by hand; do not
+   use it either.
+2. **Storage**: Azurite (`UseDevelopmentStorage=true`, as in the samples).
+3. **Settings**: copy the samples (see [Local settings](#local-settings)) and fill in the placeholders. Set
+   `EIMDB` to your local database.
+4. **Environment data**: add the D365 connection profile for your ENVIRONMENT value (for example `DEV`) as a row
+   in your local `ENVIRONMENTTABLE`. That row holds credentials: never commit it, not even in a migration or a
+   sample.
+5. **Queues**: use the `dev-*` queues (`<your queue prefix>` = `dev`), but only after
+   [runbook step 7, "Retire legacy dev"](docs/deployment/resource-rename-cutover.md) has disabled the triggers on
+   the legacy dev Function App; until then that app still consumes them. Capture dev and the D365 dev endpoints may
+   still publish to them. Never consume the `bat-*` or `test-*` queues from a local host; the deployed Automation
+   apps own them, and a second consumer breaks message ordering.
+
+Schema changes are tried locally first. Only merged migrations reach the shared `eimdb`, through the pipeline.
+
 ## Database migrations
 
 Database migration is required for every new `eimdb`. Creating an Azure SQL database produces an empty catalog; the applications do not create tables at startup. Read [database migration guidance](docs/deployment/database-migrations.md) before deploying or changing schema.
@@ -87,9 +112,8 @@ npm --prefix ARM.Integration.Dashboard.Frontend run lint
 
 Non-production is deployed by one pipeline, [`pipelines/eim.yml`](pipelines/eim.yml), running one script,
 `script/deployment/Deploy-Wilson.ps1`, with configurations in `script/deployment/config/`. The pipeline builds one
-package and promotes it through `Deploy_shared` (gateway, dashboard, migrations), then `dev`, `bat` and `test`
-(Wilson Automation). A merge to `main` deploys code only; infrastructure, settings and migrations run on a manual
-run.
+package and promotes it through `Deploy_shared` (gateway, dashboard, migrations), then `bat` and `test` (Wilson
+Automation). A merge to `main` deploys code only; infrastructure, settings and migrations run on a manual run.
 
 - [Deployment overview](docs/deployment/deployment.md)
 - [Azure DevOps setup](docs/deployment/devops-setup.md)

@@ -19,16 +19,19 @@ repository; everything on the Azure side is a component of the script.
 `pipelines/eim.yml` builds once and promotes the same package through every configuration:
 
 ```
-Build -> Deploy_shared (nonprod) -> Deploy_dev -> Deploy_bat -> Deploy_test
+Build -> Deploy_shared (nonprod) -> Deploy_bat -> Deploy_test
 ```
 
 | Stage | DevOps environment | Approval | Deploys (code) |
 |---|---|---|---|
 | `Build` | | | tests, script self-test, package, package checks, publishes artifact `package` |
 | `Deploy_shared` | `eim-wtc-nonprod` | yes | `gateway, backend, frontend` |
-| `Deploy_dev` | `eim-wtc-dev` | no | `automation` |
 | `Deploy_bat` | `eim-wtc-bat` | yes | `automation` |
 | `Deploy_test` | `eim-wtc-test` | yes | `automation` |
+
+There is no development stage: development runs on a developer's machine (see "Local development" in the
+repository `README.md`). A merge therefore waits for two approvals, shared then bat, before any Automation code
+is deployed.
 
 - A merge to `main` deploys code only.
 - Infrastructure, app settings and migrations run only on a manual run, when you tick `deployInfra`,
@@ -49,17 +52,23 @@ preflight only and skips `verify` and `health`.
 
 ## Configurations and scopes
 
-`-Environment` names a configuration file, `script/deployment/config/deploy.<name>.json`. Today there are four:
+`-Environment` names a configuration file, `script/deployment/config/deploy.<name>.json`. Today there are three:
 
 | Configuration | Scope | Owns |
 |---|---|---|
 | `nonprod` | `shared` | App Service plan, Log Analytics workspace, gateway, dashboard API and SPA, database migrations |
-| `dev`, `bat`, `test` | `environment` | the five Service Bus queues, and the Automation storage, Insights and Function App |
+| `bat`, `test` | `environment` | the five Service Bus queues, and the Automation storage, Insights and Function App |
+
+There is no `dev` configuration, so `-Environment dev` fails as an unknown configuration. The legacy dev
+Automation app, `azf-eim-customer-wtc-dev`, is retired with no replacement: it is listed under
+`legacy.retiredAutomationApps` in `deploy.nonprod.json`, reported by `verify -Environment nonprod`, and deleted by
+`remove -Environment nonprod` (see [resource-rename-cutover.md](resource-rename-cutover.md)).
 
 **Deployment configurations are not ENVIRONMENT values.** The rows in `eimdb` use ENVIRONMENT values `DEV`,
-`DEV2`, `BAT` and `TEST`. `DEV2` has rows but no Function App and no configuration. Nothing in the script or
-tests reads or assumes the database's values. A message for any ENVIRONMENT value is handled by whichever
-Automation app consumes the queue it arrives on.
+`DEV2`, `BAT` and `TEST`. `DEV` and `DEV2` have rows but no new Function App and no configuration; the legacy dev
+app is retired in runbook step 7 and deleted at decommission (step 13). Their rows stay.
+Nothing in the script or tests reads or assumes the database's values. A message for any ENVIRONMENT value is
+handled by whichever Automation app consumes the queue it arrives on.
 
 The script holds no list of environments. Any name with a matching `deploy.<name>.json` is accepted.
 
@@ -105,10 +114,10 @@ You need PowerShell 7.2+ (`pwsh`), the Azure CLI (logged in with Contributor on 
 
 ```powershell
 # Build a package (needs the .NET 10 SDK and Node 22)
-./script/deployment/New-DeploymentPackage.ps1 -Environment nonprod, dev -Version local
+./script/deployment/New-DeploymentPackage.ps1 -Environment nonprod, bat -Version local
 
 # Preview: derived names and intended actions, changes nothing
-./script/deployment/Deploy-Wilson.ps1 -Environment dev -Component all -WhatIf -PackagePath artifacts/package/wtc-eim-deploy-local
+./script/deployment/Deploy-Wilson.ps1 -Environment bat -Component all -WhatIf -PackagePath artifacts/package/wtc-eim-deploy-local
 
 # One or more components. They always run in the fixed order, not the order given.
 ./script/deployment/Deploy-Wilson.ps1 -Environment nonprod -Component gateway, backend -PackagePath artifacts/package/wtc-eim-deploy-local
@@ -148,7 +157,7 @@ Always run in this order:
 | `health` | both | fails unless each Function App host is `Running` within 5 minutes, the dashboard API answers below HTTP 500 and the static web app serves its root (200 to 399) |
 
 `all` expands to the components the configuration's scope owns. Asking for a component outside the scope is
-refused, naming the scope that owns it (for example `schema` for `dev`, or `automation` for `nonprod`).
+refused, naming the scope that owns it (for example `schema` for `bat`, or `automation` for `nonprod`).
 
 The script stops at the first failing component, names it and exits non-zero. Function App deploys stop the
 app, deploy, and start it again in a `finally`, then sync triggers.
@@ -159,11 +168,13 @@ On demand only, never part of `all`, and each run on its own:
 |---|---|---|
 | `cutover` | moves the gated triggers from the legacy Automation app to the new one | copies the named gateway host keys and `D365Data`/`D365Service` function keys to the new gateway |
 | `rollback` | the reverse of `cutover`; refused once the legacy app is gone | refused: consumers roll back by switching their base URL |
-| `remove` | deletes the resources listed under `legacy` | the same, for the shared legacy resources |
+| `remove` | deletes the resources listed under `legacy` | the same, for the shared legacy resources and the retired dev Automation app |
 
 `cutover`, `rollback` and `remove` are described in [resource-rename-cutover.md](resource-rename-cutover.md).
 `remove` runs only from an operator machine (never when `TF_BUILD` is set), needs a `remove -WhatIf` run the same
-day on the same machine, and asks you to type the configuration name.
+day on the same machine, and asks you to type the configuration name. It refuses while any gated function is
+enabled on the configuration's legacy Automation app or on a retired Automation app; a stopped app still counts
+until its `AzureWebJobs.<fn>.Disabled` settings say disabled.
 
 ### The SQL firewall: `myip` and `myipremove`
 
@@ -211,8 +222,8 @@ New resources are tagged. Queues are not tagged.
 
 ## Hosting
 
-One P0v3 Linux plan, `asp-eim-wtc-nonprod`, carries the gateway, the three Automation apps and (after the
-runbook's plan move) the dashboard API. Every Function App gets Always On, HTTPS only, TLS 1.2, FTPS disabled
+One P0v3 Linux plan, `asp-eim-wtc-nonprod`, carries the gateway, the two Automation apps (bat, test) and (after
+the runbook's plan move) the dashboard API. Every Function App gets Always On, HTTPS only, TLS 1.2, FTPS disabled
 and `DOTNET-ISOLATED|10.0`, converged on every `infra` run. The environments share compute, so load in one can
 affect another. A plan CPU/memory alert above 80% is part of the runbook; if it fires, change
 `appServicePlan.sku` to `P1v3`.
@@ -269,9 +280,12 @@ resource group, Service Bus namespace, plan, dashboard, gateway and database. Do
 to cover it.
 
 **`eimdb_dev` is not a deployment target.** Every non-production environment uses `eimdb`. The `eimdb_dev`
-catalog on the same server is for local development only. Because the two share a server, a connection string
-that looks right can still point at the wrong catalog, and the failure is silent because both have the same
-schema. Check `Initial Catalog`, not only the server.
+catalog on the same server is a leftover of the old development setup; it will be dropped by hand later, outside
+this change. Local development uses a local SQL Server instead (see "Local database" in
+[database-migrations.md](database-migrations.md) and "Local development" in the repository `README.md`). Until
+`eimdb_dev` is gone, remember that a connection string that looks right can still point at the wrong catalog on
+the shared server, and the failure is silent because both have the same schema. Check `Initial Catalog`, not only
+the server.
 
 **Two Entra registrations exist, and the difference is intentional.** The deployed registration (tenant
 `446b6761`, client `5d1e26b3`) is the one the configuration carries. The pair in

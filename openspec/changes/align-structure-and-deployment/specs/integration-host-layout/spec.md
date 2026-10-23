@@ -83,11 +83,15 @@ The Automation host SHALL check at startup, before registering services, that `E
 - **THEN** the message names the settings and contains no configuration value
 
 ### Requirement: Sample local settings and settings switch
-`Wilson.Integration.Automation` and `ARM.Integration.D365FSC.Gateway` SHALL each commit a `local.settings.sample.json` with placeholders or local-emulator values for every setting the host reads. Each SHALL support `-p:LocalSettings=<name>`, which copies `local.settings.<name>.json` into the build output as `local.settings.json`. Local settings files other than the samples SHALL be excluded from source control and from publish output.
+`Wilson.Integration.Automation` and `ARM.Integration.D365FSC.Gateway` SHALL each commit a `local.settings.sample.json` with placeholders or local-emulator values for every setting the host reads. Because development is local only, the samples SHALL target local services: `AzureWebJobsStorage` SHALL be `UseDevelopmentStorage=true` (Azurite), the `EIMDB` placeholder SHALL describe a local SQL Server `eimdb`, and no sample value SHALL name the shared SQL server or a `bat-` or `test-` queue. Each SHALL support `-p:LocalSettings=<name>`, which copies `local.settings.<name>.json` into the build output as `local.settings.json`. Local settings files other than the samples SHALL be excluded from source control and from publish output.
 
 #### Scenario: Sample covers the required settings
 - **WHEN** `RequiredSettings` groups for Automation are compared with `local.settings.sample.json`
 - **THEN** every required key is present in the sample
+
+#### Scenario: Samples target local services
+- **WHEN** the Automation and gateway `local.settings.sample.json` files are read
+- **THEN** `AzureWebJobsStorage` is `UseDevelopmentStorage=true`, `EIMDB` is a `<...>` placeholder naming a local SQL Server, and no value contains `azql-wtc-sandbox` or starts with `bat-` or `test-`
 
 #### Scenario: Named settings file selected
 - **WHEN** a developer builds with `-p:LocalSettings=mydev` and `local.settings.mydev.json` exists

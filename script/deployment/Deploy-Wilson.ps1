@@ -4,9 +4,10 @@
 
 .DESCRIPTION
     One script for every non-production configuration. -Environment names a configuration file
-    script/deployment/config/deploy.<name>.json (today nonprod, dev, bat and test); any file with a matching
+    script/deployment/config/deploy.<name>.json (today nonprod, bat and test); any file with a matching
     name is accepted, and nothing here lists the environments or reads the ENVIRONMENT values in eimdb
-    (DEV, DEV2, BAT, TEST are database rows, not deployment configurations).
+    (DEV, DEV2, BAT, TEST are database rows, not deployment configurations). There is no dev configuration:
+    development runs on a developer's machine.
 
     Configuration is merged in this order: deploy.base.json, deploy.<name>.json, -ConfigOverridesFile, then the
     JSON in EIM_DEPLOY_CONFIG_OVERRIDES. Objects merge key by key; lists and plain values are replaced.
@@ -18,7 +19,7 @@
 
     Each configuration has a scope:
       shared       (nonprod)       plan, Log Analytics, gateway, dashboard API and SPA, schema migrations
-      environment  (dev, bat, ...) the five queues and the Automation storage, Insights and Function App
+      environment  (bat, test)     the five queues and the Automation storage, Insights and Function App
     A component outside the scope is rejected, naming the scope that owns it; 'all' expands to the scope's own.
 
     Secrets come only from EIM_DEPLOY_EIMDB and EIM_DEPLOY_SERVICEBUS, or a hidden prompt when run
@@ -48,26 +49,30 @@
       backend     zip-deploy dashboard-api.zip to the dashboard API (in place)
       frontend    deploy the packaged SPA to the static web app (in place) and link the API as its backend
       automation  zip-deploy wilson-automation.zip; refused while any gated setting is missing
-      verify      report only: host, state, Always On, plan, outbound IPs, gated trigger states, SWA backend
+      verify      report only: host, state, Always On, plan, outbound IPs, gated trigger states, SWA backend;
+                  shared also reports each app in legacy.retiredAutomationApps (retired, no replacement)
       health      fails unless each Function App host reports Running within 5 minutes, the dashboard API
                   answers below HTTP 500 and the static web app serves its root
 
     On demand only, never part of 'all', and each runs on its own:
       cutover     environment: move the gated triggers from the legacy Automation app to the new one.
                   shared: copy the named gateway host and D365Data/D365Service function keys.
+                  Never touches an app in legacy.retiredAutomationApps.
       rollback    environment: the reverse of cutover; refused once the legacy app is gone
       remove      delete the resources listed under "legacy" in the configuration. Operator machine only:
                   needs a 'remove -WhatIf' run first the same day and the configuration name typed to confirm.
+                  Refused while a gated function is enabled on legacy.automationApp or on any app in
+                  legacy.retiredAutomationApps (stopping the app is not enough).
 
 .EXAMPLE
-    ./script/deployment/Deploy-Wilson.ps1 -Environment dev -Component all -WhatIf -PackagePath artifacts/package/wtc-eim-deploy-local
+    ./script/deployment/Deploy-Wilson.ps1 -Environment bat -Component all -WhatIf -PackagePath artifacts/package/wtc-eim-deploy-local
 
 .EXAMPLE
     From an extracted package:
     ./Deploy-Wilson.ps1 -Environment nonprod -Component gateway, backend, frontend
 
 .EXAMPLE
-    ./Deploy-Wilson.ps1 -Environment dev -Component cutover
+    ./Deploy-Wilson.ps1 -Environment test -Component cutover
 #>
 # After the help block: a #Requires line above it stops Get-Help from finding the help.
 #Requires -Version 7.2
@@ -444,7 +449,15 @@ function Get-NamesInUse($Config) {
 function Get-LegacyNames($Config) {
     $legacy = $Config.legacy
     if (-not $legacy) { return @() }
-    @(@($legacy.automationApp, $legacy.gatewayApp) + @($legacy.resources | ForEach-Object { $_.name }) | Where-Object { $_ } | Sort-Object -Unique)
+    @(@($legacy.automationApp, $legacy.gatewayApp) + @($legacy.retiredAutomationApps) + @($legacy.resources | ForEach-Object { $_.name }) | Where-Object { $_ } | Sort-Object -Unique)
+}
+
+# The Automation apps whose gated functions must all be disabled before 'remove': the app this configuration cuts
+# over from (legacy.automationApp) and the apps retired with no replacement (legacy.retiredAutomationApps).
+function Get-TriggerGuardApps($Config) {
+    $legacy = $Config.legacy
+    if (-not $legacy) { return @() }
+    @(@($legacy.automationApp) + @($legacy.retiredAutomationApps) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { "$_".Trim() } | Sort-Object -Unique)
 }
 
 function Get-LegacyNameConflicts([string[]]$LegacyNames, [string[]]$NamesInUse) {
@@ -485,7 +498,7 @@ function Resolve-Components([string[]]$Requested, [string]$Scope, [string]$Share
             throw "'$name' is a shared component, owned by the shared configuration '$SharedName'; run it with -Environment $SharedName."
         }
         if ($ComponentOrder -notcontains $name) { throw "Unknown component '$name'." }
-        throw "'$name' is a per-environment component, owned by the environment configurations (e.g. dev, bat, test); it is not deployed from the shared configuration '$SharedName'."
+        throw "'$name' is a per-environment component, owned by the environment configurations (e.g. bat, test); it is not deployed from the shared configuration '$SharedName'."
     }
 
     $wanted = if ($requested -contains 'all') { $owned } else { $requested }
@@ -828,7 +841,8 @@ function Select-CopyableKeys($Keys, [switch]$IncludeDefault) {
     $selected
 }
 
-# $Entries: Name, Type, Exists, HostedApps (plans only). Returns Refusals (abort the run), Proceed (delete, in
+# $Entries: Name, Type, Exists, HostedApps (plans only). $EnabledLegacyFunctions: '<app>/<function>' for every enabled
+# gated function on a trigger-guard app (Get-TriggerGuardApps). Returns Refusals (abort the run), Proceed (delete, in
 # order: sites, storage and Insights, plans) and Kept (left in place, with the reason).
 function Test-RemoveAllowed {
     param(
@@ -852,7 +866,7 @@ function Test-RemoveAllowed {
     if (-not $Preview -and -not $MarkerExists) { $refusals.Add("run 'remove -WhatIf' for '$Environment' first (today, on this machine)") }
     if (-not $Preview -and $CheckConfirmation -and $Confirmation -cne $Environment) { $refusals.Add("the confirmation did not match '$Environment'") }
     if ($enabledLegacy.Count -gt 0) {
-        $refusals.Add("the legacy app still has enabled gated functions: $($enabledLegacy -join ', '); run 'cutover' first")
+        $refusals.Add("a legacy or retired Automation app still has enabled gated functions: $($enabledLegacy -join ', '); run 'cutover' (legacy) or disable them (retired; see the runbook)")
     }
 
     $candidates = [System.Collections.Generic.List[object]]::new()
@@ -1370,31 +1384,42 @@ function Write-GatedReport([string]$ResourceGroup, [string]$App, [string[]]$Gate
     foreach ($state in @(Get-GatedTriggerState $ResourceGroup $App $GatedFunctions)) { Write-Host ("      {0,-40} {1}" -f $state.Function, $state.Disabled) }
 }
 
+# What 'verify' reports, in order (pure). Kind 'app' gets Write-AppReport, plus Write-GatedReport when Gated;
+# kind 'staticWebApp' gets the SWA host and its linked backend.
+function Get-VerifyTargets($Config, $Names) {
+    $target = { param($Kind, $Name, $Label, $Gated) [pscustomobject]@{ Kind = $Kind; Name = "$Name"; Label = $Label; Gated = $Gated } }
+    if ($Config.scope -eq 'shared') {
+        & $target 'app' $Names.GatewayApp 'gateway' $false
+        if ($Config.legacy.gatewayApp) { & $target 'app' $Config.legacy.gatewayApp 'legacy gateway' $false }
+        & $target 'app' $Names.DashboardApi 'dashboard API, shared by every environment (kept name)' $false
+        & $target 'staticWebApp' $Names.StaticWebApp 'dashboard SPA, shared by every environment (kept name)' $false
+        foreach ($app in @($Config.legacy.retiredAutomationApps | Where-Object { $_ })) { & $target 'app' $app 'retired Automation (no replacement)' $true }
+        return
+    }
+    & $target 'app' $Names.AutomationApp 'Automation' $true
+    if ($Config.legacy.automationApp) { & $target 'app' $Config.legacy.automationApp 'legacy Automation' $true }
+}
+
 # Report only: never fails the run.
 function Invoke-VerifyComponent($Config, $Names) {
     $rg = $Names.ResourceGroup
     if ($Preview) { Write-Host "  would report host, state, Always On, plan, outbound IPs and trigger states"; return }
     $gated = @($Config.automation.gatedFunctions)
     try {
-        if ($Config.scope -eq 'shared') {
-            Write-AppReport $rg $Names.GatewayApp 'gateway'
-            if ($Config.legacy.gatewayApp) { Write-AppReport $rg $Config.legacy.gatewayApp 'legacy gateway' }
-            Write-AppReport $rg $Names.DashboardApi 'dashboard API, shared by every environment (kept name)'
-            if (Test-Az staticwebapp show -g $rg -n $Names.StaticWebApp) {
-                $swaHost = "$(Invoke-Az staticwebapp show -g $rg -n $Names.StaticWebApp --query defaultHostname -o tsv)"
-                $backend = try { @(Invoke-AzJson staticwebapp backends show -g $rg -n $Names.StaticWebApp) | ForEach-Object { ("$($_.backendResourceId)" -split '/')[-1] } } catch { '(none)' }
-                Write-Host "  $($Names.StaticWebApp) (dashboard SPA, shared by every environment (kept name))"
-                Write-Host "    host       https://$swaHost  linked backend: $($backend -join ', ')"
+        foreach ($target in @(Get-VerifyTargets $Config $Names)) {
+            if ($target.Kind -eq 'staticWebApp') {
+                if (Test-Az staticwebapp show -g $rg -n $target.Name) {
+                    $swaHost = "$(Invoke-Az staticwebapp show -g $rg -n $target.Name --query defaultHostname -o tsv)"
+                    $backend = try { @(Invoke-AzJson staticwebapp backends show -g $rg -n $target.Name) | ForEach-Object { ("$($_.backendResourceId)" -split '/')[-1] } } catch { '(none)' }
+                    Write-Host "  $($target.Name) ($($target.Label))"
+                    Write-Host "    host       https://$swaHost  linked backend: $($backend -join ', ')"
+                }
+                else { Write-Host "  $($target.Name): not found" }
+                continue
             }
-            else { Write-Host "  $($Names.StaticWebApp): not found" }
-        }
-        else {
-            Write-AppReport $rg $Names.AutomationApp 'Automation'
-            Write-GatedReport $rg $Names.AutomationApp $gated
-            if ($Config.legacy.automationApp) {
-                Write-AppReport $rg $Config.legacy.automationApp 'legacy Automation'
-                Write-GatedReport $rg $Config.legacy.automationApp $gated
-            }
+            # Write-AppReport prints "not found" for a missing app; Write-GatedReport then prints nothing.
+            Write-AppReport $rg $target.Name $target.Label
+            if ($target.Gated) { Write-GatedReport $rg $target.Name $gated }
         }
     }
     catch { Write-DeployWarning "verify could not complete: $($_.Exception.Message)" }
@@ -1649,11 +1674,12 @@ function Invoke-RemoveComponent($Config, $Names) {
     $early = Test-RemoveAllowed @common -Entries @()
     if ($early.Refusals.Count -gt 0) { throw "remove refused; nothing was deleted:`n  - $($early.Refusals -join "`n  - ")" }
 
-    $enabled = @()
-    if ($Config.legacy.automationApp -and (Test-WebApp $rg $Config.legacy.automationApp)) {
-        $states = Get-EffectiveFunctionStates $rg $Config.legacy.automationApp @($Config.automation.gatedFunctions)
-        $enabled = @($states.Keys | Where-Object { $states[$_] -eq $true })
-    }
+    # A stopped app still counts: only the gated settings (or isDisabled) say a function is disabled.
+    $enabled = @(foreach ($app in @(Get-TriggerGuardApps $Config)) {
+            if (-not (Test-WebApp $rg $app)) { continue }
+            $states = Get-EffectiveFunctionStates $rg $app @($Config.automation.gatedFunctions)
+            foreach ($function in @($states.Keys | Where-Object { $states[$_] -eq $true })) { "$app/$function" }
+        })
     $inUse = @(foreach ($name in (Get-ConfigurationNames $ConfigDirectory)) { Get-NamesInUse (Get-DeployConfig $name $ConfigDirectory) }) + @(Get-NamesInUse $Config) | Sort-Object -Unique
     $entries = Get-RemoveEntries $Config $Names
     $decision = Test-RemoveAllowed @common -Entries $entries -NamesInUse $inUse -EnabledLegacyFunctions $enabled

@@ -130,6 +130,7 @@
   - `<...>` placeholders for the subscription, Entra and excluded users, and no secrets
 
   Delete `deploy.example.json`. Proven by test 4.1.
+  - Note (Phase 2b): `deploy.dev.json` is deleted and the legacy dev entries move to `deploy.nonprod.json` in 6.2.
 - [x] 3.2 Add `script/deployment/Deploy-Wilson.ps1`. Requirements:
   - Port from Wastequip `Deploy-Wastequip.ps1`: `Invoke-Az`, `Merge-ConfigObject`, `Get-ResourceNames`/`$pick`, preflight with the drift check, `Invoke-FunctionDeploy` (stop, `config-zip --timeout 900`, start in `finally`, `syncfunctiontriggers` 6×20 s), health, cutover and remove.
   - Parameters as in D10. `-Environment` accepts any configuration that has a `deploy.<name>.json`; there is no hard-coded list of environments, and nothing reads or assumes the database's ENVIRONMENT values (`DEV`, `DEV2`, `BAT`, `TEST`).
@@ -148,6 +149,7 @@
   - no Flex commands
 
   Proven by test 4.2 (planned `az` calls for `nonprod` with and without existing dashboard resources, and for `dev`).
+  - Note (Phase 2b): the environment-scope fixture moves from `dev` to `bat` in 7.1.
 - [x] 3.4 In `Deploy-Wilson.ps1`, implement the `settings` component:
   - Automation: the Deploy-Eim list minus `PollSchedule`, plus gated `AzureWebJobs.<fn>.Disabled=true` only when absent; every name in `automation.retiredSettings` is never written and is deleted from the target app if present, naming each removed setting
   - gateway (adds `FUNCTIONS_WORKER_RUNTIME`)
@@ -160,6 +162,7 @@
   - `schema`: packaged `ARM.Integration.DbMigrator.exe --timeout 1800`, `--whatif` under `-WhatIf`, `EIMDB_MIGRATOR_CONNECTION` in the child environment only
 
   Proven by test 4.2 (scope rejection of `schema` for `dev`) and test 4.3.
+  - Note (Phase 2b): the scope-rejection fixture moves to `bat` in 7.1; `AllowDev-<USERNAME>` (an operator's machine) is unchanged.
 - [x] 3.6 In `Deploy-Wilson.ps1`, implement the code components:
   - `gateway` and `automation` via `Invoke-FunctionDeploy`; `automation` refuses when gated settings are missing
   - `backend`: `az webapp deploy --type zip` to `names.dashboardApi` (in place)
@@ -189,6 +192,7 @@
   - `pipelines/templates/deploy-environment.yml`: preflight+WhatIf, infra, settings, myip/try schema/finally myipremove, code, then verify+health (skipped when nothing was deployed); `env:` mapping of `EIM_DEPLOY_EIMDB`, `EIM_DEPLOY_SERVICEBUS` and `EIM_DEPLOY_CONFIG_OVERRIDES`; variable group `eim-wtc-nonprod`; service connection `sc-eim-wtc-nonprod`
 
   Proven by test 4.5.
+  - Note (Phase 2b): `Deploy_dev` is removed and the Build stage packages `nonprod,bat,test` in 6.1.
 - [x] 3.10 Move `.azure-pipelines/workflows/auto-ai-pull-request.yml` → `pipelines/auto-ai-pull-request.yml` and `.azure-pipelines/README.md` → `pipelines/README.md`, rewritten for the new pipeline. Delete:
   - `.azure-pipelines/workflows/deployment/*.yml`
   - `script/deployment/Deploy-Eim.ps1`
@@ -208,6 +212,7 @@
   - update `docs/azure-deployment-pipelines-setup.md` (pointer), `docs/auto-ai-pull-request-setup.md`, `docs/README.md`, `README.md` and `CLAUDE.md` (deployment section)
 
   Proven by test 4.6.
+  - Note (Phase 2b): every `dev` stage, environment and cutover reference in these docs is replaced in 6.6, which also adds the local development and retire-legacy-dev sections.
 
 ## 4. Phase 2: Tests
 
@@ -219,6 +224,7 @@
   - `deploy.nonprod.json` has `names.dashboardApi` = `wtc-dashboard-api-dev` and `names.staticWebApp` = `wtc-dashboard-frontend-dev`.
   - No `legacy` name equals any `names` value or derived name in the D7 tables, and no `legacy` section lists a dashboard resource.
   - No config has a `secrets` section or a connection-string-shaped value.
+  - Note (Phase 2b): the expected configurations become `base`, `bat`, `nonprod`, `test` and the legacy-name checks read `retiredAutomationApps` in 7.2.
 - [x] 4.2 Add `script/deployment/Test-DeployWilson.ps1`: a dependency-free self-test that dot-sources `Deploy-Wilson.ps1`, throws on the first failed assertion and exits non-zero. It asserts:
   - `Get-ResourceNames` for `nonprod`, `dev`, `bat` and `test` equals the D7 tables, and `names` overrides win (the dashboard resolves to `wtc-dashboard-api-dev` and `wtc-dashboard-frontend-dev`).
   - The storage and Function App length rules reject a long environment name.
@@ -234,6 +240,7 @@
   - `Test-RemoveAllowed` refuses under `TF_BUILD`, without the WhatIf marker, with legacy triggers enabled, on a legacy name equal to a name in use (e.g. `wtc-dashboard-api-dev`), on a disallowed type (including a static web app), and keeps a plan still in use while naming the remaining app.
 
   Run: `pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1`.
+  - Note (Phase 2b): the `dev` fixtures (names, scope rejection, infra plan, settings and drift) move to `bat`, and the retired-app guard assertions are added, in 7.1.
 - [x] 4.3 Check that `Deploy-Wilson.ps1`, `New-DeploymentPackage.ps1` and `Test-DeployWilson.ps1` parse with no errors (`[System.Management.Automation.Language.Parser]::ParseFile`), included as the first assertion in `Test-DeployWilson.ps1`. Also add an assertion that the script text never passes `EIM_DEPLOY_*` values as `az` arguments: a regex over the script for `--settings \$` or a connection string interpolated into an `az` command line. Run as in 4.2.
 - [x] 4.4 Extend `Test-DeployWilson.ps1` for packaging (design D19):
   - Dot-source `New-DeploymentPackage.ps1`. The function extraction over a committed fixture `script/deployment/testdata/functions.metadata` returns exactly the six non-HTTP functions.
@@ -244,6 +251,7 @@
 - [x] 4.5 Add `Wilson.Integration.Tests/PipelineDefinitionTests.cs`, text and YAML assertions over `pipelines/eim.yml` and `pipelines/templates/*.yml`:
   - stage names and the `dependsOn` order
   - DevOps environments `eim-wtc-nonprod/dev/bat/test`
+  - Note (Phase 2b): the stage order, environments and Build packaging list drop `dev` in 7.3.
   - `runMigrations` passed true-able only to `Deploy_shared`
   - the Build template runs `Test-DeployWilson.ps1` before packaging and `Test-DeployWilson.ps1 -PackagePath` after `New-DeploymentPackage.ps1`, both before the artifact is published
   - no `ManualValidation`, `PublishProfile` or `Deploy-ZipWithPublishProfile`
@@ -262,27 +270,109 @@
 
   All green before PR 2 is raised.
 
+## Phase 2b: remove dev from deployment (Luigi, same branch, one commit before push). Design D20. Sections 6 and 7 come before the manual section 5 runs; section numbers are kept so existing references stay valid.
+
+## 6. Phase 2b: Implementation
+
+- [x] 6.1 Pipeline, in `pipelines/eim.yml`:
+  - Delete the `Deploy_dev` stage.
+  - `Deploy_bat`: `dependsOn: Deploy_shared` and `condition: and(eq(dependencies.Deploy_shared.result, 'Succeeded'), ne(variables['Build.Reason'], 'PullRequest'))`. Keep `devopsEnvironment: eim-wtc-bat`, `runMigrations: false` and its components.
+  - Build stage: `environments: nonprod,bat,test`.
+  - Header comment: environments `eim-wtc-nonprod` (approval + lock), `eim-wtc-bat` and `eim-wtc-test` (approval + lock); no `eim-wtc-dev`.
+
+  In `pipelines/templates/build-package.yml`, drop `dev` from the `environments` parameter comment (and default, if it has one). Proven by test 7.3 (spec `deployment-pipeline`, "No dev stage", "Bat waits for its own approval after shared", "A failed stage stops promotion").
+- [x] 6.2 Configuration:
+  - `git rm script/deployment/config/deploy.dev.json`, and remove its `<File Path="script/deployment/config/deploy.dev.json" />` entry from `ARM.Integration.Wilson.slnx`.
+  - In `script/deployment/config/deploy.nonprod.json`, set `legacy` exactly to the D20 block: add `retiredAutomationApps: ["azf-eim-customer-wtc-dev"]` and the `azf-eim-customer-wtc-dev` (sites, no `removePlan`), `stwtceimcustomerdev` (storage) and `appins-eim-customer-wtc-dev` (Insights) entries before `asp-appservice-p0v3-linux-dev`.
+  - Do not change `deploy.base.json`, `deploy.bat.json` or `deploy.test.json`.
+
+  Proven by tests 7.1 and 7.2 (spec `resource-naming-cutover`, "The legacy dev Automation app is retired without a replacement").
+- [x] 6.3 `script/deployment/Deploy-Wilson.ps1`, the remove guard:
+  - Add the pure function `Get-TriggerGuardApps($Config)`, returning the distinct, non-empty names from `legacy.automationApp` and `legacy.retiredAutomationApps`.
+  - `Invoke-RemoveComponent`: for each guard app that exists, read `Get-EffectiveFunctionStates` and pass every enabled function as `<app>/<function>` in `EnabledLegacyFunctions`. A stopped app with enabled settings still counts as enabled.
+  - `Test-RemoveAllowed`: keep its parameters; its refusal text becomes "a legacy or retired Automation app still has enabled gated functions: <app>/<fn>, ...; run 'cutover' (legacy) or disable them (retired; see the runbook)".
+  - `Get-LegacyNames`: also return `legacy.retiredAutomationApps`.
+  - `cutover` and `rollback` do not read `retiredAutomationApps`.
+
+  Proven by test 7.1 (scenarios "Retired app still consuming", "Retired app stopped but triggers enabled", "Retired app disabled", "Retired Insights already absent", "Legacy still consuming").
+- [x] 6.4 `script/deployment/Deploy-Wilson.ps1`, verify and text:
+  - `Invoke-VerifyComponent`, shared scope: for each name in `legacy.retiredAutomationApps`, `Write-AppReport` labelled "retired Automation (no replacement)" plus `Write-GatedReport`; print "not found" when the app does not exist. Report only, never fails.
+  - Help text, `.EXAMPLE` blocks and the unknown-configuration hint use `bat`/`test` instead of `dev`. Keep the firewall rule name `AllowDev-<USERNAME>`.
+
+  Proven by test 7.1 (the verify plan for `nonprod` lists the retired app; parse check; scenario "Dev configuration rejected").
+- [x] 6.5 `script/deployment/New-DeploymentPackage.ps1`: default `-Environment` becomes `@('nonprod', 'bat', 'test')`; update the `.EXAMPLE` and the generated `README.txt` text so neither names `dev`. Proven by test 7.1 (AST check of the default) and by the Build stage in 5.4.
+- [x] 6.6 Docs, replacing every `dev` stage, DevOps environment, Automation app and cutover reference with `bat`/`test`, and keeping the `DEV`/`DEV2` ENVIRONMENT-value text:
+  - `docs/deployment/deployment.md`: stage diagram and stage table without `Deploy_dev`; configurations `nonprod`, `bat`, `test`; the `eimdb_dev` paragraph says it is not a deployment target and points to local development.
+  - `docs/deployment/devops-setup.md`: no `eim-wtc-dev` row; delete `eim-wtc-dev` if it was created.
+  - `docs/deployment/resource-rename-cutover.md`: provisioning text without `Deploy_dev`; replace the dev cutover with the "Retire legacy dev" step from D20 (disable the six triggers with `az functionapp config appsettings set`, `verify -Environment nonprod`, check `dev-*` queue depth with `az servicebus queue show --query countDetails`, leave the app until `remove -Environment nonprod`); bat then test cutover; decommission order `bat`, `test`, `nonprod`; old → new table marks the dev row "retired, no replacement".
+  - `docs/deployment/deploy-from-scratch.md`: configurations and stages without `dev`; `eimdb_dev` wording as above.
+  - `docs/deployment/database-migrations.md`: shared-stage text without `dev`; new "Local database" section (local SQL Server or LocalDB, `CREATE DATABASE eimdb`, `EIMDB_MIGRATOR_CONNECTION=Server=localhost;Database=eimdb;Integrated Security=true;TrustServerCertificate=true`, `dotnet run --project ARM.Integration.DbMigrator`, optional `--whatif`; only merged migrations reach the shared `eimdb`).
+  - `pipelines/README.md`: stage list without `Deploy_dev`.
+  - `README.md`: new "Local development" section (local SQL `eimdb` via the migrator, Azurite, settings from the samples, a local `ENVIRONMENTTABLE` row never committed, never consume `bat-*`/`test-*` queues, never point a queue-consuming local host at the shared `eimdb`, `dev-*` queues as the default local target) and remove `dev` from the deployment summary.
+  - `CLAUDE.md`: the Deployment bullet's order becomes `Build → Deploy_shared → Deploy_bat → Deploy_test`.
+
+  Proven by test 7.5 and review.
+- [x] 6.7 Local settings samples: in `Wilson.Integration.Automation/local.settings.sample.json` and `ARM.Integration.D365FSC.Gateway/local.settings.sample.json`, change the `EIMDB` placeholder to `<local SQL Server eimdb connection string>`. No key is added or removed; `AzureWebJobsStorage` stays `UseDevelopmentStorage=true`. Proven by test 7.4 and by `SecretScanTests` (2.7).
+
+## 7. Phase 2b: Tests
+
+- [x] 7.1 Update `script/deployment/Test-DeployWilson.ps1`:
+  - Move every `dev` fixture to `bat`: the `Get-ResourceNames` expectations, the scope rejection of `schema`/`gateway`/`backend`/`frontend`, the environment-scope `infra` plan (`azf-eim-automation-wtc-bat`), the Automation settings and the drift fixtures. The legacy-dev entries in the `Test-RemoveAllowed` fixtures may stay, as they are now `nonprod` legacy entries.
+  - New assertions:
+    - the configuration names are exactly `bat`, `nonprod`, `test`, and `Get-DeployConfig 'dev'` throws naming `dev`
+    - `Get-ResourceNames` for every configuration never yields `azf-eim-automation-wtc-dev`, `stwtceimautodev` or `appins-eim-automation-wtc-dev`
+    - `Get-TriggerGuardApps` returns exactly `azf-eim-customer-wtc-dev` for `nonprod` (it has no `legacy.automationApp`, and the legacy gateway is not a guard app), exactly `azf-eim-customer-wtc-bat` for `bat`, and no duplicates or blanks for a fixture that lists the same app in both keys and an empty string
+    - `Test-RemoveAllowed` with `EnabledLegacyFunctions = @('azf-eim-customer-wtc-dev/QueueCaptureCustomer')` refuses, and the message contains `azf-eim-customer-wtc-dev/QueueCaptureCustomer` and `retired`
+    - `Get-LegacyNames` for `nonprod` includes `azf-eim-customer-wtc-dev`, `stwtceimcustomerdev` and `appins-eim-customer-wtc-dev`
+    - the `New-DeploymentPackage.ps1` `-Environment` default, read from its AST, is `nonprod`, `bat`, `test`
+
+  Run: `pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1`.
+- [x] 7.2 Update `Wilson.Integration.Tests/DeploymentConfigTests.cs`:
+  - `EnvironmentConfigurations` = `bat`, `test`; the expected file set = `base`, `bat`, `nonprod`, `test`.
+  - `LegacyNames` also reads `legacy.retiredAutomationApps`.
+  - New: every `retiredAutomationApps` entry is also a `Microsoft.Web/sites` entry in the same `legacy.resources`; `deploy.nonprod.json` lists `azf-eim-customer-wtc-dev` as retired; no config file has `environment: dev`.
+- [x] 7.3 Update `Wilson.Integration.Tests/PipelineDefinitionTests.cs`:
+  - `StageOrder` = `Build`, `Deploy_shared`, `Deploy_bat`, `Deploy_test`; `Deploy_bat` depends on `Deploy_shared` with a `Succeeded` condition.
+  - Remove the `Deploy_dev` `InlineData` and the `Deploy_dev` entry in the migrations loop.
+  - The Build stage contains `environments: nonprod,bat,test`.
+  - New: no file under `pipelines/` contains `Deploy_dev` or `eim-wtc-dev`.
+- [x] 7.4 Add a sample-settings test, in `Wilson.Integration.Tests/RequiredSettingsTests.cs` or a new `LocalSettingsSampleTests.cs`: for both samples, `AzureWebJobsStorage` is `UseDevelopmentStorage=true`, `EIMDB` is a `<...>` placeholder containing `local`, and no value contains `azql-wtc-sandbox` or starts with `bat-` or `test-` (spec `integration-host-layout`, "Samples target local services").
+- [x] 7.5 Extend `Wilson.Integration.Tests/RepositoryLayoutTests.cs`: outside `openspec/changes/**`, `Wilson.Integration.Tests/**` and `script/deployment/Test-DeployWilson.ps1`, no tracked file contains `Deploy_dev`, `eim-wtc-dev`, `deploy.dev.json`, `azf-eim-automation-wtc-dev`, `stwtceimautodev` or `appins-eim-automation-wtc-dev` (spec `resource-naming-cutover`, "No dev Automation resources").
+- [x] 7.6 Run the final checks, all green before the branch is pushed:
+  - `dotnet build ARM.Integration.Wilson.slnx`
+  - `dotnet test ARM.Integration.EIM.Tests/ARM.Integration.EIM.Tests.csproj`
+  - `dotnet test Wilson.Integration.Tests/Wilson.Integration.Tests.csproj`
+  - `dotnet test ARM.Integration.D365FSC.Gateway.Tests/ARM.Integration.D365FSC.Gateway.Tests.csproj`
+  - `npm --prefix ARM.Integration.Dashboard.Frontend run lint`
+  - `pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1`
+
 ## Phase 3: deploy and verify (MANUAL, the user's runbook; not Luigi's). Follow `docs/deployment/resource-rename-cutover.md`.
 
 ## 5. Deploy and verify (manual)
 
 - [ ] 5.1 MANUAL: before merging PR 2, tag the last pre-Phase-2 commit on `main` as `pre-5246-deploy`. Finish or run any remaining #5425 deploy tasks with the old pipelines if wanted.
 - [ ] 5.2 MANUAL: complete the Azure DevOps setup from `docs/deployment/devops-setup.md`:
-  - environments `eim-wtc-nonprod` (approval + exclusive lock), `eim-wtc-dev` (lock), `eim-wtc-bat` and `eim-wtc-test` (approval + lock)
+  - environments `eim-wtc-nonprod`, `eim-wtc-bat` and `eim-wtc-test`, each with approval + exclusive lock. Do not create `eim-wtc-dev`; if it already exists, delete it (Phase 2b, D20).
   - service connection `sc-eim-wtc-nonprod`: workload identity, Contributor on `d365fsc-integration-nonprod` (this also covers the `azql-wtc-sandbox` firewall, which is in the same resource group)
   - variable group `eim-wtc-nonprod` with secret `EIM_DEPLOY_EIMDB`, secret `EIM_DEPLOY_SERVICEBUS`, and `EIM_DEPLOY_CONFIG_OVERRIDES`
   - create the pipeline from `pipelines/eim.yml`
   - repoint the auto-AI PR pipeline to `pipelines/auto-ai-pull-request.yml`
 - [ ] 5.3 MANUAL: commit the Entra tenant/client/audience values to `deploy.base.json` (the Build stage has no variable group, so only committed values reach the SPA build). Supply the subscription and `ExcludedUsers` by a commit or through `EIM_DEPLOY_CONFIG_OVERRIDES`. Check that preflight passes in every stage with a manual run that has `deployCode` cleared and nothing else selected (verify and health are skipped on such a run). That run checks the subscription, names, resource group and gated functions only; confirm the Entra values from the absence of an "entra is incomplete" warning in the Build log, and `excludedUsers` and the secrets in the 5.4 preview step.
 - [ ] 5.4 MANUAL: start a manual run with `deployInfra` and `applySettings` selected, `deployCode` on and `runMigrations` off, and approve each stage. Check:
-  - the Build stage ran `Test-DeployWilson.ps1` and `Test-DeployWilson.ps1 -PackagePath` green
-  - the new plan, Log Analytics workspace, gateway and per-environment Automation apps exist, with the Automation triggers disabled
+  - the Build stage ran `Test-DeployWilson.ps1` and `Test-DeployWilson.ps1 -PackagePath` green, and the package contains `deploy.{base,nonprod,bat,test}.json` and no `deploy.dev.json`
+  - the stages were `Deploy_shared`, `Deploy_bat`, `Deploy_test` (no `Deploy_dev`), each waiting for its approval
+  - the new plan, Log Analytics workspace, gateway and the `bat` and `test` Automation apps exist, with the Automation triggers disabled; no `azf-eim-automation-wtc-dev`, `stwtceimautodev` or `appins-eim-automation-wtc-dev` exists
   - no new dashboard resource was created; `wtc-dashboard-api-dev` and `wtc-dashboard-frontend-dev` received code and settings in place, and the dashboard opens and signs in at its existing URL
   - `PollSchedule` is absent from the new Automation apps
 - [ ] 5.5 MANUAL: run `verify` and note the outbound IPs. Add SQL firewall rules on `azql-wtc-sandbox` unless Azure services are already allowed. Rerun `health`.
 - [ ] 5.6 MANUAL: query `ENVIRONMENTTABLE` and `CONFIGURATIONTABLE` across all rows (every ENVIRONMENT value, including `DEV2`) for the old host names, as given in the runbook, and update any rows found.
-- [ ] 5.7 MANUAL: run `Deploy-Wilson.ps1 -Environment dev -Component cutover`. Verify that the queues drain on the new app, the dashboard shows new rows, and there are no failures in `appins-eim-automation-wtc-dev`. Observe for one day. Run `rollback` if needed.
-- [ ] 5.8 MANUAL: repeat the cutover for `bat`, then for `test`, with the same verification.
+- [ ] 5.7 MANUAL: retire legacy dev (runbook "Retire legacy dev"; D20). There is no dev cutover and no new dev app.
+  - Before: record the active and dead-letter counts of the five `dev-*` queues (`az servicebus queue show --query countDetails`).
+  - Disable the six gated functions on `azf-eim-customer-wtc-dev` (`AzureWebJobs.<fn>.Disabled=true` app settings; stopping the app is not enough for `remove`).
+  - Run `Deploy-Wilson.ps1 -Environment nonprod -Component verify` and check that the retired app shows every gated function disabled.
+  - Drain what is left on the `dev-*` queues with a local host (task 5.14), or record that losing it is accepted. Do not delete the queues or any `DEV`/`DEV2` row.
+  - Set the dashboard Simulation `DEV` row inactive in the dashboard's configuration screen (resolved question 3). Capture dev and the D365 dev endpoints may keep publishing to `dev-*` (resolved question 2); if the queue depth keeps growing, ask their owners to stop.
+- [ ] 5.8 MANUAL: run `Deploy-Wilson.ps1 -Environment bat -Component cutover`. Verify that the queues drain on the new app, the dashboard shows new rows, and there are no failures in `appins-eim-automation-wtc-bat`. Observe for one day; run `rollback` if needed. Then repeat for `test` with the same verification.
 - [ ] 5.9 MANUAL: run `Deploy-Wilson.ps1 -Environment nonprod -Component cutover` to copy the gateway keys, then:
   - Notify the gateway consumers of the new base URL `https://azf-eim-gateway-wtc-nonprod.azurewebsites.net`.
   - Update the `GATEWAYCONSUMER.GATEWAYURL` rows as consumers confirm the switch.
@@ -291,6 +381,7 @@
 - [ ] 5.10 MANUAL: disable the three old pipeline definitions after the first successful new run.
 - [ ] 5.11 MANUAL: after the Automation and gateway cutovers, move `wtc-dashboard-api-dev` to `asp-eim-wtc-nonprod` as the runbook describes (`az webapp update --set serverFarmId=<plan id>`; one restart). If Azure refuses the move, keep it on `asp-appservice-p0v3-linux-dev` and scale that plan down. Afterwards run `verify`, re-check the SQL firewall for the API's outbound IPs, run `health`, and check dashboard sign-in and reprocessing.
 - [ ] 5.12 MANUAL: after the observation window (suggested 7 days with no requests to the legacy gateway), decommission from an operator machine:
-  - Run `remove -WhatIf`, then `remove`, for `dev`, `bat`, `test` and `nonprod`. Confirm the old plan was deleted, or was kept (and named) because the dashboard API is still on it.
+  - Run `remove -WhatIf`, then `remove`, for `bat`, `test` and `nonprod`. The `nonprod` run also deletes the retired legacy dev resources (`azf-eim-customer-wtc-dev`, `stwtceimcustomerdev`, and `appins-eim-customer-wtc-dev` if it exists); it refuses if any of the retired app's gated functions was re-enabled. Confirm the old plan was deleted, or was kept (and named) because the dashboard API is still on it.
   - Delete the old pipeline definitions.
-- [ ] 5.13 MANUAL: follow-up commit, either by Luigi on request or by the user. Empty `gateway.legacyVerificationTargets` and the `legacy` sections in the config, remove the legacy-name exceptions from 4.6, and archive this change with `/opsx:archive`.
+- [ ] 5.13 MANUAL: follow-up commit, either by Luigi on request or by the user. Empty `gateway.legacyVerificationTargets` and the `legacy` sections in the config (including `legacy.retiredAutomationApps` in `deploy.nonprod.json`), remove the legacy-name exceptions from 4.6, and archive this change with `/opsx:archive`.
+- [ ] 5.14 MANUAL (each developer): set up local development as `README.md` "Local development" describes. Create `eimdb` on a local SQL Server (`CREATE DATABASE eimdb`), run `ARM.Integration.DbMigrator` against it, add a local `ENVIRONMENTTABLE` row (never committed), start Azurite, and copy the samples to `local.settings.json`. Point a local host only at the `dev-*` queues (resolved question 1), never at `bat-*`/`test-*` and never, while consuming queues, at the shared `eimdb`. `eimdb_dev` is dropped later by hand, outside this change (resolved question 4).

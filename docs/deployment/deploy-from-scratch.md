@@ -30,14 +30,17 @@ Production is out of scope. It will be a separate stamp with its own configurati
 - the dashboard API and SPA
 - the database migrations
 
-**Per environment**, owned by `dev`, `bat` and `test`:
+**Per environment**, owned by `bat` and `test`:
 
 - the five Service Bus queues
 - the Automation Function App, its storage and its Insights
 - the environment's rows in `ROUTETABLE` and `ENVIRONMENTTABLE`
 
-One database, `eimdb`, serves every non-production environment. `eimdb_dev` exists for local development only,
-and nothing deployed points at it.
+There is no development environment: development runs on a developer's machine against a local database (see
+"Local development" in the repository `README.md`).
+
+One database, `eimdb`, serves every non-production environment. Do not create an `eimdb_dev`; in the existing
+estate it is a leftover that will be dropped by hand.
 
 ## 1. Azure foundations
 
@@ -97,7 +100,7 @@ $env:EIM_DEPLOY_SERVICEBUS = '<service bus connection string>'
 ## 4. Build a package
 
 ```powershell
-./script/deployment/New-DeploymentPackage.ps1 -Environment nonprod, dev, bat, test -Version local
+./script/deployment/New-DeploymentPackage.ps1 -Environment nonprod, bat, test -Version local
 ```
 
 The package lands in `artifacts/package/wtc-eim-deploy-local`. The SPA is built with the Entra values from
@@ -133,7 +136,7 @@ az sql server firewall-rule create -g <resource group> -s <sql server> -n <rule 
 ## 7. Deploy each environment
 
 ```powershell
-foreach ($name in 'dev', 'bat', 'test') {
+foreach ($name in 'bat', 'test') {
     ./script/deployment/Deploy-Wilson.ps1 -Environment $name -Component all -PackagePath artifacts/package/wtc-eim-deploy-local
 }
 ```
@@ -142,7 +145,7 @@ This creates the queues and the Automation app, with every queue and timer trigg
 `cutover`. With no legacy app, it enables every gated trigger except those in `automation.keepDisabled`:
 
 ```powershell
-./script/deployment/Deploy-Wilson.ps1 -Environment dev -Component cutover
+./script/deployment/Deploy-Wilson.ps1 -Environment bat -Component cutover
 ```
 
 ## 8. Complete the environment data

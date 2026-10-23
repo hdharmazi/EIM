@@ -14,7 +14,6 @@
   <Folder Name="/script/config/">
     <File Path="script/deployment/config/deploy.base.json" />
     <File Path="script/deployment/config/deploy.nonprod.json" />
-    <File Path="script/deployment/config/deploy.dev.json" />
     <File Path="script/deployment/config/deploy.bat.json" />
     <File Path="script/deployment/config/deploy.test.json" />
   </Folder>

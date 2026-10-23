@@ -12,7 +12,8 @@ public partial class PipelineDefinitionTests
 {
     private static readonly string Root = RepositoryPaths.Root();
 
-    private static readonly string[] StageOrder = ["Build", "Deploy_shared", "Deploy_dev", "Deploy_bat", "Deploy_test"];
+    // Development runs locally: there is no dev stage.
+    private static readonly string[] StageOrder = ["Build", "Deploy_shared", "Deploy_bat", "Deploy_test"];
 
     private static string ReadFile(params string[] relative) => File.ReadAllText(Path.Combine([Root, .. relative]));
 
@@ -80,6 +81,29 @@ public partial class PipelineDefinitionTests
     }
 
     [Fact]
+    public void Bat_follows_the_shared_stage_directly()
+    {
+        var bat = Stage("Deploy_bat");
+
+        Assert.Equal("Deploy_shared", DependsOn(bat));
+        Assert.Contains("eq(dependencies.Deploy_shared.result, 'Succeeded')", bat);
+    }
+
+    [Fact]
+    public void No_pipeline_file_names_a_dev_stage_or_devops_environment()
+    {
+        // Split so this file does not match its own search.
+        string[] forbidden = ["Deploy_" + "dev", "eim-wtc-" + "dev"];
+
+        foreach (var file in Directory.GetFiles(Path.Combine(Root, "pipelines"), "*", SearchOption.AllDirectories))
+        {
+            var text = File.ReadAllText(file);
+            foreach (var word in forbidden)
+                Assert.False(text.Contains(word, StringComparison.Ordinal), $"{Path.GetRelativePath(Root, file)} contains '{word}'; development runs locally.");
+        }
+    }
+
+    [Fact]
     public void A_newer_run_replaces_an_older_waiting_run()
     {
         Assert.Matches(new Regex(@"^lockBehavior: runLatest\s*$", RegexOptions.Multiline), Pipeline);
@@ -87,7 +111,6 @@ public partial class PipelineDefinitionTests
 
     [Theory]
     [InlineData("Deploy_shared", "nonprod", "eim-wtc-nonprod")]
-    [InlineData("Deploy_dev", "dev", "eim-wtc-dev")]
     [InlineData("Deploy_bat", "bat", "eim-wtc-bat")]
     [InlineData("Deploy_test", "test", "eim-wtc-test")]
     public void Each_deploy_stage_targets_its_configuration_and_devops_environment(string stage, string configuration, string devopsEnvironment)
@@ -104,7 +127,7 @@ public partial class PipelineDefinitionTests
     {
         Assert.Contains("runMigrations: ${{ parameters.runMigrations }}", Stage("Deploy_shared"));
 
-        foreach (var stage in new[] { "Deploy_dev", "Deploy_bat", "Deploy_test" })
+        foreach (var stage in new[] { "Deploy_bat", "Deploy_test" })
         {
             var runMigrations = Regex.Matches(Stage(stage), @"runMigrations: (.+)$", RegexOptions.Multiline).Select(m => m.Groups[1].Value.Trim()).ToList();
             Assert.True(runMigrations.SequenceEqual(["false"]), $"{stage} must pass runMigrations: false, found [{string.Join(", ", runMigrations)}].");
@@ -132,7 +155,7 @@ public partial class PipelineDefinitionTests
         Assert.Contains("artifact: package", build[publish..]);
         Assert.Contains("dotnet test ARM.Integration.Wilson.slnx -c Release", build);
         Assert.Contains("-Environment $environments", build);
-        Assert.Contains("environments: nonprod,dev,bat,test", Stage("Build"));
+        Assert.Contains("environments: nonprod,bat,test", Stage("Build"));
     }
 
     [Fact]

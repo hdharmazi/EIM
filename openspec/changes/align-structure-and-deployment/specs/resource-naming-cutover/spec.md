@@ -14,11 +14,15 @@ The Automation Function Apps, the gateway Function App, the App Service plan, th
 | `appins-d365fsc-gateway-wtc-nonprod` | `appins-eim-gateway-wtc-nonprod` |
 | (none) | `log-eim-wtc-nonprod` |
 
-`{env}` is a deployment configuration (`dev`, `bat`, `test`), not a database ENVIRONMENT value; the `DEV2` ENVIRONMENT value has no Function App before or after this change.
+`{env}` is a deployment configuration (`bat`, `test`), not a database ENVIRONMENT value; the `DEV2` ENVIRONMENT value has no Function App before or after this change. `dev` is not a deployment configuration: no `azf-eim-automation-wtc-dev`, `stwtceimautodev` or `appins-eim-automation-wtc-dev` SHALL be created, and the legacy dev resources are retired with no replacement.
 
 #### Scenario: New app alongside the legacy app
-- **WHEN** `infra` runs for `dev` while `azf-eim-customer-wtc-dev` exists
-- **THEN** `azf-eim-automation-wtc-dev` is created and the legacy app is not modified
+- **WHEN** `infra` runs for `bat` while `azf-eim-customer-wtc-bat` exists
+- **THEN** `azf-eim-automation-wtc-bat` is created and the legacy app is not modified
+
+#### Scenario: No dev Automation resources
+- **WHEN** the resource names are derived for every deployment configuration
+- **THEN** none of them is `azf-eim-automation-wtc-dev`, `stwtceimautodev` or `appins-eim-automation-wtc-dev`
 
 #### Scenario: Kept resources untouched
 - **WHEN** `infra` runs for any configuration
@@ -64,8 +68,8 @@ When settings are applied to an Automation app, every gated function (the Automa
 Only then SHALL it enable on the new app exactly the functions that were enabled on the legacy app. At no time SHALL a gated function be enabled on both apps.
 
 #### Scenario: Successful cutover
-- **WHEN** an operator runs `cutover` for `dev` with all six functions enabled on `azf-eim-customer-wtc-dev`
-- **THEN** all six are disabled on the legacy app, the lock duration elapses, and all six are enabled on `azf-eim-automation-wtc-dev`
+- **WHEN** an operator runs `cutover` for `bat` with all six functions enabled on `azf-eim-customer-wtc-bat`
+- **THEN** all six are disabled on the legacy app, the lock duration elapses, and all six are enabled on `azf-eim-automation-wtc-bat`
 
 #### Scenario: Disabled function stays disabled
 - **WHEN** `AwaitingD365SweepHandler` is disabled on the legacy app at cutover
@@ -123,7 +127,7 @@ It SHALL refuse when the legacy app no longer exists.
 - the `TF_BUILD` environment variable is set
 - it has not first been run with `-WhatIf` for the same configuration
 - the operator does not confirm the configuration name
-- any legacy Automation gated function is enabled
+- any gated function is enabled on the configuration's legacy Automation app or on any app in its `legacy.retiredAutomationApps`
 - a legacy name equals a current derived or overridden name
 
 The pipeline SHALL NOT invoke `remove`.
@@ -133,7 +137,7 @@ The pipeline SHALL NOT invoke `remove`.
 - **THEN** it refuses and deletes nothing
 
 #### Scenario: Legacy still consuming
-- **WHEN** `remove` runs for `dev` while a gated function on `azf-eim-customer-wtc-dev` is enabled
+- **WHEN** `remove` runs for `bat` while a gated function on `azf-eim-customer-wtc-bat` is enabled
 - **THEN** it refuses, naming the function
 
 #### Scenario: Shared plan still in use
@@ -147,3 +151,30 @@ The pipeline SHALL NOT invoke `remove`.
 #### Scenario: Stateful resources never removed
 - **WHEN** a `legacy` entry names a SQL server, Service Bus namespace, Key Vault, resource group or static web app
 - **THEN** `remove` refuses that entry
+
+### Requirement: The legacy dev Automation app is retired without a replacement
+The legacy dev resources (`azf-eim-customer-wtc-dev`, `stwtceimcustomerdev`, `appins-eim-customer-wtc-dev`) SHALL be listed in the `legacy.resources` of `deploy.nonprod.json`, and `azf-eim-customer-wtc-dev` SHALL be listed in its `legacy.retiredAutomationApps`. No deployment configuration named `dev` SHALL exist. `remove` for `nonprod` SHALL delete the legacy dev resources under every guard of the manual `remove`, and SHALL refuse while any gated function on a retired app is enabled. `cutover` and `rollback` SHALL NOT change the trigger state of a retired app. `verify` for `nonprod` SHALL report each retired app's state and gated trigger states, and SHALL report a missing retired app as not found without failing. The `dev-*` Service Bus queues and every `DEV`/`DEV2` database row SHALL be left unchanged.
+
+#### Scenario: Retired app still consuming
+- **WHEN** `remove` runs for `nonprod` while `QueueCaptureCustomer` is enabled on `azf-eim-customer-wtc-dev`
+- **THEN** it refuses, naming `azf-eim-customer-wtc-dev` and `QueueCaptureCustomer`, and deletes nothing
+
+#### Scenario: Retired app disabled
+- **WHEN** every gated function on `azf-eim-customer-wtc-dev` is disabled and `remove -WhatIf` runs for `nonprod`
+- **THEN** `azf-eim-customer-wtc-dev`, `stwtceimcustomerdev` and, if it exists, `appins-eim-customer-wtc-dev` are listed for deletion alongside the legacy gateway resources
+
+#### Scenario: Retired Insights already absent
+- **WHEN** `appins-eim-customer-wtc-dev` does not exist and `remove` runs for `nonprod`
+- **THEN** it is reported as not found and the other entries are processed
+
+#### Scenario: Retired app stopped but triggers enabled
+- **WHEN** `azf-eim-customer-wtc-dev` is stopped but its `AzureWebJobs.<function>.Disabled` settings are absent or `false`
+- **THEN** `remove` for `nonprod` refuses, naming the enabled functions
+
+#### Scenario: Dev configuration rejected
+- **WHEN** an operator runs `Deploy-Wilson.ps1 -Environment dev` with any component
+- **THEN** the script fails naming the unknown configuration `dev` and listing `bat`, `nonprod` and `test`, and changes nothing
+
+#### Scenario: Dev queues and rows untouched
+- **WHEN** `infra`, `settings`, `cutover` or `remove` runs for any configuration
+- **THEN** no `dev-*` queue is created, changed or deleted and no database row is changed

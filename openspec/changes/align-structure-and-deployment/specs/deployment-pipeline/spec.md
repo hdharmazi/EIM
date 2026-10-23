@@ -1,19 +1,23 @@
 ## ADDED Requirements
 
 ### Requirement: One build is promoted through the environments in order
-Each run of `pipelines/eim.yml` SHALL produce one package artifact, containing the Automation host, the gateway, the dashboard API, one shared dashboard frontend and the database migrator. That same artifact SHALL be deployed by the stages `Deploy_shared`, `Deploy_dev`, `Deploy_bat` and `Deploy_test`, in that order. A stage SHALL start only after the previous stage succeeded, and no stage SHALL rebuild from source.
+Each run of `pipelines/eim.yml` SHALL produce one package artifact, containing the Automation host, the gateway, the dashboard API, one shared dashboard frontend and the database migrator. That same artifact SHALL be deployed by the stages `Deploy_shared`, `Deploy_bat` and `Deploy_test`, in that order. A stage SHALL start only after the previous stage succeeded, and no stage SHALL rebuild from source. The pipeline SHALL have no stage, DevOps environment or packaged configuration for `dev`; development happens on a developer's machine.
 
-#### Scenario: Test receives the build dev received
-- **WHEN** run `eim-20261101.1` has deployed to `nonprod`, `dev` and `bat` and `test` is approved
+#### Scenario: Test receives the build bat received
+- **WHEN** run `eim-20261101.1` has deployed to `nonprod` and `bat` and `test` is approved
 - **THEN** `test` is deployed from the `eim-20261101.1` package without rebuilding
 
 #### Scenario: A failed stage stops promotion
-- **WHEN** the `Deploy_dev` stage of a run fails
+- **WHEN** the `Deploy_shared` stage of a run fails
 - **THEN** the `Deploy_bat` and `Deploy_test` stages of that run do not start
 
 #### Scenario: A rejected stage stops promotion
 - **WHEN** the `Deploy_bat` approval is rejected
 - **THEN** `Deploy_test` does not start
+
+#### Scenario: No dev stage
+- **WHEN** `pipelines/eim.yml` is inspected
+- **THEN** its stages are exactly `Build`, `Deploy_shared`, `Deploy_bat` and `Deploy_test`, no file under `pipelines/` names `Deploy_dev` or `eim-wtc-dev`, and the `Build` stage packages the configurations `nonprod`, `bat` and `test`
 
 #### Scenario: Pull requests build and test only
 - **WHEN** the pipeline runs for a pull request to `main`
@@ -24,15 +28,15 @@ Each run of `pipelines/eim.yml` SHALL produce one package artifact, containing t
 - **THEN** no package artifact is published and no deploy stage runs
 
 ### Requirement: Approval gates and locks per environment
-Each deploy stage SHALL target its own Azure DevOps environment: `eim-wtc-nonprod`, `eim-wtc-dev`, `eim-wtc-bat` and `eim-wtc-test`. `eim-wtc-dev` SHALL deploy without approval. `eim-wtc-nonprod`, `eim-wtc-bat` and `eim-wtc-test` SHALL require approval before any step that changes Azure. Every environment SHALL hold an exclusive lock, and a newer run waiting at an environment SHALL replace an older one that has not started there. The pipeline YAML SHALL NOT contain manual validation tasks; approvals live on the environments.
+Each deploy stage SHALL target its own Azure DevOps environment: `eim-wtc-nonprod`, `eim-wtc-bat` and `eim-wtc-test`. Each of them SHALL require approval before any step that changes Azure. Every environment SHALL hold an exclusive lock, and a newer run waiting at an environment SHALL replace an older one that has not started there. The pipeline YAML SHALL NOT contain manual validation tasks; approvals live on the environments.
 
 #### Scenario: Shared stage waits for approval
 - **WHEN** a merge run's `Build` stage succeeds
 - **THEN** `Deploy_shared` waits for approval and changes nothing before it is granted
 
-#### Scenario: Dev follows shared without approval
+#### Scenario: Bat waits for its own approval after shared
 - **WHEN** `Deploy_shared` succeeds
-- **THEN** `Deploy_dev` starts without waiting for an approver
+- **THEN** `Deploy_bat` starts next and waits for approval on `eim-wtc-bat` before changing anything
 
 #### Scenario: Concurrent deployments to one environment
 - **WHEN** a second run reaches `eim-wtc-bat` while another run is deploying to it
@@ -75,8 +79,8 @@ Messages SHALL name the setting and app without any value.
 - **THEN** `Deploy_shared` fails at preflight, naming `entra.tenantId`
 
 #### Scenario: Code-only run against an app missing a setting
-- **WHEN** a merge run would deploy to `dev` and `azf-eim-automation-wtc-dev` has no `RetrySweepSchedule`
-- **THEN** `Deploy_dev` fails before deploying code, naming the setting and app and stating that a manual run with `applySettings` is needed
+- **WHEN** a merge run would deploy to `bat` and `azf-eim-automation-wtc-bat` has no `RetrySweepSchedule`
+- **THEN** `Deploy_bat` fails before deploying code, naming the setting and app and stating that a manual run with `applySettings` is needed
 
 #### Scenario: Changed value only warns
 - **WHEN** a code-only run finds `RetrySweepBatchSize` on the app differs from the configuration
@@ -111,11 +115,11 @@ Objects SHALL merge key by key, and lists and plain values SHALL be replaced. A 
 
 #### Scenario: Shared value changed once
 - **WHEN** `automation.retryMaxAttempts` is changed in `deploy.base.json`
-- **THEN** `dev`, `bat` and `test` all receive it on their next settings run
+- **THEN** `bat` and `test` both receive it on their next settings run
 
 #### Scenario: Environment override
 - **WHEN** `deploy.test.json` sets `automation.retrySweepBatchSize`
-- **THEN** `test` uses its own value and `dev` and `bat` keep the base value
+- **THEN** `test` uses its own value and `bat` keeps the base value
 
 #### Scenario: Pipeline override
 - **WHEN** the variable group sets `EIM_DEPLOY_CONFIG_OVERRIDES` to `{"subscriptionId":"..."}`

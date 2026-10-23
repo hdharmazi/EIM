@@ -10,8 +10,10 @@ produces table-not-found errors; it is not a supported deployment mode.
 
 `script/deployment/Deploy-Wilson.ps1 -Environment nonprod -Component schema` runs the migrator, using the
 self-contained `ARM.Integration.DbMigrator.exe` carried in the deployment package. `schema` belongs to the
-shared configuration (`nonprod`) only; the per-environment configurations (`dev`, `bat`, `test`) reject it,
+shared configuration (`nonprod`) only; the per-environment configurations (`bat`, `test`) reject it,
 because there is one `eimdb` for all of them. See [deployment.md](deployment.md).
+
+Local development uses its own database (see "Local database" below), never the shared `eimdb`.
 
 ## When migrations run, and the expand/contract rule
 
@@ -125,6 +127,37 @@ Exit codes:
 Each versioned script runs in its own transaction. A failure part-way through a run leaves earlier
 scripts applied and journaled, and the failing script neither applied nor journaled. Fix forward
 and re-run; the already-applied scripts are skipped.
+
+## Local database
+
+There is no deployed development environment. A developer runs the hosts on their own machine
+against a local `eimdb`, built by the same migrator:
+
+1. Install SQL Server Developer or Express, or use LocalDB (`(localdb)\MSSQLLocalDB`).
+2. Create the database:
+
+   ```sql
+   CREATE DATABASE eimdb;
+   ```
+
+3. Apply every migration:
+
+   ```powershell
+   $env:EIMDB_MIGRATOR_CONNECTION = 'Server=localhost;Database=eimdb;Integrated Security=true;TrustServerCertificate=true'
+   dotnet run --project ARM.Integration.DbMigrator -- --whatif   # optional preview
+   dotnet run --project ARM.Integration.DbMigrator
+   ```
+
+   For LocalDB, use `Server=(localdb)\MSSQLLocalDB` instead of `Server=localhost`.
+
+4. Point `EIMDB` in your `local.settings.json` at the same database.
+
+Run the migrator again after pulling new migrations. A migration you are writing can be applied,
+dropped and re-applied locally as often as needed (drop and recreate the database to start over).
+Only merged migrations reach the shared `eimdb`, through the pipeline's `Deploy_shared` stage.
+
+The `eimdb_dev` catalog on the shared SQL server is a leftover of the old development setup and
+will be dropped by hand. Do not point a local host at it, or at the shared `eimdb`.
 
 ## Baselining an existing database
 
@@ -321,7 +354,7 @@ separate invocation:
 # 1. Code. The new build validates cleanly: no route names the new orchestration yet.
 #    A pipeline run with runMigrations cleared, or by hand from the package:
 ./Deploy-Wilson.ps1 -Environment nonprod -Component backend   # reprocess uses the same registry
-./Deploy-Wilson.ps1 -Environment dev -Component automation    # then bat, then test
+./Deploy-Wilson.ps1 -Environment bat -Component automation    # then test
 
 # 2. Confirm each host started and logged "Route validation passed" before continuing.
 
