@@ -9,12 +9,13 @@ Integration services moving data between Capture, Microsoft Dynamics 365 Finance
 | `ARM.Integration.Core` | Shared helpers and models (e.g. `EntityKey`, `MissingEntityKeyException`) |
 | `ARM.Integration.EIM` | Integration engine: orchestration base classes, routing, ingest/hold gates, retry and failure classification |
 | `Wilson.Integration.Orchestrations` | Concrete orchestrations (`<Entity>_To_<Target>`), Capture contracts, and `OrchestrationRegistry` |
-| `ARM.Integration.EIM.Customer` | Azure Functions worker (Service Bus + timer sweeps) |
+| `Wilson.Integration.Automation` | Azure Functions worker (Service Bus + timer sweeps): thin triggers in `Functions/`, processing in `Inbound/` and `Outbound/` |
 | `ARM.Integration.D365FSC.Gateway` | Shared D365 F&SC HTTP gateway (auth, idempotency, forwarding) |
 | `ARM.Integration.Dashboard.API` | Dashboard and simulation API; also reprocesses messages |
 | `ARM.Integration.Dashboard.Frontend` | React 18 + Vite + TypeScript + Tailwind/Radix UI |
 | `ARM.Integration.DbMigrator` | DbUp runner for `script/SQL/Migrations` and `script/SQL/Repeatable` |
-| `*.Tests` | xUnit tests for EIM and Gateway |
+| `ARM.Integration.EIM.Tests`, `ARM.Integration.D365FSC.Gateway.Tests` | xUnit tests for the engine and the Gateway |
+| `Wilson.Integration.Tests` | xUnit tests for client code (Orchestrations, Automation host) and repository layout |
 
 Stack: .NET 10, Azure Functions isolated worker, Azure Service Bus, Azure SQL (`eimdb`), Node 22.
 
@@ -24,8 +25,10 @@ Stack: .NET 10, Azure Functions isolated worker, Azure Service Bus, Azure SQL (`
 dotnet build ARM.Integration.Wilson.slnx
 dotnet test ARM.Integration.EIM.Tests/ARM.Integration.EIM.Tests.csproj
 dotnet test ARM.Integration.D365FSC.Gateway.Tests/ARM.Integration.D365FSC.Gateway.Tests.csproj
+dotnet test Wilson.Integration.Tests/Wilson.Integration.Tests.csproj
 npm --prefix ARM.Integration.Dashboard.Frontend run lint     # tsc --noEmit
 npm --prefix ARM.Integration.Dashboard.Frontend run build
+pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1   # deploy script self-test
 ```
 
 ## Conventions and pitfalls
@@ -36,6 +39,9 @@ npm --prefix ARM.Integration.Dashboard.Frontend run build
 - **Failure classification**: new exception types must be classified in `DefaultFailureClassifier` (terminal vs transient) and covered in `FailureClassifierTests`.
 - **SQL**: versioned scripts go in `script/SQL/Migrations/NNN_description.sql` with the next number. `CREATE OR ALTER` objects go in `script/SQL/Repeatable/R__<object>.sql`. Never rename or edit an applied migration. See `docs/deployment/database-migrations.md`.
 - **Secrets**: never commit connection strings, keys, or `local.settings.json` values.
+- **Deployment**: two pipelines run one script, `script/deployment/Deploy-Wilson.ps1`. `pipelines/eim.yml` runs Build → Deploy_bat → Deploy_test. `pipelines/eim-prd.yml` (manual) runs Deploy_prd, promoting a package from an `eim` run on `main`. Configuration is `script/deployment/config/deploy.base.json` + `deploy.<name>.json` for `bat` (owns the non-production resources), `test` (`"uses": "bat"`) and `prd` (isolated) (no secrets). `automation.triggersEnabled` (and `automation.keepDisabled`) controls the gated triggers; new Automation queue or timer functions must be added to `automation.gatedFunctions`. See `docs/deployment/deployment.md` and `docs/deployment/production-go-live.md`.
+- **Production config**: a new `deploy.base.json` key that identifies non-production must be reset in `deploy.prd.json`. `DeploymentConfigTests` guards the known keys.
+- **Per-environment seeds**: a migration that seeds rows per environment (routes, etc.) must include `PRD` and be safe on both the non-production `eimdb` and the production database.
 - **Branches**: `feature/<ticket>/<slug>` or `bug/<ticket>/<slug>`. Commit messages start with `#<ticket>` when there is one.
 
 ## Spec-driven workflow (OpenSpec)

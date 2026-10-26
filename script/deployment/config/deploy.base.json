@@ -1,0 +1,72 @@
+{
+  "client": "wtc",
+  "workload": "eim",
+  "production": false,
+  "location": "centralus",
+  "subscriptionId": "<subscription id or name>",
+  "appServicePlan": {
+    "sku": "P0v3"
+  },
+  "serviceBus": {
+    "sku": "Standard"
+  },
+  "serviceBusQueues": [
+    { "name": "d365fsc-dataevent", "setting": "D365FscDataEventQueue" },
+    { "name": "d365fsc-businessevents", "setting": "D365BusinessEventQueue" },
+    { "name": "d365fsc-to-capture", "setting": "D365ToCaptureQueue" },
+    { "name": "capture-to-d365fsc", "setting": "CaptureToD365Queue" },
+    { "name": "capture-to-d365fsc-response", "setting": "CaptureToD365QueueResponse" }
+  ],
+  "logAnalytics": {
+    "retentionDays": 30
+  },
+  "sql": {
+    "sku": "S0",
+    "backupRedundancy": "Local",
+    "firewall": "appOutboundIps",
+    "entraAdmin": "",
+    "entraAdminObjectId": "",
+    "entraAdminType": "Group"
+  },
+  "entra": {
+    "tenantId": "<dashboard entra tenant id>",
+    "clientId": "<dashboard entra client id>",
+    "audience": "<api://... or client id>",
+    "scope": "user_impersonation"
+  },
+  "gateway": {
+    "baseUrl": null,
+    "maxRequestBytes": 4194304,
+    "idempotencyRetention": "1.00:00:00",
+    "idempotencyPurgeSchedule": "0 15 * * * *"
+  },
+  "automation": {
+    "excludedUsers": "<semicolon separated user guids>",
+    "awaitingD365SweepSchedule": "0 */15 * * * *",
+    "awaitingD365StuckTimeoutHours": "4",
+    "releaseSweepSchedule": "0 */1 * * * *",
+    "releaseSweepBatchSize": "100",
+    "retrySweepSchedule": "0 */1 * * * *",
+    "retrySweepBatchSize": "100",
+    "retryMaxAttempts": "5",
+    "retryBaseDelaySeconds": "30",
+    "retryMaxDelaySeconds": "1800",
+    "gatedFunctions": [
+      "AwaitingD365SweepHandler",
+      "QueueCaptureCustomer",
+      "QueueDataEventsHandler",
+      "QueueMessageQueueBusinessEventHandler",
+      "ReleaseSweepHandler",
+      "RetrySweepHandler"
+    ],
+    "triggersEnabled": false,
+    "keepDisabled": [],
+    "retiredSettings": [
+      "PollSchedule"
+    ]
+  },
+  "dashboard": {
+    "simulationEnabled": true,
+    "simulationQueuePrefix": "bat"
+  }
+}

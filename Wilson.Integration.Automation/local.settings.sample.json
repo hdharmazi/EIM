@@ -1,0 +1,25 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "EIMDB": "<local SQL Server eimdb connection string>",
+    "ServiceBus": "<service bus connection string>",
+    "D365FscDataEventQueue": "<your queue prefix>-d365fsc-dataevent",
+    "D365BusinessEventQueue": "<your queue prefix>-d365fsc-businessevents",
+    "D365ToCaptureQueue": "<your queue prefix>-d365fsc-to-capture",
+    "CaptureToD365Queue": "<your queue prefix>-capture-to-d365fsc",
+    "CaptureToD365QueueResponse": "<your queue prefix>-capture-to-d365fsc-response",
+    "AwaitingD365SweepSchedule": "0 */15 * * * *",
+    "AwaitingD365StuckTimeoutHours": "4",
+    "ReleaseSweepSchedule": "0 */1 * * * *",
+    "ReleaseSweepBatchSize": "100",
+    "RetrySweepSchedule": "0 */1 * * * *",
+    "RetrySweepBatchSize": "100",
+    "RetryMaxAttempts": "5",
+    "RetryBaseDelaySeconds": "30",
+    "RetryMaxDelaySeconds": "1800",
+    "DefaultEnvironment": "<ENVIRONMENT value in eimdb, for example DEV>",
+    "ExcludedUsers": "<semicolon separated Entra object ids>"
+  }
+}

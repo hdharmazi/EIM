@@ -2,21 +2,34 @@
 
 ## Deployment
 
-`deployment/Deploy-Eim.ps1` is the manual nonprod deployment orchestrator. It accepts `dev`, `bat`, or `test` and deploys selected components in dependency order.
+| Script | Does |
+|---|---|
+| `deployment/Deploy-Wilson.ps1` | deploys one configuration (`bat`, `test`, `prd`): infrastructure, SQL server, settings, schema, database users, code, verify and health. It creates what is missing and deletes no Azure resource |
+| `deployment/New-DeploymentPackage.ps1` | builds the package the deploy script consumes (zips, migrator, manifest) |
+| `deployment/Test-DeployWilson.ps1` | dependency-free self-test of both scripts; with `-PackagePath`, also checks a built package |
 
 ```powershell
-# Preview all components for dev
-.\script\deployment\Deploy-Eim.ps1 -Environment dev -Component all -WhatIf
+# Build a package
+.\script\deployment\New-DeploymentPackage.ps1 -Environment bat, test -Version local
 
-# Deploy one component
-.\script\deployment\Deploy-Eim.ps1 -Environment bat -Component function
+# Preview everything for bat
+.\script\deployment\Deploy-Wilson.ps1 -Environment bat -Component all -WhatIf -PackagePath artifacts\package\wtc-eim-deploy-local
+
+# Self-test
+pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1
 ```
 
-Environment files under `deployment/config/` are tracked so resource names and non-secret settings
-can be reviewed. Keep their connection-string fields as placeholders. Supply credentials at runtime
-through `EIM_DEPLOY_EIMDB` and `EIM_DEPLOY_SERVICEBUS`; never commit real secret values.
+The configurations are in `deployment/config/`: `deploy.base.json` plus one `deploy.<name>.json` per
+configuration. `bat` and `prd` own their resources; `test` has `"uses": "bat"` and deploys only its queues and
+Automation app. A configuration with `uses` may also own its Key Vault and Log Analytics workspace by setting
+`names.keyVault` or `names.logAnalytics` (see deployment.md). They are tracked so names and non-secret settings can be reviewed, and they hold no secrets. The
+script needs none either: the apps reach SQL with their managed identities, the deployer signs in with its
+`az login`, and the Service Bus connection is kept in Key Vault.
 
-`deployment/Deploy-ZipWithPublishProfile.ps1` is the generic Kudu ZIP-deploy helper used by Azure DevOps pipelines.
+The Service Bus queues each configuration creates and binds to are listed in `serviceBusQueues` in
+`deploy.base.json`; see [Service Bus queues](../docs/deployment/deployment.md#service-bus-queues).
+
+The pipelines that run these are `pipelines/eim.yml` and `pipelines/eim-prd.yml`. See [docs/deployment/deployment.md](../docs/deployment/deployment.md).
 
 ## Database
 

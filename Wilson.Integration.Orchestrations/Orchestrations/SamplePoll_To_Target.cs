@@ -7,7 +7,8 @@ namespace Wilson.Integration.Orchestrations;
 /// <summary>
 /// SAMPLE: Demonstrates a polling-based forward orchestration.
 /// 
-/// This orchestration receives raw JSON from a source API (via PollSourceHandler),
+/// This orchestration is a template for a polling source; no polling trigger exists in this
+/// repository. It receives raw JSON from a source API,
 /// maps it to the destination format, and forwards to a queue.
 /// 
 /// Unlike D365EventForwardOrchestration, there's no EventContext parsing or change tracking —

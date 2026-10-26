@@ -1,0 +1,123 @@
+# Wilson EIM: one build of the Automation host, gateway, dashboard and migrator, deployed to bat (which owns the
+# non-production resources) and then to test (which uses bat's). Development is local only; there is no dev stage.
+#
+# One-time setup (docs/deployment/devops-setup.md):
+#   - Azure DevOps environments: eim-wtc-bat and eim-wtc-test (approval + exclusive lock)
+#   - ARM service connection 'sc-eim-wtc-nonprod' (workload identity, Contributor on d365fsc-integration-nonprod).
+#     Its service principal must be a member of the SQL server's Entra admin group for migrations and
+#     database access.
+#   - Library variable group 'eim-wtc-nonprod': only the optional EIM_DEPLOY_CONFIG_OVERRIDES (JSON merged over
+#     the configuration). There are no deployment secrets.
+# A merge deploys code only. Infrastructure, app settings, migrations and database access run only when ticked on a
+# manual run. Migrations run in Deploy_bat, before test's code: they must be expand-only
+# (docs/deployment/database-migrations.md).
+
+parameters:
+  - name: deployInfra
+    displayName: Infrastructure (plan, apps, storage, Insights, queues; SQL for bat)
+    type: boolean
+    default: false
+  - name: applySettings
+    displayName: Apply app settings
+    type: boolean
+    default: false
+  - name: runMigrations
+    displayName: Run database migrations (bat stage only)
+    type: boolean
+    default: false
+  - name: grantDatabaseAccess
+    displayName: Grant database access to the apps (sqlusers)
+    type: boolean
+    default: false
+  - name: deployCode
+    displayName: Deploy code (gateway, dashboard, Automation)
+    type: boolean
+    default: true
+
+name: eim-$(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - Wilson.Integration.*
+      - ARM.Integration.*
+      - script/SQL
+      - script/deployment
+      - pipelines
+    exclude:
+      - '**/*.md'
+
+# Pull requests run the Build stage only; every deploy stage is skipped for them.
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - Wilson.Integration.*
+      - ARM.Integration.*
+      - script/SQL
+      - script/deployment
+      - pipelines
+    exclude:
+      - '**/*.md'
+
+# A newer run waiting at an environment replaces an older one that was never approved.
+lockBehavior: runLatest
+
+stages:
+  - stage: Build
+    jobs:
+      - template: templates/build-package.yml
+        parameters:
+          # prd is packaged, not deployed here: eim-prd.yml promotes this package to production.
+          environments: bat,test,prd
+          # Runs that change settings or the schema are recognisable in the run list.
+          ${{ if and(parameters.applySettings, parameters.runMigrations) }}:
+            buildNumberSuffix: +settings+migrations
+          ${{ elseif parameters.applySettings }}:
+            buildNumberSuffix: +settings
+          ${{ elseif parameters.runMigrations }}:
+            buildNumberSuffix: +migrations
+
+  # bat owns the non-production resources: Service Bus namespace, Key Vault, SQL server and eimdb, plan, gateway,
+  # dashboard API and SPA, and its own Automation app.
+  - stage: Deploy_bat
+    displayName: Deploy bat
+    dependsOn: Build
+    condition: and(eq(dependencies.Build.result, 'Succeeded'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - template: templates/deploy-environment.yml
+        parameters:
+          environment: bat
+          devopsEnvironment: eim-wtc-bat
+          ownsResources: true
+          deployInfra: ${{ parameters.deployInfra }}
+          applySettings: ${{ parameters.applySettings }}
+          runMigrations: ${{ parameters.runMigrations }}
+          grantDatabaseAccess: ${{ parameters.grantDatabaseAccess }}
+          ${{ if parameters.deployCode }}:
+            components: gateway, backend, frontend, automation
+
+  # test uses bat's resources: only its queues and its Automation app are its own.
+  - stage: Deploy_test
+    displayName: Deploy test
+    dependsOn: Deploy_bat
+    # Succeeded, not skipped: a rejected or failed bat stage stops test.
+    condition: and(eq(dependencies.Deploy_bat.result, 'Succeeded'), ne(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - template: templates/deploy-environment.yml
+        parameters:
+          environment: test
+          devopsEnvironment: eim-wtc-test
+          ownsResources: false
+          deployInfra: ${{ parameters.deployInfra }}
+          applySettings: ${{ parameters.applySettings }}
+          # test shares bat's database; migrations run in Deploy_bat only.
+          runMigrations: false
+          grantDatabaseAccess: ${{ parameters.grantDatabaseAccess }}
+          ${{ if parameters.deployCode }}:
+            components: automation

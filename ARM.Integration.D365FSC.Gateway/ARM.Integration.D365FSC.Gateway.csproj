@@ -9,6 +9,12 @@
     <RootNamespace>ARM.Integration.D365FSC.Gateway</RootNamespace>
   </PropertyGroup>
 
+  <!-- The Functions host only reads local.settings.json; -p:LocalSettings=mydev copies local.settings.mydev.json in its place. -->
+  <PropertyGroup>
+    <LocalSettingsFile>local.settings.json</LocalSettingsFile>
+    <LocalSettingsFile Condition="'$(LocalSettings)' != '' And Exists('local.settings.$(LocalSettings).json')">local.settings.$(LocalSettings).json</LocalSettingsFile>
+  </PropertyGroup>
+
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="2.51.0" />
@@ -23,7 +29,10 @@
 
   <ItemGroup>
     <None Update="host.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Update="local.settings.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" />
+    <None Include="$(LocalSettingsFile)" Condition="Exists('$(LocalSettingsFile)')" Link="local.settings.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

@@ -23,6 +23,10 @@ default; it must always be supplied.
 One gateway serves every non-production environment. The environment in the path selects the D365
 profile, so the host name does not change when you target a different one — only the path does.
 
+The non-production gateway is `https://azf-eim-gateway-wtc-bat.azurewebsites.net`. It is a new app, so
+keys issued on any earlier gateway app do not work there; each consumer gets a new key (see
+[Moving a consumer to the shared gateway](#moving-a-consumer-to-the-shared-gateway)).
+
 ### Headers
 
 | Header | When | Notes |
@@ -230,7 +234,7 @@ a key is recorded and will be enforced, but nothing ever confirmed Azure issued 
 Additive, so there is no downtime and no deployment:
 
 1. Create a second key, `acme-erp-2`.
-2. Give it to the consumer and let them cut over.
+2. Give it to the consumer and let them switch.
 3. Delete `acme-erp`.
 
 Agree a cadence now — 90 days is a reasonable default. Nobody invents one during an incident.
@@ -238,13 +242,14 @@ Agree a cadence now — 90 days is a reasonable default. Nobody invents one duri
 Registering a key is what binds it to a consumer, so a verified consumer can hold only one
 registered key at a time. **Set key** during step 2 switches the binding immediately; requests
 presenting `acme-erp` then fail identity verification even though the platform still accepts the
-key. For a verified consumer, either register the new key at the moment of cutover, or accept a
+key. For a verified consumer, either register the new key at the moment they switch, or accept a
 short window of 403s and plan it.
 
 ### Moving a consumer to the shared gateway
 
-Keys do not cross applications. A key issued on `azf-d365fsc-gateway-wtc-dev` returns 401 from any
-other gateway app, so a consumer cannot be pointed at a different app without a new key.
+Keys do not cross applications. A key issued on one gateway app returns 401 from any other gateway
+app, so a consumer cannot be pointed at a different app without a new key. No key is copied between
+apps.
 
 This is why `eng-apps` and `eng-apps-dev` exist as separate consumer rows: one logical consumer split
 in two so it could hold a key for each per-environment gateway. Once a consumer is on the shared
@@ -253,13 +258,22 @@ the caller sends, so it is a coordinated change rather than a tidy-up.
 
 To move one consumer:
 
-1. Issue a host key for them on `azf-d365fsc-gateway-wtc-nonprod`.
+1. Issue a host key for them on `azf-eim-gateway-wtc-bat`.
 2. Register it in the dashboard with **Set key**.
 3. Give them the new base address in the same step.
 
 Steps 2 and 3 are one operation, not two. Registering the new key replaces the stored hash
 immediately, so between those steps the consumer's old key is still accepted by the old app but no
-longer matches the consumer — a 403 with a confusing message.
+longer matches the consumer — a 403 with a confusing message. Update `GATEWAYCONSUMER.GATEWAYURL` as
+each consumer confirms.
+
+### Hosting
+
+The gateway runs on the App Service plan `asp-eim-wtc-bat` (P0v3, Linux) with Always On, alongside
+the bat and test Automation apps. It is deployed by the `gateway` component of `Deploy-Wilson.ps1`
+and the `Deploy_bat` pipeline stage ([deployment.md](deployment.md)). It reaches `eimdb` with its
+managed identity. Always On keeps the host warm, so there are no cold starts and `IdempotencyPurge`
+fires on schedule.
 
 ### Revoking access
 
@@ -309,10 +323,12 @@ traces | where message contains "UNVERIFIED identity"
 - **Keep the gateway service principal's D365 security role as tight as the granted operations
   allow.** It cannot be read-only now that writes are in scope, so it is a backstop rather than a
   guarantee — but it still caps the worst outcome.
-- **`maximumInstanceCount` is the only rate limiter.** The gateway and the capture pipeline share a
-  D365 tenant, so an unbounded burst here can throttle the tenant and degrade order processing.
-  Raise it deliberately. Now that one gateway serves every non-production environment, this bound is
-  also shared between them — a load test in one environment can throttle another.
+- **The plan size is the rate limiter.** The gateway and the capture pipeline share a D365 tenant, so
+  an unbounded burst here can throttle the tenant and degrade order processing. On Flex Consumption
+  `maximumInstanceCount` bounded this; on the shared single-instance P0v3 plan, throughput is bounded by
+  one vCPU shared with the other apps, which is tighter. Scaling the plan out or up loosens it, so do
+  that deliberately. The bound is shared between every non-production environment — a load test in one
+  environment can throttle another.
 - **A consumer's host key reaches every HTTP function in the gateway app.** No HTTP function may be
   added to this app unless it authorizes the caller against their grants, or is harmless to every
   consumer holding a key.

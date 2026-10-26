@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="ARM.Integration.EIM.Tests" />
+    <!-- BusinessKeyRegistrationTests checks every routed entity against BusinessKeyResolver.EntityKeyFields. -->
+    <InternalsVisibleTo Include="Wilson.Integration.Tests" />
   </ItemGroup>
 
 </Project>

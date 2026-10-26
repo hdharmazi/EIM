@@ -22,7 +22,7 @@ Accept:          application/json
 
 | Setting | Environment variable | Example |
 | --- | --- | --- |
-| `Gateway:BaseUrl` | `Gateway__BaseUrl` | `https://azf-d365fsc-gateway-wtc-nonprod.azurewebsites.net` |
+| `Gateway:BaseUrl` | `Gateway__BaseUrl` | `https://azf-eim-gateway-wtc-bat.azurewebsites.net` |
 | `Gateway:Environment` | `Gateway__Environment` | `DEV2` |
 | `Gateway:ConsumerId` | `Gateway__ConsumerId` | `eng-apps` |
 | `Gateway:FunctionKey` | `Gateway__FunctionKey` | *(supplied separately — do not commit)* |
@@ -44,7 +44,7 @@ dotnet run --project ARM.Integration.D365FSC.SampleClient
 ## Smoke test without code
 
 ```bash
-curl -i -G "https://azf-d365fsc-gateway-wtc-nonprod.azurewebsites.net/api/v1/d365fsc/DEV2/data/WTC_EngineeringAppStatuses" \
+curl -i -G "https://azf-eim-gateway-wtc-bat.azurewebsites.net/api/v1/d365fsc/DEV2/data/WTC_EngineeringAppStatuses" \
   -H "x-functions-key: <your function key>" \
   -H "X-Consumer-Id: eng-apps" \
   -H "Accept: application/json" \

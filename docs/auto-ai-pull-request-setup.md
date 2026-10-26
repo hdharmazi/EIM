@@ -1,7 +1,7 @@
 # Automatic AI-generated pull requests
 
-The pipeline `.azure-pipelines/workflows/auto-ai-pull-request.yml` runs whenever a `feature/*` branch is pushed. It checks for an existing active PR, asks the `gpt-5.6-sol` Microsoft Foundry deployment for a title and description, and creates one draft PR to `main`.
---add testing
+The pipeline `pipelines/auto-ai-pull-request.yml` runs whenever a `feature/*` branch is pushed. It checks for an existing active PR, asks the `gpt-5.6-sol` Microsoft Foundry deployment for a title and description, and creates one draft PR to `main`.
+
 ## Security model
 
 - Azure DevOps authentication uses the short-lived `System.AccessToken`; no personal access token is stored.
@@ -18,14 +18,17 @@ The pipeline `.azure-pipelines/workflows/auto-ai-pull-request.yml` runs whenever
 2. Choose **Azure Repos Git** and repository `ARM.Integration.Wilson`.
 3. Choose **Existing Azure Pipelines YAML file**.
 4. Select the branch containing the automation and path:
-   `.azure-pipelines/workflows/auto-ai-pull-request.yml`
+   `pipelines/auto-ai-pull-request.yml`
 5. Save the pipeline without running it yet, if Azure DevOps offers that option.
+
+An existing definition created before #5246 still points at the old `.azure-pipelines` folder. Change its YAML
+file path to `/pipelines/auto-ai-pull-request.yml` under **Edit** → **...** → **Settings**.
 
 ### 2. Add the Foundry API key as a secret
 
 In Azure DevOps:
 
-1. Open **Pipelines** and create or open the pipeline that uses `.azure-pipelines/workflows/auto-ai-pull-request.yml`.
+1. Open **Pipelines** and create or open the pipeline that uses `pipelines/auto-ai-pull-request.yml`.
 2. Select **Edit** → **Variables** → **New variable**.
 3. Set the name to `FOUNDRY_API_KEY`.
 4. Paste a key from `arm-foundry-east02-resource` → **Keys and Endpoint**.
@@ -63,7 +66,7 @@ A second push to the same branch will detect the active PR and exit without crea
 
 ## Configuration
 
-Pipeline variables in `.azure-pipelines/workflows/auto-ai-pull-request.yml` control:
+Pipeline variables in `pipelines/auto-ai-pull-request.yml` control:
 
 - `FOUNDRY_ENDPOINT`
 - `FOUNDRY_MODEL_DEPLOYMENT`

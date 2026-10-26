@@ -1,0 +1,15 @@
+{
+  "IsEncrypted": false,
+  "Host": {
+    "LocalHttpPort": 7072
+  },
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "EIMDB": "<local SQL Server eimdb connection string>",
+    "Gateway__BaseUrl": "http://localhost:7072",
+    "Gateway__MaxRequestBytes": "4194304",
+    "Gateway__IdempotencyRetention": "1.00:00:00",
+    "Gateway__IdempotencyPurgeSchedule": "0 15 * * * *"
+  }
+}

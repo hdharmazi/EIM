@@ -43,10 +43,12 @@ export interface SalesOrderParseResponse {
   sheets: SalesOrderSheet[];
 }
 
-export function useSimulationConfig() {
+/** `enabled: false` (simulation off in this deployment) never calls /api/simulation/config, which then 404s. */
+export function useSimulationConfig({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ["simulation", "config"],
     queryFn: () => apiFetch<SimulationConfig>("/api/simulation/config"),
+    enabled,
   });
 }
 

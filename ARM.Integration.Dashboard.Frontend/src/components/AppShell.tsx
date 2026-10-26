@@ -15,7 +15,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useMe, useIsAdmin } from "@/auth/useMe";
+import { useMe, useIsAdmin, useFeature, type Features } from "@/auth/useMe";
 import { logout } from "@/auth/msal";
 
 interface NavItem {
@@ -24,6 +24,8 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   end?: boolean;
   adminOnly?: boolean;
+  /** Shown only when the API reports this feature as on. */
+  feature?: keyof Features;
 }
 
 interface NavSection {
@@ -44,7 +46,7 @@ const SECTIONS: NavSection[] = [
     title: "Utilities",
     items: [
       { to: "/cleanup", label: "Cleanup Queue", icon: Trash2 },
-      { to: "/simulation", label: "Simulation", icon: FlaskConical },
+      { to: "/simulation", label: "Simulation", icon: FlaskConical, feature: "simulation" },
     ],
   },
   {
@@ -63,6 +65,7 @@ export function AppShell() {
   const [open, setOpen] = React.useState(false);
   const { data: me } = useMe();
   const isAdmin = useIsAdmin();
+  const features: Record<keyof Features, boolean> = { simulation: useFeature("simulation") };
 
   return (
     <div className="flex h-full min-h-screen bg-background">
@@ -79,7 +82,9 @@ export function AppShell() {
         </div>
         <nav className="flex flex-col gap-4 overflow-y-auto p-3">
           {SECTIONS.map((section) => {
-            const items = section.items.filter((i) => !i.adminOnly || isAdmin);
+            const items = section.items.filter(
+              (i) => (!i.adminOnly || isAdmin) && (!i.feature || features[i.feature]),
+            );
             if (items.length === 0) return null;
             return (
               <div key={section.title}>

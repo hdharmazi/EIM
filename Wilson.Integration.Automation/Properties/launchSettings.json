@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Wilson.Integration.Automation": {
+      "commandName": "Project",
+      "commandLineArgs": "--port 7071"
+    }
+  }
+}

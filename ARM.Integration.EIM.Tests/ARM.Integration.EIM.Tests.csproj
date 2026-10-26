@@ -16,14 +16,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\ARM.Integration.Core\ARM.Integration.Core.csproj" />
     <ProjectReference Include="..\ARM.Integration.EIM\ARM.Integration.EIM.csproj" />
-    <ProjectReference Include="..\Wilson.Integration.Orchestrations\Wilson.Integration.Orchestrations.csproj" />
-    <ProjectReference Include="..\ARM.Integration.EIM.Customer\ARM.Integration.EIM.Customer.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="TestData\**\*.json" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\script\SQL\Migrations\014_seed_customer_address_delete_route.sql" Link="TestData\Migrations\014_seed_customer_address_delete_route.sql" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

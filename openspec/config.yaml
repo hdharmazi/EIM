@@ -5,11 +5,11 @@ context: |
   Domain: integration hub moving customer, contact, party contact, address, and sales order data
   between Capture and Microsoft Dynamics 365 Finance and Supply Chain Management (D365 F&SC),
   with an operations dashboard for monitoring, holding, releasing, and reprocessing messages.
-  Tech stack: .NET 10, Azure Functions isolated worker (EIM.Customer, D365FSC.Gateway),
+  Tech stack: .NET 10, Azure Functions isolated worker (Wilson.Integration.Automation, D365FSC.Gateway),
   Azure Service Bus, Azure SQL (eimdb, DbUp migrations), ASP.NET Core Dashboard API,
   React 18 + Vite + TypeScript + Tailwind/Radix dashboard frontend, xUnit tests.
   Orchestrations are named <Entity>_To_<Target> and registered in OrchestrationRegistry.
-  Environments: local (Azurite), dev, bat, test. Dashboard and Gateway are shared nonprod deployments.
+  Environments: local (local SQL eimdb, Azurite, dev-* queues), bat (owns the non-production resources), test (uses bat), and prd (isolated production environment, no simulation).
   See CLAUDE.md for conventions and pitfalls.
 
 # Per-artifact rules

@@ -1,0 +1,83 @@
+[
+  {
+    "name": "AwaitingD365SweepHandler",
+    "scriptFile": "Wilson.Integration.Automation.dll",
+    "entryPoint": "Wilson.Integration.Automation.Functions.AwaitingD365SweepHandler.Run",
+    "language": "dotnet-isolated",
+    "properties": { "IsCodeless": false },
+    "bindings": [
+      { "name": "timer", "direction": "In", "type": "timerTrigger", "schedule": "%AwaitingD365SweepSchedule%", "properties": {} }
+    ]
+  },
+  {
+    "name": "HealthProbe",
+    "scriptFile": "Wilson.Integration.Automation.dll",
+    "entryPoint": "Wilson.Integration.Automation.Functions.HealthProbe.Run",
+    "language": "dotnet-isolated",
+    "properties": { "IsCodeless": false },
+    "bindings": [
+      { "name": "req", "direction": "In", "type": "httpTrigger", "authLevel": "Function", "methods": [ "get" ], "properties": {} },
+      { "name": "$return", "type": "http", "direction": "Out" }
+    ]
+  },
+  {
+    "name": "QueueCaptureCustomer",
+    "scriptFile": "Wilson.Integration.Automation.dll",
+    "entryPoint": "Wilson.Integration.Automation.Functions.QueueCaptureCustomer.Run",
+    "language": "dotnet-isolated",
+    "properties": { "IsCodeless": false },
+    "bindings": [
+      { "name": "message", "direction": "In", "type": "serviceBusTrigger", "queueName": "%CaptureToD365Queue%", "connection": "ServiceBus", "cardinality": "One", "properties": { "supportsDeferredBinding": "True" } }
+    ]
+  },
+  {
+    "name": "QueueDataEventsHandler",
+    "scriptFile": "Wilson.Integration.Automation.dll",
+    "entryPoint": "Wilson.Integration.Automation.Functions.QueueDataEventsHandler.Run",
+    "language": "dotnet-isolated",
+    "properties": { "IsCodeless": false },
+    "bindings": [
+      { "name": "message", "direction": "In", "type": "serviceBusTrigger", "queueName": "%D365FscDataEventQueue%", "connection": "ServiceBus", "cardinality": "One", "properties": { "supportsDeferredBinding": "True" } }
+    ]
+  },
+  {
+    "name": "QueueMessageQueueBusinessEventHandler",
+    "scriptFile": "Wilson.Integration.Automation.dll",
+    "entryPoint": "Wilson.Integration.Automation.Functions.QueueMessageQueueBusinessEventHandler.Run",
+    "language": "dotnet-isolated",
+    "properties": { "IsCodeless": false },
+    "bindings": [
+      { "name": "message", "direction": "In", "type": "serviceBusTrigger", "queueName": "%D365BusinessEventQueue%", "connection": "ServiceBus", "cardinality": "One", "properties": { "supportsDeferredBinding": "True" } }
+    ]
+  },
+  {
+    "name": "ReleaseSweepHandler",
+    "scriptFile": "Wilson.Integration.Automation.dll",
+    "entryPoint": "Wilson.Integration.Automation.Functions.ReleaseSweepHandler.Run",
+    "language": "dotnet-isolated",
+    "properties": { "IsCodeless": false },
+    "bindings": [
+      { "name": "timer", "direction": "In", "type": "timerTrigger", "schedule": "%ReleaseSweepSchedule%", "properties": {} }
+    ]
+  },
+  {
+    "name": "RetrySweepHandler",
+    "scriptFile": "Wilson.Integration.Automation.dll",
+    "entryPoint": "Wilson.Integration.Automation.Functions.RetrySweepHandler.Run",
+    "language": "dotnet-isolated",
+    "properties": { "IsCodeless": false },
+    "bindings": [
+      { "name": "timer", "direction": "In", "type": "timerTrigger", "schedule": "%RetrySweepSchedule%", "properties": {} }
+    ]
+  },
+  {
+    "name": "SampleOrchestrator",
+    "scriptFile": "Wilson.Integration.Automation.dll",
+    "entryPoint": "Wilson.Integration.Automation.Functions.SampleOrchestrator.Run",
+    "language": "dotnet-isolated",
+    "properties": { "IsCodeless": false },
+    "bindings": [
+      { "name": "context", "direction": "In", "type": "orchestrationTrigger", "properties": {} }
+    ]
+  }
+]

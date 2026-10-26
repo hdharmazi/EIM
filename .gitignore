@@ -367,6 +367,12 @@ FodyWeavers.xsd
 .env.local
 .env.*.local
 
+# Azure Functions local settings hold real connection strings. Repeated at the root (as well as in
+# each Functions project) so a copy left behind in a renamed project folder stays ignored.
+local.settings.json
+local.settings.*.json
+!local.settings.sample.json
+
 # Deploy scripts containing real connection strings / keys (do not commit)
 AzureDeploy
 AzureDeploy.AppService.ps1

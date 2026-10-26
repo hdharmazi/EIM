@@ -15,7 +15,11 @@ var builder = FunctionsApplication.CreateBuilder(args);
 // the request body as a stream and direct control over response headers and status.
 builder.ConfigureFunctionsWebApplication();
 
-builder.Services.AddSingleton(_ => GatewayOptions.FromConfiguration(builder.Configuration));
+// Built eagerly so a missing EIMDB or Gateway:BaseUrl stops startup naming the setting, rather than
+// failing on the first request.
+var gatewayOptions = GatewayOptions.FromConfiguration(builder.Configuration);
+
+builder.Services.AddSingleton(gatewayOptions);
 builder.Services.AddSingleton<IEnvironmentConfigurationSource, EnvironmentConfigurationSource>();
 builder.Services.AddSingleton<ID365ConnectionProvider>(sp => new D365ConnectionProvider(
     sp.GetRequiredService<IEnvironmentConfigurationSource>(),

@@ -29,6 +29,14 @@ public class SimulationService(IConfiguration config, ConfigurationRepository co
         SimulationRequest request,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
+        // Second guard behind the removed controller: with simulation off, nothing is published, even when a
+        // connection string is configured. Returns before any Service Bus client exists.
+        if (!SimulationFeature.IsEnabled(config))
+        {
+            yield return Err("Simulation is disabled in this deployment.");
+            yield break;
+        }
+
         if (string.IsNullOrWhiteSpace(SbConn))
         {
             yield return Err("Simulation:ServiceBusConnectionString is not configured in appsettings.");

@@ -5,12 +5,65 @@ No application process changes the schema at startup.
 
 The migrator is required for a new database and for every later release that adds a migration. An
 empty Azure SQL database does not contain the tables, indexes, routing rows, stored procedure, or
-trigger used by the API, EIM.Customer, and Gateway. Deploying code without first applying migrations
+trigger used by the API, Wilson.Integration.Automation, and Gateway. Deploying code without first applying migrations
 produces table-not-found errors; it is not a supported deployment mode.
 
-`script/deployment/Deploy-Eim.ps1 -Component schema` runs the migrator. The code-only Azure DevOps
-pipelines intentionally do not run it because they promote application packages without receiving a
-database connection string.
+`script/deployment/Deploy-Wilson.ps1 -Environment bat -Component myip, schema, myipremove` runs the migrator,
+using the self-contained `ARM.Integration.DbMigrator.exe` carried in the deployment package. `schema` belongs to
+configurations that own their database (`bat`, `prd`); a configuration with `uses` (`test`) rejects it, because
+it uses its owner's database. See [deployment.md](deployment.md).
+
+The migrator signs in with Entra ID as the deployer: the script passes
+`Authentication=Active Directory Default` and `AZURE_TOKEN_CREDENTIALS=AzureCliCredential`, so it uses the Azure
+CLI identity (the service connection's principal in the pipeline, your `az login` by hand). That identity must be
+in the SQL server's Entra admin group. No SQL password is involved.
+
+Local development uses its own database (see "Local database" below), never the shared `eimdb`.
+
+## The production database
+
+Production has its own database, `sqldb-eim-wtc-prd` on `sql-eim-wtc-prd` in `d365fsc-integration-prod`,
+created by the `sql` component ([production-go-live.md](production-go-live.md)) with the default collation, the
+same case-insensitive collation as `eimdb` (`SQL_Latin1_General_CP1_CI_AS`). Route lookups rely on it: the
+Automation host sends ENVIRONMENT `prd` and the rows say `PRD`.
+
+- `schema` runs there from `prd`, in the `Deploy_prd` stage of `pipelines/eim-prd.yml`, behind the production
+  approval.
+- It runs every migration from `001`, exactly the scripts `eimdb` runs. No migration branches on which database
+  it is in. A database created empty migrates with no manual step: `002a` creates the `MODIFIEDDATETIME`
+  trigger that `003` needs (see "The one exception" below).
+- Migration `015_seed_prd_routes.sql` seeds its ten `PRD` routes (the address delete route disabled with
+  `Hold`). On `eimdb` the same rows are inert: no non-production message carries `PRD`.
+- `001`, `002` and `006` also seed non-production rows there (a sample `ENVIRONMENTTABLE` row,
+  `SimulationEnvironment` configuration rows, a developer `USERTABLE` admin and the BAT/DEV/DEV2/TEST routes).
+  They are inert on production and stay; the go-live steps review the `USERTABLE` row.
+- The `PRD` `ENVIRONMENTTABLE` profiles hold D365 credentials and are entered through the dashboard, never by
+  migration.
+
+## When migrations run, and the expand/contract rule
+
+The pipeline (`pipelines/eim.yml`) runs migrations **once per run, in the `Deploy_bat` stage, before bat's
+code**, and only on a manual run with `runMigrations` ticked. A merge to `main` never migrates, and `Deploy_test`
+never migrates. The stage's database step wraps the migrator in `myip` / `myipremove` (in a `finally`), so the
+agent's IP is on the SQL firewall only while `schema` runs.
+
+One `eimdb` holds the rows of every ENVIRONMENT value: `DEV`, `DEV2`, `BAT` and `TEST`. These are database
+values, not deployment configurations; `DEV2` has no Function App and no deployment configuration of its own,
+but its rows are migrated with everyone else's. After `Deploy_bat` migrates, `test` keeps running the previous
+build until its stage is approved, possibly for days, and a rejected stage leaves it there.
+So every migration must work with:
+
+- the new build and the build still running in later stages, and
+- every ENVIRONMENT value's rows, including `DEV2`.
+
+That means **expand/contract**:
+
+- **Expand** in one release: add tables, procedures, nullable columns or columns with defaults.
+- **Contract** in a later release: remove or rename only after every environment runs code that no longer
+  uses the old shape.
+
+A release that cannot be expand-only, such as the `014` route seed below, has to be run by hand in separate
+steps. Do not tick `runMigrations` for it.
 
 ## Where scripts live
 
@@ -59,6 +112,32 @@ Renumbering an unmerged migration is safe precisely because it has not been appl
 Order is lexicographic on the embedded name, not numeric. `010` sorts after `009` correctly, but
 `10` would sort before `9`. Always pad to three digits.
 
+### The one exception: `002a_create_modifieddatetime_trigger.sql`
+
+`003_backfill_truncated_sourceentity.sql` disables and re-enables the `MODIFIEDDATETIME` trigger on
+`MESSAGEQUEUETABLE`. That trigger is created only by the repeatable
+`R__TR_MESSAGEQUEUETABLE_MODIFIEDDATETIME.sql`, and repeatables run after every versioned script. On
+`eimdb` the trigger already existed when `003` ran, so nothing failed. On a database created empty (the
+production `sqldb-eim-wtc-prd`, a local `eimdb`, a new client) `003` failed, because the trigger did not
+exist yet.
+
+`003` is applied, so it cannot be edited. Instead, `002a_create_modifieddatetime_trigger.sql` is inserted
+between `002` and `003`. It creates the trigger only when it is missing, with the same body as the
+repeatable:
+
+- **Order.** DbUp sorts by embedded name with an ordinal comparison, so `Migrations.002_…` sorts before
+  `Migrations.002a_…`, which sorts before `Migrations.003_…`. On an empty database `002a` runs before `003`.
+- **Existing databases.** On `eimdb`, which already has the trigger and has journaled `003`, the next run
+  applies `002a` as a pending script. DbUp applies any unjournaled script, whatever its position. It does
+  nothing there except write its journal row.
+- **Ownership.** The repeatable script still owns the definition. It runs after every versioned script and
+  re-applies the current body with `CREATE OR ALTER`, so the copy in `002a` is only a bootstrap.
+
+This is the **only** allowed exception to the next-number rule. An inserted script is applied out of
+numeric order on every database that has already passed that point, so it is safe only when, like `002a`,
+it is a no-op wherever the later migrations have already run. Every other new migration takes the next
+free three-digit number.
+
 ## Migrations are forward-only
 
 There are no down scripts. A mistake is corrected by writing a further migration, never by editing
@@ -88,6 +167,17 @@ dotnet run --project ARM.Integration.DbMigrator -- --connection "<connection str
 The connection may instead come from the `EIMDB_MIGRATOR_CONNECTION` environment variable, so a
 pipeline can supply it without it appearing in a command line. It is never echoed to output.
 
+Against Azure SQL, sign in with Entra ID rather than a password. This is the form `Deploy-Wilson.ps1` uses, with
+your Azure CLI identity (which must be in the server's Entra admin group):
+
+```powershell
+$env:AZURE_TOKEN_CREDENTIALS = 'AzureCliCredential'
+$env:EIMDB_MIGRATOR_CONNECTION = 'Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<database>;Authentication=Active Directory Default;Encrypt=True'
+dotnet run --project ARM.Integration.DbMigrator -- --whatif
+```
+
+Against a local SQL Server, SQL or Windows authentication works as before (see "Local database" below).
+
 Exit codes:
 
 | Code | Meaning |
@@ -99,6 +189,37 @@ Exit codes:
 Each versioned script runs in its own transaction. A failure part-way through a run leaves earlier
 scripts applied and journaled, and the failing script neither applied nor journaled. Fix forward
 and re-run; the already-applied scripts are skipped.
+
+## Local database
+
+There is no deployed development environment. A developer runs the hosts on their own machine
+against a local `eimdb`, built by the same migrator:
+
+1. Install SQL Server Developer or Express, or use LocalDB (`(localdb)\MSSQLLocalDB`).
+2. Create the database:
+
+   ```sql
+   CREATE DATABASE eimdb;
+   ```
+
+3. Apply every migration:
+
+   ```powershell
+   $env:EIMDB_MIGRATOR_CONNECTION = 'Server=localhost;Database=eimdb;Integrated Security=true;TrustServerCertificate=true'
+   dotnet run --project ARM.Integration.DbMigrator -- --whatif   # optional preview
+   dotnet run --project ARM.Integration.DbMigrator
+   ```
+
+   For LocalDB, use `Server=(localdb)\MSSQLLocalDB` instead of `Server=localhost`.
+
+4. Point `EIMDB` in your `local.settings.json` at the same database.
+
+Run the migrator again after pulling new migrations. A migration you are writing can be applied,
+dropped and re-applied locally as often as needed (drop and recreate the database to start over).
+Only merged migrations reach the shared `eimdb`, through the pipeline's `Deploy_bat` stage.
+
+The `eimdb_dev` catalog on the shared SQL server is a leftover of the old development setup and
+will be dropped by hand. Do not point a local host at it, or at the shared `eimdb`.
 
 ## Baselining an existing database
 
@@ -283,26 +404,26 @@ clear it.
 
 Migration `014_seed_customer_address_delete_route.sql` seeds a route naming
 `CustomerAddressDelete_To_Capture`. This release **reverses the usual order: deploy code first,
-then migrate.** EIM.Customer runs `RouteRegistryValidator` at startup and refuses to start when a
+then migrate.** Wilson.Integration.Automation runs `RouteRegistryValidator` at startup and refuses to start when a
 route names an orchestration it has not registered. If the route row exists while the previous build
 starts — a restart, or a Consumption scale-out — the host is down, not degraded.
 
-`Deploy-Eim.ps1` always runs `schema` before `function`, whatever order components are given in, so
-this release must be deployed in **separate invocations**. Do not use `-Component all`, and do not
-combine `schema` with `function` or `api` in one call.
-
-Per environment, lowest first:
+The pipeline runs `schema` in `Deploy_bat`, before any Automation code, so this release must **not** be
+deployed with `runMigrations` ticked. Deploy the code first, then migrate in a separate invocation:
 
 ```powershell
 # 1. Code. The new build validates cleanly: no route names the new orchestration yet.
-./script/deployment/Deploy-Eim.ps1 -Environment <env> -Component function
-./script/deployment/Deploy-Eim.ps1 -Environment <env> -Component api   # where hostsDashboard; reprocess uses the same registry
+#    A pipeline run with runMigrations cleared, or by hand from the package:
+./Deploy-Wilson.ps1 -Environment bat -Component backend, automation   # reprocess uses the same registry
+./Deploy-Wilson.ps1 -Environment test -Component automation
 
-# 2. Confirm the host started and logged "Route validation passed" before continuing.
+# 2. Confirm each host started and logged "Route validation passed" before continuing.
 
 # 3. Schema. 014 is the only pending versioned script expected.
-./script/deployment/Deploy-Eim.ps1 -Environment <env> -Component schema
+./Deploy-Wilson.ps1 -Environment bat -Component myip, schema, myipremove
 ```
+
+The schema is shared, so step 3 needs every environment's Automation app to be on the new build.
 
 `014` throws unless exactly four rows exist for the new route (BAT, DEV, DEV2, TEST). Confirm:
 
@@ -349,7 +470,7 @@ ORDER BY d.ID;
 Expect `SOURCEID` equal to the address location id, a `DetermineAction` step of `Delete`, and a
 `Result` step whose envelope has `"Action":"Delete"` and `"Entity":"CustomerAddress"`. Save the
 payload from `MESSAGEQUEUETABLE.PAYLOAD` over the test fixture
-`ARM.Integration.EIM.Tests/TestData/CustomerAddressDeleted.OnExternalUpdated.json` and re-run the
+`Wilson.Integration.Tests/TestData/CustomerAddressDeleted.OnExternalUpdated.json` and re-run the
 tests.
 
 ### Watching the deleted-flag guard
@@ -383,11 +504,19 @@ When reviewing a pull request that touches `script/SQL/`:
 
 - [ ] Is the script filed in the correct category? `CREATE OR ALTER` objects belong in
       `Repeatable/`; everything else in `Migrations/`.
-- [ ] Is the migration number the next free one, padded to three digits?
+- [ ] Is the migration number the next free one, padded to three digits? The only inserted script is
+      `002a` (see "The one exception"); reject any other.
 - [ ] Does the change modify an **existing** file under `Migrations/`? If so, is it genuinely
       behaviour-neutral? Any additive edit to an applied migration must be rejected.
 - [ ] Is the change forward-only, with no down script and no destructive rewrite of history?
+- [ ] Is it expand-only, so the previous build and every ENVIRONMENT value (including `DEV2`) keep
+      working? If not, does the PR say how it must be deployed instead of a `runMigrations` run?
 - [ ] Has it been run against a scratch database, and run twice to confirm the second run applies
       nothing?
 - [ ] If a repeatable object was edited, does the file still contain its complete definition rather
       than a fragment?
+- [ ] Does a per-environment seed list `PRD` as well as `BAT`, `DEV`, `DEV2` and `TEST`? Production
+      runs every migration on its own database, so a seed without `PRD` leaves production unrouted.
+- [ ] Is the migration safe on both the non-production `eimdb` and the production `sqldb-eim-wtc-prd`?
+      Every migration runs on both, unchanged; a parity check must count only the rows the migration
+      itself seeds (filter by ENVIRONMENT), never the whole table.

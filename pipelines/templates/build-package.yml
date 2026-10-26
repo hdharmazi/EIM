@@ -1,0 +1,60 @@
+# Tests, checks the deployment scripts, builds the deployment package (script/deployment/New-DeploymentPackage.ps1),
+# checks its contents, and only then publishes it as artifact 'package'.
+
+parameters:
+  - name: environments         # comma-separated configuration names, e.g. 'bat,test,prd'
+    type: string
+  - name: buildNumberSuffix    # appended to the run's build number before packaging, e.g. '+settings'
+    type: string
+    default: ''
+
+jobs:
+  - job: Package
+    pool:
+      vmImage: windows-latest
+    steps:
+      - ${{ if ne(parameters.buildNumberSuffix, '') }}:
+        - pwsh: Write-Host "##vso[build.updatebuildnumber]$(Build.BuildNumber)${{ parameters.buildNumberSuffix }}"
+          displayName: Build number suffix ${{ parameters.buildNumberSuffix }}
+
+      - task: UseDotNet@2
+        displayName: .NET 10 SDK
+        inputs:
+          packageType: sdk
+          version: 10.0.x
+
+      - task: UseNode@1
+        displayName: Node 22
+        inputs:
+          version: 22.x
+
+      - pwsh: dotnet test ARM.Integration.Wilson.slnx -c Release --logger trx --results-directory "$(Agent.TempDirectory)/tests"
+        displayName: Test
+
+      - task: PublishTestResults@2
+        displayName: Publish test results
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: VSTest
+          testResultsFiles: '$(Agent.TempDirectory)/tests/*.trx'
+
+      - pwsh: |
+          npm --prefix ARM.Integration.Dashboard.Frontend ci
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
+          npm --prefix ARM.Integration.Dashboard.Frontend run lint
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend lint failed.' }
+        displayName: Frontend npm ci and lint
+
+      - pwsh: pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1
+        displayName: Deployment script self-test
+
+      - pwsh: |
+          $environments = '${{ parameters.environments }}' -split '\s*,\s*' | Where-Object { $_ }
+          ./script/deployment/New-DeploymentPackage.ps1 -Environment $environments -OutputPath '$(Build.ArtifactStagingDirectory)' -Version '$(Build.BuildNumber)'
+        displayName: Build deployment package (${{ parameters.environments }})
+
+      - pwsh: pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1 -PackagePath '$(Build.ArtifactStagingDirectory)/wtc-eim-deploy-$(Build.BuildNumber)'
+        displayName: Deployment package content checks
+
+      - publish: $(Build.ArtifactStagingDirectory)/wtc-eim-deploy-$(Build.BuildNumber)
+        artifact: package
