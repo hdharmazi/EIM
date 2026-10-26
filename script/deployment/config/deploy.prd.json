@@ -1,25 +1,24 @@
 {
   "environment": "prd",
-  "scope": "environment",
   "production": true,
-  "sharedSuffix": "prd",
   "names": {
-    "resourceGroup": "d365fsc-integration-prod",
-    "serviceBusNamespace": "",
-    "keyVault": "",
-    "sqlServer": "",
-    "sqlDatabase": ""
+    "resourceGroup": "d365fsc-integration-prod"
+  },
+  "logAnalytics": {
+    "retentionDays": 90
+  },
+  "sql": {
+    "entraAdmin": "<production sql entra admin group>",
+    "entraAdminObjectId": "<production sql entra admin group object id>"
   },
   "entra": {
     "tenantId": "<production dashboard entra tenant id>",
     "clientId": "<production dashboard entra client id>",
     "audience": "<production api://... or client id>"
   },
-  "gateway": {
-    "legacyVerificationTargets": []
-  },
   "automation": {
-    "excludedUsers": "<production semicolon separated user guids>"
+    "excludedUsers": "<production semicolon separated user guids>",
+    "triggersEnabled": false
   },
   "dashboard": {
     "simulationEnabled": false,

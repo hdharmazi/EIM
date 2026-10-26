@@ -12,7 +12,7 @@ Integration services for moving data between Capture, Microsoft Dynamics 365 Fin
 | `ARM.Integration.D365FSC.Gateway` | Shared D365 F&SC HTTP gateway | `http://localhost:7072` |
 | `ARM.Integration.DbMigrator` | Applies versioned and repeatable SQL migrations | Command line |
 
-Local Functions use Azurite on ports `10000` through `10002`. Deployed nonprod environments share the Dashboard, Gateway, and `eimdb`; Wilson Automation has separate `bat` and `test` Function Apps. There is no deployed development environment: development runs locally (see [Local development](#local-development)).
+Local Functions use Azurite on ports `10000` through `10002`. The deployed non-production environment `bat` owns the Dashboard, Gateway, and `eimdb`; `test` uses them, and Wilson Automation has separate `bat` and `test` Function Apps. Production (`prd`) is isolated and shares nothing with them. There is no deployed development environment: development runs locally (see [Local development](#local-development)).
 
 ## Prerequisites
 
@@ -81,11 +81,11 @@ what the deployed environments use.
 4. **Environment data**: add the D365 connection profile for your ENVIRONMENT value (for example `DEV`) as a row
    in your local `ENVIRONMENTTABLE`. That row holds credentials: never commit it, not even in a migration or a
    sample.
-5. **Queues**: use the `dev-*` queues (`<your queue prefix>` = `dev`), but only after
-   [runbook step 7, "Retire legacy dev"](docs/deployment/resource-rename-cutover.md) has disabled the triggers on
-   the legacy dev Function App; until then that app still consumes them. Capture dev and the D365 dev endpoints may
-   still publish to them. Never consume the `bat-*` or `test-*` queues from a local host; the deployed Automation
-   apps own them, and a second consumer breaks message ordering.
+5. **Queues**: use the `dev-*` queues (`<your queue prefix>` = `dev`), but only once the earlier deployed dev
+   Function App is stopped with its triggers disabled; until then it still consumes them. No deployment creates or
+   changes the `dev-*` queues. Capture dev and the D365 dev endpoints may still publish to them. Never consume the
+   `bat-*` or `test-*` queues from a local host; the deployed Automation apps own them, and a second consumer breaks
+   message ordering.
 
 Schema changes are tried locally first. Only merged migrations reach the shared `eimdb`, through the pipeline.
 
@@ -112,17 +112,22 @@ npm --prefix ARM.Integration.Dashboard.Frontend run lint
 
 Non-production is deployed by one pipeline, [`pipelines/eim.yml`](pipelines/eim.yml), running one script,
 `script/deployment/Deploy-Wilson.ps1`, with configurations in `script/deployment/config/`. The pipeline builds one
-package and promotes it through `Deploy_shared` (gateway, dashboard, migrations), then `bat` and `test` (Wilson
-Automation). A merge to `main` deploys code only; infrastructure, settings and migrations run on a manual run.
+package and promotes it through `Deploy_bat`, then `Deploy_test`. `bat` owns the non-production resources (gateway,
+dashboard, Service Bus, Key Vault, SQL and migrations) and its own Automation app; `test` uses them and deploys only
+its queues and Automation app. A merge to `main` deploys code only; infrastructure, settings, migrations and
+database access run on a manual run. The gated triggers follow `automation.triggersEnabled`.
 
-Production is a separate stamp (`prdshared`, `prd`) in `d365fsc-integration-prod` that shares nothing with
-non-production and has no Simulation console. The manual pipeline [`pipelines/eim-prd.yml`](pipelines/eim-prd.yml)
-promotes the package of an `eim` run that passed `test`, through `Deploy_prdshared`, then `Deploy_prd`.
+Production is the isolated configuration `prd` in `d365fsc-integration-prod`: it owns every resource it uses,
+shares nothing with non-production and has no Simulation console. The manual pipeline
+[`pipelines/eim-prd.yml`](pipelines/eim-prd.yml) promotes the package of an `eim` run that passed `test` through
+one stage, `Deploy_prd`.
+
+No deployment needs a secret: the apps reach SQL with their managed identities, and the Service Bus connection is
+kept in Key Vault.
 
 - [Deployment overview](docs/deployment/deployment.md)
 - [Azure DevOps setup](docs/deployment/devops-setup.md)
 - [Production go-live](docs/deployment/production-go-live.md)
-- [Resource rename and cutover (#5246)](docs/deployment/resource-rename-cutover.md)
 - [Deploying from scratch](docs/deployment/deploy-from-scratch.md)
 - [Database migrations](docs/deployment/database-migrations.md)
 - [D365 F&SC Gateway operations](docs/deployment/d365fsc-gateway.md)

@@ -5,11 +5,11 @@ namespace Wilson.Integration.Tests;
 
 /// <summary>
 /// Spec deployment-pipeline: the production pipeline pipelines/eim-prd.yml. It builds nothing and promotes the package
-/// of an eim run through Deploy_prdshared, then Deploy_prd, with production credentials only.
+/// of an eim run to the isolated production configuration prd, in one stage, with production credentials only.
 /// </summary>
 public class ProductionPipelineDefinitionTests
 {
-    private static readonly string[] StageOrder = ["Deploy_prdshared", "Deploy_prd"];
+    private static readonly string[] StageOrder = ["Deploy_prd"];
 
     private static string Pipeline => PipelineDefinitionTests.ReadFile("pipelines", "eim-prd.yml");
 
@@ -40,48 +40,64 @@ public class ProductionPipelineDefinitionTests
     }
 
     [Fact]
-    public void Production_stages_run_in_order()
+    public void Production_has_one_stage()
     {
         Assert.Equal(StageOrder, PipelineDefinitionTests.StagesOf(Pipeline).Select(s => s.Name));
 
-        Assert.Null(PipelineDefinitionTests.DependsOn(Stage("Deploy_prdshared")));
-        Assert.Equal("Deploy_prdshared", PipelineDefinitionTests.DependsOn(Stage("Deploy_prd")));
-        foreach (var stage in StageOrder)
-            Assert.Matches(Line("condition: succeeded\\(\\)"), Stage(stage));
-    }
-
-    [Theory]
-    [InlineData("Deploy_prdshared", "prdshared", "eim-wtc-prdshared", "gateway, backend, frontend")]
-    [InlineData("Deploy_prd", "prd", "eim-wtc-prd", "automation")]
-    public void Each_production_stage_uses_production_credentials_and_the_promoted_package(string stage, string configuration, string devopsEnvironment, string components)
-    {
-        var block = Stage(stage);
-
-        Assert.Contains("template: templates/deploy-environment.yml", block);
-        Assert.Matches(Line($"environment: {configuration}"), block);
-        Assert.Matches(Line($"devopsEnvironment: {devopsEnvironment}"), block);
-        Assert.Matches(Line("serviceConnection: sc-eim-wtc-prd"), block);
-        Assert.Matches(Line("variableGroup: eim-wtc-prd"), block);
-        Assert.Matches(Line("packageSource: eim"), block);
-        Assert.Matches(new Regex(@"^ {10}\$\{\{ if parameters\.deployCode \}\}:\s*\r?\n {12}components: " + Regex.Escape(components) + @"\s*$", RegexOptions.Multiline), block);
+        Assert.Null(PipelineDefinitionTests.DependsOn(Stage("Deploy_prd")));
+        Assert.Matches(Line("condition: succeeded\\(\\)"), Stage("Deploy_prd"));
     }
 
     [Fact]
-    public void Migrations_can_run_only_in_the_production_shared_stage()
+    public void The_production_stage_uses_production_credentials_and_the_promoted_package()
     {
-        Assert.Matches(Line(Regex.Escape("runMigrations: ${{ parameters.runMigrations }}")), Stage("Deploy_prdshared"));
+        var block = Stage("Deploy_prd");
 
-        var runMigrations = Regex.Matches(Stage("Deploy_prd"), @"runMigrations: (.+)$", RegexOptions.Multiline).Select(m => m.Groups[1].Value.Trim()).ToList();
-        Assert.True(runMigrations.SequenceEqual(["false"]), $"Deploy_prd must pass runMigrations: false, found [{string.Join(", ", runMigrations)}].");
+        Assert.Contains("template: templates/deploy-environment.yml", block);
+        Assert.Matches(Line("environment: prd"), block);
+        Assert.Matches(Line("devopsEnvironment: eim-wtc-prd"), block);
+        Assert.Matches(Line("serviceConnection: sc-eim-wtc-prd"), block);
+        Assert.Matches(Line("variableGroup: eim-wtc-prd"), block);
+        Assert.Matches(Line("packageSource: eim"), block);
+        Assert.Matches(new Regex(@"^ {10}\$\{\{ if parameters\.deployCode \}\}:\s*\r?\n {12}components: gateway, backend, frontend, automation\s*$", RegexOptions.Multiline), block);
+    }
+
+    [Fact]
+    public void Migrations_can_run_only_in_owner_stages()
+    {
+        var block = Stage("Deploy_prd");
+
+        Assert.Equal("${{ parameters.runMigrations }}", PipelineDefinitionTests.StageParameter(block, "runMigrations"));
+        Assert.Equal("true", PipelineDefinitionTests.StageParameter(block, "ownsResources"));
+    }
+
+    [Fact]
+    public void Only_the_owner_stage_runs_the_sql_component()
+    {
+        // prd owns every resource it uses; nothing in production uses another configuration.
+        Assert.All(PipelineDefinitionTests.StagesOf(Pipeline), s => Assert.Equal("true", PipelineDefinitionTests.StageParameter(s.Block, "ownsResources")));
+    }
+
+    [Fact]
+    public void Database_access_is_a_manual_parameter_defaulting_to_false()
+    {
+        Assert.Equal("false", PipelineDefinitionTests.ParameterDefault(Pipeline, "grantDatabaseAccess"));
+        Assert.Equal("${{ parameters.grantDatabaseAccess }}", PipelineDefinitionTests.StageParameter(Stage("Deploy_prd"), "grantDatabaseAccess"));
     }
 
     [Fact]
     public void Production_has_the_same_parameters_and_defaults_as_eim()
     {
         var eim = PipelineDefinitionTests.ReadFile("pipelines", "eim.yml");
+        string[] names = ["deployInfra", "applySettings", "runMigrations", "grantDatabaseAccess", "deployCode"];
 
-        foreach (var name in new[] { "deployInfra", "applySettings", "runMigrations", "deployCode" })
+        foreach (var name in names)
             Assert.Equal(PipelineDefinitionTests.ParameterDefault(eim, name), PipelineDefinitionTests.ParameterDefault(Pipeline, name));
+
+        static IEnumerable<string> ParameterNames(string text) =>
+            Regex.Matches(text, @"^  - name: (\w+)", RegexOptions.Multiline).Select(m => m.Groups[1].Value);
+        Assert.Equal(names, ParameterNames(eim));
+        Assert.Equal(names, ParameterNames(Pipeline));
     }
 
     [Fact]

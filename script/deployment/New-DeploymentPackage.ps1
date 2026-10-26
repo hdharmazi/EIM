@@ -4,27 +4,28 @@
 
 .DESCRIPTION
     Writes artifacts/package/wtc-eim-deploy-<version>/ and a zip of it, containing:
-      Deploy-Wilson.ps1, config/deploy.base.json and config/deploy.<name>.json for each -Environment
+      Deploy-Wilson.ps1, config/deploy.base.json and config/deploy.<name>.json for each -Environment (and for the
+        configuration each one "uses", so its names resolve)
       artifacts/wilson-automation.zip, gateway.zip, dashboard-api.zip   (dotnet publish -c Release)
-      artifacts/dashboard-frontend.<name>.zip   the SPA, for each shared-scope configuration (nonprod, prdshared)
+      artifacts/dashboard-frontend.<name>.zip   the SPA, for each configuration without "uses" (bat, prd)
       artifacts/dbmigrator/ARM.Integration.DbMigrator.exe   self-contained win-x64 migrator
       artifacts/manifest.json, README.txt
 
     The same binaries go to every configuration in the package. The SPA is built with the configuration's Entra
     values; a configuration whose Entra values are still <...> placeholders gets no SPA (the frontend step then
-    fails preflight). Secrets are never part of the package.
+    fails preflight). The package holds no secrets.
 
 .EXAMPLE
     ./script/deployment/New-DeploymentPackage.ps1
 
 .EXAMPLE
-    ./script/deployment/New-DeploymentPackage.ps1 -Environment nonprod, bat -Version local
+    ./script/deployment/New-DeploymentPackage.ps1 -Environment bat, test -Version local
 #>
 # After the help block: a #Requires line above it stops Get-Help from finding the help.
 #Requires -Version 7.2
 param(
     [ValidatePattern('^[a-z0-9]+$')]
-    [string[]]$Environment = @('nonprod', 'bat', 'test'),
+    [string[]]$Environment = @('bat', 'test', 'prd'),
 
     [string]$OutputPath,
     [string]$Version
@@ -100,68 +101,61 @@ function Get-PackageConfig([string]$Name, [string]$Directory) {
     $config
 }
 
-# The packaged configurations grouped by stamp (same sharedSuffix), in package order. Each stamp names its shared
-# configuration (from the package, or else from the configuration folder) and its resource group.
-function Get-PackageStamps([string[]]$Environments, [string]$Directory) {
-    $configs = [ordered]@{}
-    foreach ($name in $Environments) { $configs[$name] = Get-PackageConfig $name $Directory }
-    $stamps = [ordered]@{}
-    foreach ($name in $configs.Keys) {
-        $suffix = "$($configs[$name].sharedSuffix)"
-        if (-not $stamps.Contains($suffix)) {
-            $stamps[$suffix] = [pscustomobject]@{
-                Suffix        = $suffix
-                Production    = $configs[$name].production -eq $true
-                ResourceGroup = "$($configs[$name].names.resourceGroup)"
-                Shared        = $null
-                Environments  = [System.Collections.Generic.List[string]]::new()
+# The resource group a configuration deploys to: names.resourceGroup, or the derived rg-<workload>-<client>-<environment>.
+function Get-PackageResourceGroup($Config) {
+    if (-not [string]::IsNullOrWhiteSpace("$($Config.names.resourceGroup)")) { return "$($Config.names.resourceGroup)" }
+    "rg-$($Config.workload)-$($Config.client)-$($Config.environment)"
+}
+
+# The packaged configurations grouped by owner, in package order: each configuration without "uses", with the
+# packaged configurations that use it. An owner that is not packaged itself is still listed, from $Directory.
+function Get-PackageOwners([string[]]$Environments, [string]$Directory) {
+    $owners = [ordered]@{}
+    foreach ($name in $Environments) {
+        $config = Get-PackageConfig $name $Directory
+        $ownerName = if ([string]::IsNullOrWhiteSpace("$($config.uses)")) { $name } else { "$($config.uses)" }
+        if (-not $owners.Contains($ownerName)) {
+            $owner = if ($ownerName -eq $name) { $config } else { Get-PackageConfig $ownerName $Directory }
+            $owners[$ownerName] = [pscustomobject]@{
+                Name          = $ownerName
+                Packaged      = $Environments -contains $ownerName
+                Production    = $owner.production -eq $true
+                ResourceGroup = Get-PackageResourceGroup $owner
+                Users         = [System.Collections.Generic.List[string]]::new()
             }
         }
-        if ($configs[$name].scope -eq 'shared') { $stamps[$suffix].Shared = $name } else { $stamps[$suffix].Environments.Add($name) }
+        if ($ownerName -ne $name) { $owners[$ownerName].Users.Add($name) }
     }
-    foreach ($stamp in $stamps.Values) {
-        if ($stamp.Shared) { continue }
-        $stamp.Shared = @(Get-ChildItem -Path $Directory -Filter 'deploy.*.json' | ForEach-Object { $_.BaseName -replace '^deploy\.', '' } |
-                Where-Object { $_ -ne 'base' } | Where-Object {
-                    $other = Get-PackageConfig $_ $Directory
-                    "$($other.sharedSuffix)" -eq $stamp.Suffix -and $other.scope -eq 'shared'
-                } | Sort-Object)[0]
-        if (-not $stamp.Shared) { $stamp.Shared = '<shared configuration>' }
-    }
-    @($stamps.Values)
+    @($owners.Values)
 }
 
 function Get-PackageReadme([string]$Version, [string]$Commit, [string[]]$Environments, [string]$ConfigDirectory = (Join-Path $PSScriptRoot 'config')) {
-    $stamps = @(Get-PackageStamps $Environments $ConfigDirectory)
-    $groups = @($stamps.ResourceGroup | Where-Object { $_ } | Sort-Object -Unique)
-    $configurations = foreach ($stamp in $stamps) {
-        $label = if ($stamp.Production) { 'production stamp' } else { 'non-production stamp' }
-        "  $($stamp.Shared)  shared scope ($label, resource group $($stamp.ResourceGroup)): App Service plan, Log"
-        '           Analytics, gateway, dashboard API and SPA, database migrations.'
-        if ($stamp.Environments.Count) {
-            "  $($stamp.Environments -join ', ')  environment scope: the five queues and the Automation Function App."
+    $owners = @(Get-PackageOwners $Environments $ConfigDirectory)
+    $groups = @($owners.ResourceGroup | Where-Object { $_ } | Sort-Object -Unique)
+    $configurations = foreach ($owner in $owners) {
+        $label = if ($owner.Production) { 'production' } else { 'non-production' }
+        "  $($owner.Name)  owner ($label, resource group $($owner.ResourceGroup)): Service Bus namespace, Key Vault,"
+        '       SQL server and database, plan, Log Analytics, gateway, dashboard API and SPA, its queues and its'
+        "       Automation app.$(if (-not $owner.Packaged) { ' Not deployed by this package; its configuration is included for the names.' })"
+        foreach ($user in $owner.Users) {
+            "  $user  uses $($owner.Name): its own queues and Automation app, on the resources of $($owner.Name)."
         }
-        if ($stamp.Production) {
-            "  The production stamp shares nothing with the non-production one: 'remove' never runs against it and"
-            '  the dashboard has no Simulation console. Its Service Bus namespace, SQL server and database exist'
-            '  before the first run (docs/deployment/production-go-live.md); the script never creates them.'
+        if ($owner.Production) {
+            "  $($owner.Name) shares nothing with a non-production configuration, and its dashboard has no Simulation console."
         }
     }
-    $steps = foreach ($stamp in $stamps) {
-        $first = if ($stamp.Environments.Count) { $stamp.Environments[0] } else { '<environment>' }
+    $steps = foreach ($owner in $owners) {
         ''
-        "  Stamp $($stamp.Shared)$(if ($stamp.Environments.Count) { " ($($stamp.Environments -join ', '))" }):"
-        '  1. Preview, changes nothing:'
-        "       .\Deploy-Wilson.ps1 -Environment $($stamp.Shared) -Component all -WhatIf"
-        '  2. Shared resources, settings, migrations and the shared apps:'
-        "       .\Deploy-Wilson.ps1 -Environment $($stamp.Shared) -Component all"
-        "  3. Each environment$(if ($stamp.Environments.Count) { " ($($stamp.Environments -join ', then '))" }):"
-        "       .\Deploy-Wilson.ps1 -Environment $first -Component all"
-        '     The queue and timer triggers of a new Automation app stay disabled until cutover:'
-        "       .\Deploy-Wilson.ps1 -Environment $first -Component cutover     $(if ($stamp.Production) { '(no legacy app, so no rollback)' } else { '(rollback undoes it)' })"
-        if (-not $stamp.Production) {
-            '  4. Gateway keys (once, after the shared apps run):'
-            "       .\Deploy-Wilson.ps1 -Environment $($stamp.Shared) -Component cutover"
+        "  $($owner.Name)$(if ($owner.Users.Count) { " (used by $($owner.Users -join ', '))" }):"
+        if ($owner.Packaged) {
+            '  1. Preview, changes nothing:'
+            "       .\Deploy-Wilson.ps1 -Environment $($owner.Name) -Component all, myip, myipremove -WhatIf"
+            '  2. Resources, SQL, settings, migrations, database users and the apps:'
+            "       .\Deploy-Wilson.ps1 -Environment $($owner.Name) -Component all, myip, myipremove"
+        }
+        if ($owner.Users.Count) {
+            "  $(if ($owner.Packaged) { '3' } else { '1' }). Each configuration that uses it$(if ($owner.Users.Count -gt 1) { " ($($owner.Users -join ', then '))" }), after $($owner.Name):"
+            foreach ($user in $owner.Users) { "       .\Deploy-Wilson.ps1 -Environment $user -Component all, myip, myipremove" }
         }
     }
     @"
@@ -171,14 +165,17 @@ Configurations: $($Environments -join ', ')
 REQUIREMENTS
   - PowerShell 7.2 or later (pwsh) and Azure CLI 2.60 or later, on Windows.
   - Node.js LTS for the frontend step only (it uses the Static Web Apps CLI through npx).
-  - az login as a user with Contributor on the resource group of the stamp you deploy: $($groups -join ', ').
-  - Secrets come from the environment variables EIM_DEPLOY_EIMDB and EIM_DEPLOY_SERVICEBUS, or a hidden
-    prompt when they are not set. They are never written to disk in this folder.
+  - az login as a user with Contributor on the resource group you deploy: $($groups -join ', ').
+    Creating a missing resource group needs Contributor on the subscription.
+  - For schema and sqlusers: membership of the SQL server's Entra admin group.
+  There are no deployment secrets. The apps reach SQL with their managed identities and Service Bus through
+  the Key Vault secret eim-servicebus, which 'settings' writes for an owner.
 
 CONFIGURATIONS
 $($configurations -join "`n")
   These are deployment configurations, not ENVIRONMENT values in eimdb (DEV2, for example, has no
   Function App). Development runs locally; no configuration deploys a development environment.
+  The gated queue and timer triggers follow automation.triggersEnabled in each configuration.
 
 STEPS
   Open PowerShell 7 (pwsh) in this folder and run the commands there; 'pwsh -File' would not accept
@@ -186,22 +183,19 @@ STEPS
 
   0. Check the configuration: config\deploy.base.json and config\deploy.<name>.json. Nothing there is
      secret. Every command that changes something first runs 'preflight', which stops before any
-     change on unfilled <...> values, missing secrets, missing package files and (for code-only runs)
-     settings an app lacks. Run it alone with:
+     change on unfilled <...> values, a wrong "uses", missing owner resources, missing package files
+     and (for code-only runs) settings an app lacks. Run it alone with:
        .\Deploy-Wilson.ps1 -Environment <name> -Component preflight
 $($steps -join "`n")
 
-  'verify' prints the state of every app; 'health' fails unless the hosts run and the dashboard answers.
+  myip opens the SQL firewall for this machine around schema and sqlusers. If a run stops before
+  myipremove, close it with:
+       .\Deploy-Wilson.ps1 -Environment <name> -Component myipremove
 
-REMOVE (non-production only, after cutover and the observation window; operator machine only)
-       .\Deploy-Wilson.ps1 -Environment <name> -Component remove -WhatIf
-       .\Deploy-Wilson.ps1 -Environment <name> -Component remove
-  Deletes only the resources listed under "legacy" in the configuration. A shared configuration may also
-  list retired Automation apps in legacy.retiredAutomationApps; remove refuses until every gated function
-  on them is disabled (see the runbook). Remove refuses every production configuration.
+  'verify' prints the state of every app; 'health' fails unless the hosts run, the dashboard answers
+  and the Key Vault references resolve.
 
-Runbooks: docs/deployment/resource-rename-cutover.md and docs/deployment/production-go-live.md in the
-repository.
+Guides: docs/deployment/deployment.md and docs/deployment/production-go-live.md in the repository.
 Full help: Get-Help .\Deploy-Wilson.ps1 -Full
 "@
 }
@@ -217,6 +211,9 @@ if ($MyInvocation.InvocationName -ne '.') {
     foreach ($name in $Environment) {
         $configs[$name] = @{ Path = (Join-Path $configDir "deploy.$name.json"); Config = (Get-PackageConfig $name $configDir) }
     }
+    # Deploy-Wilson.ps1 resolves a configuration with "uses" from its owner's file, so the owner's file goes along.
+    $ownerFiles = @($configs.Values | ForEach-Object { "$($_.Config.uses)" } | Where-Object { $_ -and -not $configs.Contains($_) } | Select-Object -Unique)
+    foreach ($name in $ownerFiles) { Get-PackageConfig $name $configDir | Out-Null }
 
     $commit = Invoke-Tool 'git' @('rev-parse', '--short', 'HEAD') -Capture
     if (Invoke-Tool 'git' @('status', '--porcelain') -Capture) { Write-Warning "The working tree has uncommitted changes; they are included in the package." }
@@ -252,15 +249,15 @@ if ($MyInvocation.InvocationName -ne '.') {
             '--configuration', 'Release', '--runtime', 'win-x64', '--self-contained', 'true', '-p:PublishSingleFile=true',
             '-p:IncludeNativeLibrariesForSelfExtract=true', '--output', (Join-Path $artifacts 'dbmigrator'), '-nologo', '-v', 'q') $build
 
-        # The SPA belongs to the shared scope: one dashboard serves every environment.
+        # The SPA belongs to the owner: one dashboard serves the owner and the configurations that use it.
         $frontendDir = Join-Path $RepoRoot 'ARM.Integration.Dashboard.Frontend'
         $frontends = @()
-        $shared = @($configs.Keys | Where-Object { $configs[$_].Config.scope -eq 'shared' })
-        if ($shared) {
+        $owners = @($configs.Keys | Where-Object { [string]::IsNullOrWhiteSpace("$($configs[$_].Config.uses)") })
+        if ($owners) {
             Write-Host "== npm ci (dashboard frontend)"
             Invoke-Tool 'npm' @('--prefix', $frontendDir, 'ci')
         }
-        foreach ($name in $shared) {
+        foreach ($name in $owners) {
             $entra = $configs[$name].Config.entra
             if (@('tenantId', 'clientId', 'scope' | Where-Object { Test-PackagePlaceholder $entra.$_ }).Count -gt 0) {
                 Write-Warning "$name`: entra is incomplete; no frontend built for it (the frontend step will fail preflight)."
@@ -280,6 +277,7 @@ if ($MyInvocation.InvocationName -ne '.') {
         Copy-Item (Join-Path $PSScriptRoot 'Deploy-Wilson.ps1') $packageDir
         Copy-Item $basePath (Join-Path $packageDir 'config/deploy.base.json')
         foreach ($name in $configs.Keys) { Copy-Item $configs[$name].Path (Join-Path $packageDir "config/deploy.$name.json") }
+        foreach ($name in $ownerFiles) { Copy-Item (Join-Path $configDir "deploy.$name.json") (Join-Path $packageDir "config/deploy.$name.json") }
 
         [ordered]@{
             version                          = $Version

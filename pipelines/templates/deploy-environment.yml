@@ -1,14 +1,18 @@
 # Deploys the package artifact for one configuration with Deploy-Wilson.ps1 (package mode).
 # Windows agent: the packaged migrator is a win-x64 executable.
-# Order: preflight and preview, infrastructure, settings, migrations, code, then verify and health. With nothing
+# Order: preflight and preview, infrastructure, settings, database, code, then verify and health. With nothing
 # selected (a manual run with deployCode cleared) only preflight runs.
+#
+# ownsResources: true for a configuration without "uses" (bat, prd), which owns the Service Bus namespace, Key Vault,
+# SQL server and database, plan and dashboard; false for one that uses an owner's resources (test). Only an owner
+# runs 'sql' and 'schema'; Deploy-Wilson.ps1 refuses them for the other, and this template refuses runMigrations.
 #
 # packageSource: eim.yml deploys the package its own Build stage published ('current'); eim-prd.yml promotes the
 # package of an eim run through its pipeline resource ('eim'). Every script path goes through $(packageRoot).
 #
-# Secret variables are not exposed to scripts unless mapped, so every AzureCLI@2 step maps the three deployment
-# variables explicitly through env:. Deploy-Wilson.ps1 reads them from the environment only and never puts them on
-# a command line.
+# There are no deployment secrets: the apps reach SQL with their managed identities, and the Service Bus connection
+# is the Key Vault secret eim-servicebus. The only mapped variable is the optional EIM_DEPLOY_CONFIG_OVERRIDES.
+# The service connection's principal must be a member of the SQL server's Entra admin group for the database step.
 
 parameters:
   - name: environment          # deploy.<environment>.json in the package
@@ -18,16 +22,22 @@ parameters:
   - name: serviceConnection    # Azure Resource Manager service connection
     type: string
     default: sc-eim-wtc-nonprod
-  - name: variableGroup        # EIM_DEPLOY_EIMDB, EIM_DEPLOY_SERVICEBUS, EIM_DEPLOY_CONFIG_OVERRIDES
+  - name: variableGroup        # optional EIM_DEPLOY_CONFIG_OVERRIDES
     type: string
     default: eim-wtc-nonprod
+  - name: ownsResources        # true for a configuration without "uses" (runs 'sql' and may run 'schema')
+    type: boolean
+    default: false
   - name: deployInfra
     type: boolean
     default: false
   - name: applySettings
     type: boolean
     default: false
-  - name: runMigrations        # shared configuration only; the environment scope rejects 'schema'
+  - name: runMigrations        # owners only: a configuration with "uses" cannot run 'schema'
+    type: boolean
+    default: false
+  - name: grantDatabaseAccess  # 'sqlusers': database users for the configuration's apps
     type: boolean
     default: false
   - name: components           # Deploy-Wilson.ps1 code components, e.g. 'gateway, backend, frontend'; empty skips the step
@@ -38,6 +48,11 @@ parameters:
     default: current
 
 jobs:
+  # Template guard: an unknown key fails template expansion with this text ("Unexpected value ..."), before any
+  # job runs. A configuration with "uses" shares its owner's database and never runs 'schema'.
+  - ${{ if and(parameters.runMigrations, not(parameters.ownsResources)) }}:
+    - 'runMigrations needs ownsResources: true; ${{ parameters.environment }} uses an owner and never runs schema': error
+
   - deployment: Deploy_${{ parameters.environment }}
     displayName: Deploy ${{ parameters.environment }} (${{ parameters.components }})
     environment: ${{ parameters.devopsEnvironment }}
@@ -67,8 +82,6 @@ jobs:
             - task: AzureCLI@2
               displayName: Preflight and preview (changes nothing)
               env:
-                EIM_DEPLOY_EIMDB: $(EIM_DEPLOY_EIMDB)
-                EIM_DEPLOY_SERVICEBUS: $(EIM_DEPLOY_SERVICEBUS)
                 EIM_DEPLOY_CONFIG_OVERRIDES: $(EIM_DEPLOY_CONFIG_OVERRIDES)
               inputs:
                 azureSubscription: ${{ parameters.serviceConnection }}
@@ -77,8 +90,11 @@ jobs:
                 inlineScript: |
                   $components = @('preflight')
                   if ('${{ parameters.deployInfra }}' -eq 'True') { $components += 'infra' }
+                  if ('${{ parameters.deployInfra }}' -eq 'True' -and '${{ parameters.ownsResources }}' -eq 'True') { $components += 'sql' }
                   if ('${{ parameters.applySettings }}' -eq 'True') { $components += 'settings' }
-                  if ('${{ parameters.runMigrations }}' -eq 'True') { $components += 'myip', 'schema', 'myipremove' }
+                  if ('${{ parameters.runMigrations }}' -eq 'True') { $components += 'schema' }
+                  if ('${{ parameters.grantDatabaseAccess }}' -eq 'True') { $components += 'sqlusers' }
+                  if ($components -contains 'schema' -or $components -contains 'sqlusers') { $components += 'myip', 'myipremove' }
                   $components += @('${{ parameters.components }}' -split '\s*,\s*' | Where-Object { $_ })
                   # Like the last step: health only when something is deployed.
                   if ($components.Count -gt 1) { $components += 'health' }
@@ -88,22 +104,21 @@ jobs:
               - task: AzureCLI@2
                 displayName: Infrastructure
                 env:
-                  EIM_DEPLOY_EIMDB: $(EIM_DEPLOY_EIMDB)
-                  EIM_DEPLOY_SERVICEBUS: $(EIM_DEPLOY_SERVICEBUS)
                   EIM_DEPLOY_CONFIG_OVERRIDES: $(EIM_DEPLOY_CONFIG_OVERRIDES)
                 inputs:
                   azureSubscription: ${{ parameters.serviceConnection }}
                   scriptType: pscore
                   scriptLocation: inlineScript
                   inlineScript: |
-                    & '$(packageRoot)/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component infra
+                    # Only an owner creates and converges the SQL server and database.
+                    $components = @('infra')
+                    if ('${{ parameters.ownsResources }}' -eq 'True') { $components += 'sql' }
+                    & '$(packageRoot)/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component $components
 
             - ${{ if parameters.applySettings }}:
               - task: AzureCLI@2
                 displayName: App settings
                 env:
-                  EIM_DEPLOY_EIMDB: $(EIM_DEPLOY_EIMDB)
-                  EIM_DEPLOY_SERVICEBUS: $(EIM_DEPLOY_SERVICEBUS)
                   EIM_DEPLOY_CONFIG_OVERRIDES: $(EIM_DEPLOY_CONFIG_OVERRIDES)
                 inputs:
                   azureSubscription: ${{ parameters.serviceConnection }}
@@ -112,12 +127,10 @@ jobs:
                   inlineScript: |
                     & '$(packageRoot)/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component settings
 
-            - ${{ if parameters.runMigrations }}:
+            - ${{ if or(parameters.runMigrations, parameters.grantDatabaseAccess) }}:
               - task: AzureCLI@2
-                displayName: Database migrations
+                displayName: Database
                 env:
-                  EIM_DEPLOY_EIMDB: $(EIM_DEPLOY_EIMDB)
-                  EIM_DEPLOY_SERVICEBUS: $(EIM_DEPLOY_SERVICEBUS)
                   EIM_DEPLOY_CONFIG_OVERRIDES: $(EIM_DEPLOY_CONFIG_OVERRIDES)
                 inputs:
                   azureSubscription: ${{ parameters.serviceConnection }}
@@ -125,17 +138,23 @@ jobs:
                   scriptLocation: inlineScript
                   inlineScript: |
                     $deploy = '$(packageRoot)/Deploy-Wilson.ps1'
+                    $components = @()
+                    if ('${{ parameters.runMigrations }}' -eq 'True') { $components += 'schema' }
+                    if ('${{ parameters.grantDatabaseAccess }}' -eq 'True') { $components += 'sqlusers' }
                     & $deploy -Environment ${{ parameters.environment }} -Component myip
                     # The agent's IP changes per run; never leave it on the firewall.
-                    try { & $deploy -Environment ${{ parameters.environment }} -Component schema }
+                    try {
+                        # The federated sign-in is short-lived: cache the SQL token now, for the migrator and sqlusers.
+                        az account get-access-token --resource https://database.windows.net/ --query expiresOn -o tsv | Out-Null
+                        if ($LASTEXITCODE -ne 0) { throw 'Could not get a SQL access token for the service connection.' }
+                        & $deploy -Environment ${{ parameters.environment }} -Component $components
+                    }
                     finally { & $deploy -Environment ${{ parameters.environment }} -Component myipremove }
 
             - ${{ if ne(parameters.components, '') }}:
               - task: AzureCLI@2
                 displayName: Deploy ${{ parameters.components }}
                 env:
-                  EIM_DEPLOY_EIMDB: $(EIM_DEPLOY_EIMDB)
-                  EIM_DEPLOY_SERVICEBUS: $(EIM_DEPLOY_SERVICEBUS)
                   EIM_DEPLOY_CONFIG_OVERRIDES: $(EIM_DEPLOY_CONFIG_OVERRIDES)
                 inputs:
                   azureSubscription: ${{ parameters.serviceConnection }}
@@ -146,12 +165,10 @@ jobs:
 
             # Only after something was deployed. A preflight-only run (deployCode cleared, nothing else ticked) stops
             # after preflight, so it passes before the apps exist. eim.yml passes deployCode as a non-empty components.
-            - ${{ if or(parameters.deployInfra, parameters.applySettings, parameters.runMigrations, ne(parameters.components, '')) }}:
+            - ${{ if or(parameters.deployInfra, parameters.applySettings, parameters.runMigrations, parameters.grantDatabaseAccess, ne(parameters.components, '')) }}:
               - task: AzureCLI@2
                 displayName: Verify and health
                 env:
-                  EIM_DEPLOY_EIMDB: $(EIM_DEPLOY_EIMDB)
-                  EIM_DEPLOY_SERVICEBUS: $(EIM_DEPLOY_SERVICEBUS)
                   EIM_DEPLOY_CONFIG_OVERRIDES: $(EIM_DEPLOY_CONFIG_OVERRIDES)
                 inputs:
                   azureSubscription: ${{ parameters.serviceConnection }}

@@ -5,15 +5,18 @@ namespace Wilson.Integration.Tests;
 
 /// <summary>
 /// Spec deployment-automation: the Azure DevOps pipeline in pipelines/. Text assertions over eim.yml and its
-/// templates, so a reordered stage, a lost secret mapping or a migration in an environment stage fails the build
-/// rather than a deployment.
+/// templates, so a reordered stage, a mapped secret or a migration in a stage that does not own its resources fails
+/// the build rather than a deployment.
 /// </summary>
 public partial class PipelineDefinitionTests
 {
     private static readonly string Root = RepositoryPaths.Root();
 
-    // Development runs locally: there is no dev stage.
-    private static readonly string[] StageOrder = ["Build", "Deploy_shared", "Deploy_bat", "Deploy_test"];
+    // Development runs locally: there is no dev stage. bat owns the non-production resources; test uses them.
+    private static readonly string[] StageOrder = ["Build", "Deploy_bat", "Deploy_test"];
+
+    // Split so no file in the repository names the removed secret variables.
+    internal static readonly string[] RemovedSecretVariables = ["EIM_DEPLOY_" + "EIMDB", "EIM_DEPLOY_" + "SERVICEBUS"];
 
     internal static string ReadFile(params string[] relative) => File.ReadAllText(Path.Combine([Root, .. relative]));
 
@@ -52,10 +55,14 @@ public partial class PipelineDefinitionTests
     }
 
     /// <summary>Each AzureCLI@2 step of the deploy template: its display name and its text, up to the next step.</summary>
-    private static List<(string Name, string Block)> DeploySteps() =>
+    internal static List<(string Name, string Block)> DeploySteps() =>
         DeployTemplate.Split("task: AzureCLI@2")[1..]
             .Select(step => (Regex.Match(step, @"displayName: (.+)").Groups[1].Value.Trim(), step))
             .ToList();
+
+    /// <summary>The value a stage passes for a template parameter, or null when it passes none.</summary>
+    internal static string? StageParameter(string block, string name) =>
+        Regex.Match(block, $@"^\s+{name}: (.+?)\s*$", RegexOptions.Multiline) is { Success: true } m ? m.Groups[1].Value : null;
 
     private static string DeployStep(string name) =>
         DeploySteps().SingleOrDefault(s => s.Name == name).Block ?? throw new Xunit.Sdk.XunitException($"Step '{name}' not found in deploy-environment.yml.");
@@ -82,12 +89,12 @@ public partial class PipelineDefinitionTests
     }
 
     [Fact]
-    public void Bat_follows_the_shared_stage_directly()
+    public void Bat_follows_the_build_directly()
     {
         var bat = Stage("Deploy_bat");
 
-        Assert.Equal("Deploy_shared", DependsOn(bat));
-        Assert.Contains("eq(dependencies.Deploy_shared.result, 'Succeeded')", bat);
+        Assert.Equal("Build", DependsOn(bat));
+        Assert.Contains("eq(dependencies.Build.result, 'Succeeded')", bat);
     }
 
     [Fact]
@@ -111,28 +118,59 @@ public partial class PipelineDefinitionTests
     }
 
     [Theory]
-    [InlineData("Deploy_shared", "nonprod", "eim-wtc-nonprod")]
-    [InlineData("Deploy_bat", "bat", "eim-wtc-bat")]
-    [InlineData("Deploy_test", "test", "eim-wtc-test")]
-    public void Each_deploy_stage_targets_its_configuration_and_devops_environment(string stage, string configuration, string devopsEnvironment)
+    [InlineData("Deploy_bat", "bat", "eim-wtc-bat", "gateway, backend, frontend, automation")]
+    [InlineData("Deploy_test", "test", "eim-wtc-test", "automation")]
+    public void Each_deploy_stage_targets_its_configuration_and_devops_environment(string stage, string configuration, string devopsEnvironment, string components)
     {
         var block = Stage(stage);
 
         Assert.Contains("template: templates/deploy-environment.yml", block);
         Assert.Matches(new Regex($@"^\s+environment: {configuration}\s*$", RegexOptions.Multiline), block);
         Assert.Matches(new Regex($@"^\s+devopsEnvironment: {devopsEnvironment}\s*$", RegexOptions.Multiline), block);
+        Assert.Matches(new Regex(@"^ {10}\$\{\{ if parameters\.deployCode \}\}:\s*\r?\n {12}components: " + Regex.Escape(components) + @"\s*$", RegexOptions.Multiline), block);
     }
 
     [Fact]
-    public void Migrations_can_run_only_in_the_shared_stage()
+    public void Migrations_can_run_only_in_owner_stages()
     {
-        Assert.Contains("runMigrations: ${{ parameters.runMigrations }}", Stage("Deploy_shared"));
+        Assert.Equal("${{ parameters.runMigrations }}", StageParameter(Stage("Deploy_bat"), "runMigrations"));
 
-        foreach (var stage in new[] { "Deploy_bat", "Deploy_test" })
+        var runMigrations = Regex.Matches(Stage("Deploy_test"), @"runMigrations: (.+)$", RegexOptions.Multiline).Select(m => m.Groups[1].Value.Trim()).ToList();
+        Assert.True(runMigrations.SequenceEqual(["false"]), $"Deploy_test must pass runMigrations: false, found [{string.Join(", ", runMigrations)}].");
+
+        // The template refuses runMigrations for a stage that does not own its resources, at template expansion.
+        Assert.Matches(new Regex(
+            @"^  - \$\{\{ if and\(parameters\.runMigrations, not\(parameters\.ownsResources\)\) \}\}:\s*\r?\n    - '[^']*ownsResources[^']*': error\s*$", RegexOptions.Multiline), DeployTemplate);
+    }
+
+    [Fact]
+    public void Only_the_owner_stage_runs_the_sql_component()
+    {
+        Assert.Equal("true", StageParameter(Stage("Deploy_bat"), "ownsResources"));
+        Assert.Equal("false", StageParameter(Stage("Deploy_test"), "ownsResources"));
+        Assert.Equal("false", ParameterDefault(DeployTemplate, "ownsResources"));
+
+        // 'sql' is added only for an owner, in the preview and in the infrastructure step.
+        var infra = DeployStep("Infrastructure");
+        Assert.Contains("$components = @('infra')", infra);
+        Assert.Contains("if ('${{ parameters.ownsResources }}' -eq 'True') { $components += 'sql' }", infra);
+        Assert.Contains("'${{ parameters.ownsResources }}' -eq 'True') { $components += 'sql' }", DeployStep("Preflight and preview (changes nothing)"));
+        foreach (var (name, block) in DeploySteps())
         {
-            var runMigrations = Regex.Matches(Stage(stage), @"runMigrations: (.+)$", RegexOptions.Multiline).Select(m => m.Groups[1].Value.Trim()).ToList();
-            Assert.True(runMigrations.SequenceEqual(["false"]), $"{stage} must pass runMigrations: false, found [{string.Join(", ", runMigrations)}].");
+            var sqlAdds = Regex.Matches(block, @"'sql'").Count;
+            var ownerChecks = Regex.Matches(block, @"parameters\.ownsResources \}\}' -eq 'True'\) \{ \$components \+= 'sql' \}").Count;
+            Assert.True(sqlAdds == ownerChecks, $"Step '{name}' adds 'sql' outside the ownsResources check.");
         }
+    }
+
+    [Fact]
+    public void Database_access_is_a_manual_parameter_defaulting_to_false()
+    {
+        Assert.Equal("false", ParameterDefault(Pipeline, "grantDatabaseAccess"));
+        Assert.Equal("false", ParameterDefault(DeployTemplate, "grantDatabaseAccess"));
+        foreach (var stage in StageOrder[1..])
+            Assert.Equal("${{ parameters.grantDatabaseAccess }}", StageParameter(Stage(stage), "grantDatabaseAccess"));
+        Assert.Contains("if ('${{ parameters.grantDatabaseAccess }}' -eq 'True') { $components += 'sqlusers' }", DeployStep("Database"));
     }
 
     [Fact]
@@ -157,7 +195,7 @@ public partial class PipelineDefinitionTests
         Assert.Contains("dotnet test ARM.Integration.Wilson.slnx -c Release", build);
         Assert.Contains("-Environment $environments", build);
         // The package carries the production configurations too; eim-prd.yml promotes it (spec deployment-pipeline).
-        Assert.Matches(new Regex(@"^\s+environments: nonprod,bat,test,prdshared,prd\s*$", RegexOptions.Multiline), Stage("Build"));
+        Assert.Matches(new Regex(@"^\s+environments: bat,test,prd\s*$", RegexOptions.Multiline), Stage("Build"));
     }
 
     [Fact]
@@ -165,7 +203,7 @@ public partial class PipelineDefinitionTests
     {
         var pipeline = Pipeline;
 
-        foreach (var word in new[] { "Deploy_prdshared", "Deploy_prd", "sc-eim-wtc-prd", "eim-wtc-prd", "eim-wtc-prdshared" })
+        foreach (var word in new[] { "Deploy_prd", "sc-eim-wtc-prd", "eim-wtc-prd" })
             Assert.False(pipeline.Contains(word, StringComparison.Ordinal), $"pipelines/eim.yml contains '{word}'; production deploys only from pipelines/eim-prd.yml.");
         Assert.DoesNotContain("packageSource:", pipeline);
     }
@@ -210,25 +248,32 @@ public partial class PipelineDefinitionTests
     }
 
     [Fact]
-    public void Every_azure_cli_step_maps_the_deployment_secrets()
+    public void No_pipeline_maps_a_secret_variable()
     {
-        var steps = DeployTemplate.Split("task: AzureCLI@2")[1..];
+        foreach (var file in Directory.GetFiles(Path.Combine(Root, "pipelines"), "*", SearchOption.AllDirectories))
+        {
+            var text = File.ReadAllText(file);
+            foreach (var word in RemovedSecretVariables)
+                Assert.False(text.Contains(word, StringComparison.OrdinalIgnoreCase), $"{Path.GetRelativePath(Root, file)} names '{word}'; there are no deployment secrets.");
+        }
 
+        var steps = DeploySteps();
         Assert.NotEmpty(steps);
-        foreach (var step in steps)
+        foreach (var (name, step) in steps)
         {
             // The env: block sits between the task line and its inputs.
             var header = step[..step.IndexOf("inputs:", StringComparison.Ordinal)];
-            var name = Regex.Match(header, @"displayName: (.+)").Groups[1].Value.Trim();
+            var env = Regex.Match(header, @"^(?<indent> +)env:\s*\r?\n(?<body>(?:\k<indent> {2}\S.*\r?\n)*)", RegexOptions.Multiline);
 
-            Assert.True(header.Contains("env:"), $"AzureCLI@2 step '{name}' has no env: block.");
-            Assert.True(header.Contains("EIM_DEPLOY_EIMDB: $(EIM_DEPLOY_EIMDB)"), $"AzureCLI@2 step '{name}' does not map EIM_DEPLOY_EIMDB.");
-            Assert.True(header.Contains("EIM_DEPLOY_SERVICEBUS: $(EIM_DEPLOY_SERVICEBUS)"), $"AzureCLI@2 step '{name}' does not map EIM_DEPLOY_SERVICEBUS.");
+            Assert.True(env.Success, $"AzureCLI@2 step '{name}' has no env: block.");
+            var mapped = Regex.Matches(env.Groups["body"].Value, @"^\s+(\S+):", RegexOptions.Multiline).Select(m => m.Groups[1].Value).ToList();
+            Assert.True(mapped.SequenceEqual(["EIM_DEPLOY_CONFIG_OVERRIDES"]), $"AzureCLI@2 step '{name}' must map only EIM_DEPLOY_CONFIG_OVERRIDES, found [{string.Join(", ", mapped)}].");
+            Assert.Contains("EIM_DEPLOY_CONFIG_OVERRIDES: $(EIM_DEPLOY_CONFIG_OVERRIDES)", header);
         }
     }
 
     [Fact]
-    public void Deploy_template_uses_the_shared_variable_group_and_service_connection()
+    public void Deploy_template_defaults_to_the_nonproduction_variable_group_and_service_connection()
     {
         var deploy = DeployTemplate;
 
@@ -241,11 +286,11 @@ public partial class PipelineDefinitionTests
     public void Deploy_template_runs_its_steps_in_order()
     {
         Assert.Equal(
-            ["Preflight and preview (changes nothing)", "Infrastructure", "App settings", "Database migrations", "Deploy ${{ parameters.components }}", "Verify and health"],
+            ["Preflight and preview (changes nothing)", "Infrastructure", "App settings", "Database", "Deploy ${{ parameters.components }}", "Verify and health"],
             DeploySteps().Select(s => s.Name));
 
         Assert.Contains("-WhatIf", DeployStep("Preflight and preview (changes nothing)"));
-        Assert.Contains("-Component infra", DeployStep("Infrastructure"));
+        Assert.Contains("-Component $components", DeployStep("Infrastructure"));
         Assert.Contains("-Component settings", DeployStep("App settings"));
         Assert.Contains("-Component ${{ parameters.components }}", DeployStep("Deploy ${{ parameters.components }}"));
 
@@ -265,7 +310,7 @@ public partial class PipelineDefinitionTests
 
         // A preflight-only run (deployCode cleared, nothing ticked) must pass before the apps exist, so health is skipped.
         Assert.Matches(new Regex(
-            @"^ {12}- \$\{\{ if or\(parameters\.deployInfra, parameters\.applySettings, parameters\.runMigrations, ne\(parameters\.components, ''\)\) \}\}:\s*\r?\n" +
+            @"^ {12}- \$\{\{ if or\(parameters\.deployInfra, parameters\.applySettings, parameters\.runMigrations, parameters\.grantDatabaseAccess, ne\(parameters\.components, ''\)\) \}\}:\s*\r?\n" +
             @" {14}- task: AzureCLI@2\s*\r?\n {16}displayName: Verify and health\s*$", RegexOptions.Multiline), deploy);
 
         // In eim.yml, deployCode reaches the template as a non-empty components.
@@ -274,16 +319,22 @@ public partial class PipelineDefinitionTests
     }
 
     [Fact]
-    public void The_firewall_rule_is_removed_in_a_finally()
+    public void The_database_step_removes_the_firewall_rule_in_a_finally()
     {
-        var migrations = DeployStep("Database migrations");
-        var myip = Regex.Match(migrations, @"-Component myip\s*$", RegexOptions.Multiline);
+        Assert.Matches(new Regex(@"^ {12}- \$\{\{ if or\(parameters\.runMigrations, parameters\.grantDatabaseAccess\) \}\}:\s*\r?\n {14}- task: AzureCLI@2\s*\r?\n {16}displayName: Database\s*$", RegexOptions.Multiline), DeployTemplate);
 
-        Assert.Matches(new Regex(
-            @"^\s*try \{ & \$deploy -Environment \$\{\{ parameters\.environment \}\} -Component schema \}\s*\r?\n" +
-            @"\s*finally \{ & \$deploy -Environment \$\{\{ parameters\.environment \}\} -Component myipremove \}", RegexOptions.Multiline), migrations);
-        Assert.True(myip.Success && myip.Index < migrations.IndexOf("try {", StringComparison.Ordinal), "'myip' must run before the try that runs 'schema'.");
-        Assert.Single(Regex.Matches(migrations, @"-Component myipremove\b"));
+        var database = DeployStep("Database");
+        var myip = Regex.Match(database, @"-Component myip\s*$", RegexOptions.Multiline);
+        var tryAt = database.IndexOf("try {", StringComparison.Ordinal);
+        var tokenAt = database.IndexOf("az account get-access-token --resource https://database.windows.net/", StringComparison.Ordinal);
+        var runAt = database.IndexOf("-Component $components", StringComparison.Ordinal);
+        var finallyMatch = Regex.Match(database, @"^\s*finally \{ & \$deploy -Environment \$\{\{ parameters\.environment \}\} -Component myipremove \}\s*$", RegexOptions.Multiline);
+
+        Assert.True(myip.Success && myip.Index < tryAt, "'myip' must run before the try.");
+        Assert.True(tokenAt > tryAt && runAt > tokenAt, "The SQL token must be primed inside the try, before schema and sqlusers run.");
+        Assert.True(finallyMatch.Success && finallyMatch.Index > runAt, "'myipremove' must run in a finally after schema and sqlusers.");
+        Assert.Contains("if ('${{ parameters.runMigrations }}' -eq 'True') { $components += 'schema' }", database);
+        Assert.Single(Regex.Matches(database, @"-Component myipremove\b"));
     }
 
     [Fact]
@@ -292,7 +343,7 @@ public partial class PipelineDefinitionTests
         var pipeline = Pipeline;
 
         Assert.Equal("true", ParameterDefault(pipeline, "deployCode"));
-        foreach (var name in new[] { "deployInfra", "applySettings", "runMigrations" })
+        foreach (var name in new[] { "deployInfra", "applySettings", "runMigrations", "grantDatabaseAccess" })
         {
             Assert.Equal("false", ParameterDefault(pipeline, name));
             Assert.Equal("false", ParameterDefault(DeployTemplate, name));

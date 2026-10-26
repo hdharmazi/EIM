@@ -2,7 +2,7 @@
 # checks its contents, and only then publishes it as artifact 'package'.
 
 parameters:
-  - name: environments         # comma-separated configuration names, e.g. 'nonprod,bat,test'
+  - name: environments         # comma-separated configuration names, e.g. 'bat,test,prd'
     type: string
   - name: buildNumberSuffix    # appended to the run's build number before packaging, e.g. '+settings'
     type: string

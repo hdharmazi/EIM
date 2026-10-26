@@ -4,7 +4,7 @@
 
 - [Deployment overview](deployment/deployment.md)
 - [Azure DevOps setup](deployment/devops-setup.md)
-- [Resource rename and cutover (#5246)](deployment/resource-rename-cutover.md)
+- [Production go-live](deployment/production-go-live.md)
 - [Deploying from scratch](deployment/deploy-from-scratch.md)
 - [Database migrations](deployment/database-migrations.md)
 - [D365 F&SC Gateway operations](deployment/d365fsc-gateway.md)

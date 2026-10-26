@@ -1,19 +1,20 @@
-# Wilson EIM: one build of the Automation host, gateway, dashboard and migrator, deployed to the shared
-# nonprod resources and then promoted bat -> test. Development is local only; there is no dev stage.
+# Wilson EIM: one build of the Automation host, gateway, dashboard and migrator, deployed to bat (which owns the
+# non-production resources) and then to test (which uses bat's). Development is local only; there is no dev stage.
 #
 # One-time setup (docs/deployment/devops-setup.md):
-#   - Azure DevOps environments: eim-wtc-nonprod (approval + exclusive lock),
-#     eim-wtc-bat and eim-wtc-test (approval + exclusive lock)
-#   - ARM service connection 'sc-eim-wtc-nonprod' (workload identity, Contributor on d365fsc-integration-nonprod)
-#   - Library variable group 'eim-wtc-nonprod': EIM_DEPLOY_EIMDB (secret), EIM_DEPLOY_SERVICEBUS (secret) and
-#     optional EIM_DEPLOY_CONFIG_OVERRIDES (JSON merged over the configuration)
-# A merge deploys code only. Infrastructure, app settings and migrations run only when ticked on a manual run.
-# Migrations run once, in Deploy_shared, before any environment's code: they must be expand-only
+#   - Azure DevOps environments: eim-wtc-bat and eim-wtc-test (approval + exclusive lock)
+#   - ARM service connection 'sc-eim-wtc-nonprod' (workload identity, Contributor on d365fsc-integration-nonprod).
+#     Its service principal must be a member of the SQL server's Entra admin group for migrations and
+#     database access.
+#   - Library variable group 'eim-wtc-nonprod': only the optional EIM_DEPLOY_CONFIG_OVERRIDES (JSON merged over
+#     the configuration). There are no deployment secrets.
+# A merge deploys code only. Infrastructure, app settings, migrations and database access run only when ticked on a
+# manual run. Migrations run in Deploy_bat, before test's code: they must be expand-only
 # (docs/deployment/database-migrations.md).
 
 parameters:
   - name: deployInfra
-    displayName: Infrastructure (plan, apps, storage, Insights, queues)
+    displayName: Infrastructure (plan, apps, storage, Insights, queues; SQL for bat)
     type: boolean
     default: false
   - name: applySettings
@@ -21,7 +22,11 @@ parameters:
     type: boolean
     default: false
   - name: runMigrations
-    displayName: Run database migrations (shared stage only)
+    displayName: Run database migrations (bat stage only)
+    type: boolean
+    default: false
+  - name: grantDatabaseAccess
+    displayName: Grant database access to the apps (sqlusers)
     type: boolean
     default: false
   - name: deployCode
@@ -68,8 +73,8 @@ stages:
     jobs:
       - template: templates/build-package.yml
         parameters:
-          # prdshared and prd are packaged, not deployed here: eim-prd.yml promotes this package to production.
-          environments: nonprod,bat,test,prdshared,prd
+          # prd is packaged, not deployed here: eim-prd.yml promotes this package to production.
+          environments: bat,test,prd
           # Runs that change settings or the schema are recognisable in the run list.
           ${{ if and(parameters.applySettings, parameters.runMigrations) }}:
             buildNumberSuffix: +settings+migrations
@@ -78,50 +83,41 @@ stages:
           ${{ elseif parameters.runMigrations }}:
             buildNumberSuffix: +migrations
 
-  # Shared resources: gateway, dashboard API and SPA (in place), and the one eimdb every ENVIRONMENT value reads.
-  - stage: Deploy_shared
-    displayName: Deploy shared (nonprod)
+  # bat owns the non-production resources: Service Bus namespace, Key Vault, SQL server and eimdb, plan, gateway,
+  # dashboard API and SPA, and its own Automation app.
+  - stage: Deploy_bat
+    displayName: Deploy bat
     dependsOn: Build
     condition: and(eq(dependencies.Build.result, 'Succeeded'), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
       - template: templates/deploy-environment.yml
         parameters:
-          environment: nonprod
-          devopsEnvironment: eim-wtc-nonprod
+          environment: bat
+          devopsEnvironment: eim-wtc-bat
+          ownsResources: true
           deployInfra: ${{ parameters.deployInfra }}
           applySettings: ${{ parameters.applySettings }}
           runMigrations: ${{ parameters.runMigrations }}
+          grantDatabaseAccess: ${{ parameters.grantDatabaseAccess }}
           ${{ if parameters.deployCode }}:
-            components: gateway, backend, frontend
+            components: gateway, backend, frontend, automation
 
-  - stage: Deploy_bat
-    displayName: Deploy bat
-    dependsOn: Deploy_shared
-    # Succeeded, not skipped: a rejected or failed shared stage stops every environment.
-    condition: and(eq(dependencies.Deploy_shared.result, 'Succeeded'), ne(variables['Build.Reason'], 'PullRequest'))
-    jobs:
-      - template: templates/deploy-environment.yml
-        parameters:
-          environment: bat
-          devopsEnvironment: eim-wtc-bat
-          deployInfra: ${{ parameters.deployInfra }}
-          applySettings: ${{ parameters.applySettings }}
-          # The environment scope rejects 'schema'; migrations run in Deploy_shared only.
-          runMigrations: false
-          ${{ if parameters.deployCode }}:
-            components: automation
-
+  # test uses bat's resources: only its queues and its Automation app are its own.
   - stage: Deploy_test
     displayName: Deploy test
     dependsOn: Deploy_bat
+    # Succeeded, not skipped: a rejected or failed bat stage stops test.
     condition: and(eq(dependencies.Deploy_bat.result, 'Succeeded'), ne(variables['Build.Reason'], 'PullRequest'))
     jobs:
       - template: templates/deploy-environment.yml
         parameters:
           environment: test
           devopsEnvironment: eim-wtc-test
+          ownsResources: false
           deployInfra: ${{ parameters.deployInfra }}
           applySettings: ${{ parameters.applySettings }}
+          # test shares bat's database; migrations run in Deploy_bat only.
           runMigrations: false
+          grantDatabaseAccess: ${{ parameters.grantDatabaseAccess }}
           ${{ if parameters.deployCode }}:
             components: automation

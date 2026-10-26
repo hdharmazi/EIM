@@ -8,6 +8,9 @@ using Microsoft.Data.SqlClient;
 //
 //   ARM.Integration.DbMigrator --connection "<connection string>" [--whatif]
 //
+// With Entra sign-in, e.g. the deployer's Azure CLI identity (AZURE_TOKEN_CREDENTIALS=AzureCliCredential):
+//   "Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<database>;Authentication=Active Directory Default;Encrypt=True"
+//
 // The connection may also come from the EIMDB_MIGRATOR_CONNECTION environment variable so a
 // pipeline can supply it without it appearing in a command line. It is never echoed.
 
@@ -50,6 +53,8 @@ for (var i = 0; i < args.Length; i++)
         case "--help" or "-h":
             Console.WriteLine("Usage: ARM.Integration.DbMigrator --connection \"<connection string>\" [--whatif] [--timeout <seconds>]");
             Console.WriteLine("       EIMDB_MIGRATOR_CONNECTION may be used instead of --connection.");
+            Console.WriteLine("       Entra sign-in (as Deploy-Wilson.ps1 runs it, with the Azure CLI identity):");
+            Console.WriteLine("         \"Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<database>;Authentication=Active Directory Default;Encrypt=True\"");
             Console.WriteLine($"       --timeout defaults to {DefaultTimeoutSeconds} seconds and applies per script.");
             return 0;
     }

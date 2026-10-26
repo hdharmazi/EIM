@@ -8,22 +8,27 @@ empty Azure SQL database does not contain the tables, indexes, routing rows, sto
 trigger used by the API, Wilson.Integration.Automation, and Gateway. Deploying code without first applying migrations
 produces table-not-found errors; it is not a supported deployment mode.
 
-`script/deployment/Deploy-Wilson.ps1 -Environment nonprod -Component schema` runs the migrator, using the
-self-contained `ARM.Integration.DbMigrator.exe` carried in the deployment package. `schema` belongs to the
-shared configuration (`nonprod`) only; the per-environment configurations (`bat`, `test`) reject it,
-because there is one `eimdb` for all of them. See [deployment.md](deployment.md).
+`script/deployment/Deploy-Wilson.ps1 -Environment bat -Component myip, schema, myipremove` runs the migrator,
+using the self-contained `ARM.Integration.DbMigrator.exe` carried in the deployment package. `schema` belongs to
+configurations that own their database (`bat`, `prd`); a configuration with `uses` (`test`) rejects it, because
+it uses its owner's database. See [deployment.md](deployment.md).
+
+The migrator signs in with Entra ID as the deployer: the script passes
+`Authentication=Active Directory Default` and `AZURE_TOKEN_CREDENTIALS=AzureCliCredential`, so it uses the Azure
+CLI identity (the service connection's principal in the pipeline, your `az login` by hand). That identity must be
+in the SQL server's Entra admin group. No SQL password is involved.
 
 Local development uses its own database (see "Local database" below), never the shared `eimdb`.
 
 ## The production database
 
 Production has its own database, `sqldb-eim-wtc-prd` on `sql-eim-wtc-prd` in `d365fsc-integration-prod`,
-created by the runbook ([production-go-live.md](production-go-live.md)) with the same case-insensitive collation
-as `eimdb` (`SQL_Latin1_General_CP1_CI_AS`). Route lookups rely on it: the Automation host sends ENVIRONMENT `prd`
-and the rows say `PRD`.
+created by the `sql` component ([production-go-live.md](production-go-live.md)) with the default collation, the
+same case-insensitive collation as `eimdb` (`SQL_Latin1_General_CP1_CI_AS`). Route lookups rely on it: the
+Automation host sends ENVIRONMENT `prd` and the rows say `PRD`.
 
-- `schema` runs there from `prdshared` only, in the `Deploy_prdshared` stage of `pipelines/eim-prd.yml`, behind
-  the production approval. `prd` rejects `schema` like `bat` and `test`.
+- `schema` runs there from `prd`, in the `Deploy_prd` stage of `pipelines/eim-prd.yml`, behind the production
+  approval.
 - It runs every migration from `001`, exactly the scripts `eimdb` runs. No migration branches on which database
   it is in. A database created empty migrates with no manual step: `002a` creates the `MODIFIEDDATETIME`
   trigger that `003` needs (see "The one exception" below).
@@ -31,21 +36,21 @@ and the rows say `PRD`.
   `Hold`). On `eimdb` the same rows are inert: no non-production message carries `PRD`.
 - `001`, `002` and `006` also seed non-production rows there (a sample `ENVIRONMENTTABLE` row,
   `SimulationEnvironment` configuration rows, a developer `USERTABLE` admin and the BAT/DEV/DEV2/TEST routes).
-  They are inert on production and stay; the runbook reviews the `USERTABLE` row.
+  They are inert on production and stay; the go-live steps review the `USERTABLE` row.
 - The `PRD` `ENVIRONMENTTABLE` profiles hold D365 credentials and are entered through the dashboard, never by
   migration.
 
 ## When migrations run, and the expand/contract rule
 
-The pipeline (`pipelines/eim.yml`) runs migrations **once per run, in the `Deploy_shared` stage, before any
-environment's code**, and only on a manual run with `runMigrations` ticked. A merge to `main` never migrates.
-The stage wraps the migrator in `myip` / `myipremove`, so the agent's IP is on the SQL firewall only while
-`schema` runs.
+The pipeline (`pipelines/eim.yml`) runs migrations **once per run, in the `Deploy_bat` stage, before bat's
+code**, and only on a manual run with `runMigrations` ticked. A merge to `main` never migrates, and `Deploy_test`
+never migrates. The stage's database step wraps the migrator in `myip` / `myipremove` (in a `finally`), so the
+agent's IP is on the SQL firewall only while `schema` runs.
 
 One `eimdb` holds the rows of every ENVIRONMENT value: `DEV`, `DEV2`, `BAT` and `TEST`. These are database
 values, not deployment configurations; `DEV2` has no Function App and no deployment configuration of its own,
-but its rows are migrated with everyone else's. After `Deploy_shared`, `bat` and `test` keep running the
-previous build until their stages are approved, possibly for days, and a rejected stage leaves them there.
+but its rows are migrated with everyone else's. After `Deploy_bat` migrates, `test` keeps running the previous
+build until its stage is approved, possibly for days, and a rejected stage leaves it there.
 So every migration must work with:
 
 - the new build and the build still running in later stages, and
@@ -162,6 +167,17 @@ dotnet run --project ARM.Integration.DbMigrator -- --connection "<connection str
 The connection may instead come from the `EIMDB_MIGRATOR_CONNECTION` environment variable, so a
 pipeline can supply it without it appearing in a command line. It is never echoed to output.
 
+Against Azure SQL, sign in with Entra ID rather than a password. This is the form `Deploy-Wilson.ps1` uses, with
+your Azure CLI identity (which must be in the server's Entra admin group):
+
+```powershell
+$env:AZURE_TOKEN_CREDENTIALS = 'AzureCliCredential'
+$env:EIMDB_MIGRATOR_CONNECTION = 'Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<database>;Authentication=Active Directory Default;Encrypt=True'
+dotnet run --project ARM.Integration.DbMigrator -- --whatif
+```
+
+Against a local SQL Server, SQL or Windows authentication works as before (see "Local database" below).
+
 Exit codes:
 
 | Code | Meaning |
@@ -200,7 +216,7 @@ against a local `eimdb`, built by the same migrator:
 
 Run the migrator again after pulling new migrations. A migration you are writing can be applied,
 dropped and re-applied locally as often as needed (drop and recreate the database to start over).
-Only merged migrations reach the shared `eimdb`, through the pipeline's `Deploy_shared` stage.
+Only merged migrations reach the shared `eimdb`, through the pipeline's `Deploy_bat` stage.
 
 The `eimdb_dev` catalog on the shared SQL server is a leftover of the old development setup and
 will be dropped by hand. Do not point a local host at it, or at the shared `eimdb`.
@@ -392,20 +408,19 @@ then migrate.** Wilson.Integration.Automation runs `RouteRegistryValidator` at s
 route names an orchestration it has not registered. If the route row exists while the previous build
 starts — a restart, or a Consumption scale-out — the host is down, not degraded.
 
-The pipeline runs `schema` in `Deploy_shared`, before any environment's Automation code, so this
-release must **not** be deployed with `runMigrations` ticked. Deploy the code first, then migrate in a
-separate invocation:
+The pipeline runs `schema` in `Deploy_bat`, before any Automation code, so this release must **not** be
+deployed with `runMigrations` ticked. Deploy the code first, then migrate in a separate invocation:
 
 ```powershell
 # 1. Code. The new build validates cleanly: no route names the new orchestration yet.
 #    A pipeline run with runMigrations cleared, or by hand from the package:
-./Deploy-Wilson.ps1 -Environment nonprod -Component backend   # reprocess uses the same registry
-./Deploy-Wilson.ps1 -Environment bat -Component automation    # then test
+./Deploy-Wilson.ps1 -Environment bat -Component backend, automation   # reprocess uses the same registry
+./Deploy-Wilson.ps1 -Environment test -Component automation
 
 # 2. Confirm each host started and logged "Route validation passed" before continuing.
 
 # 3. Schema. 014 is the only pending versioned script expected.
-./Deploy-Wilson.ps1 -Environment nonprod -Component myip, schema, myipremove
+./Deploy-Wilson.ps1 -Environment bat -Component myip, schema, myipremove
 ```
 
 The schema is shared, so step 3 needs every environment's Automation app to be on the new build.

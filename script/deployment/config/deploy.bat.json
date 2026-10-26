@@ -1,12 +1,15 @@
 {
   "environment": "bat",
-  "scope": "environment",
-  "legacy": {
-    "automationApp": "azf-eim-customer-wtc-bat",
-    "resources": [
-      { "name": "azf-eim-customer-wtc-bat", "type": "Microsoft.Web/sites" },
-      { "name": "stwtceimcustomerbat", "type": "Microsoft.Storage/storageAccounts" },
-      { "name": "appins-eim-customer-wtc-bat", "type": "Microsoft.Insights/components" }
-    ]
+  "names": {
+    "resourceGroup": "d365fsc-integration-nonprod",
+    "serviceBusNamespace": "asb-eim-wtc-nonprod",
+    "keyVault": "kv-d365fsc-wtc-nonprod",
+    "sqlServer": "azql-wtc-sandbox",
+    "sqlDatabase": "eimdb",
+    "dashboardApi": "wtc-dashboard-api-dev",
+    "staticWebApp": "wtc-dashboard-frontend-dev"
+  },
+  "automation": {
+    "triggersEnabled": true
   }
 }

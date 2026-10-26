@@ -1,20 +1,21 @@
-# Wilson EIM production: promotes the package of an eim run (pipelines/eim.yml) to the production stamp.
-# Builds nothing: the binaries are the ones eim already deployed to bat and test. On a manual run, pick the eim run
-# under Resources; it must be a run from main whose Deploy_test stage succeeded
+# Wilson EIM production: promotes the package of an eim run (pipelines/eim.yml) to the isolated production
+# configuration prd. Builds nothing: the binaries are the ones eim already deployed to bat and test. On a manual run,
+# pick the eim run under Resources; it must be a run from main whose Deploy_test stage succeeded
 # (docs/deployment/production-go-live.md).
 #
 # One-time setup (docs/deployment/devops-setup.md):
-#   - Azure DevOps environments: eim-wtc-prdshared and eim-wtc-prd (production approvers + exclusive lock)
+#   - Azure DevOps environment: eim-wtc-prd (production approvers + exclusive lock)
 #   - ARM service connection 'sc-eim-wtc-prd' (workload identity, Contributor on d365fsc-integration-prod only,
-#     authorised for this pipeline only)
-#   - Library variable group 'eim-wtc-prd': EIM_DEPLOY_EIMDB (secret), EIM_DEPLOY_SERVICEBUS (secret) and
-#     optional EIM_DEPLOY_CONFIG_OVERRIDES, restricted to this pipeline
-# Infrastructure, app settings and migrations run only when ticked. Migrations run in Deploy_prdshared, which the
-# eim-wtc-prdshared approval gates.
+#     authorised for this pipeline only). Its service principal must be a member of the production SQL server's
+#     Entra admin group for migrations and database access.
+#   - Library variable group 'eim-wtc-prd': only the optional EIM_DEPLOY_CONFIG_OVERRIDES, restricted to this
+#     pipeline. There are no deployment secrets.
+# prd owns all of its resources. Infrastructure, app settings, migrations and database access run only when ticked;
+# the eim-wtc-prd approval gates every one of them.
 
 parameters:
   - name: deployInfra
-    displayName: Infrastructure (plan, apps, storage, Insights, queues)
+    displayName: Infrastructure (plan, apps, storage, Insights, queues, SQL)
     type: boolean
     default: false
   - name: applySettings
@@ -22,7 +23,11 @@ parameters:
     type: boolean
     default: false
   - name: runMigrations
-    displayName: Run database migrations (prdshared stage only)
+    displayName: Run database migrations
+    type: boolean
+    default: false
+  - name: grantDatabaseAccess
+    displayName: Grant database access to the apps (sqlusers)
     type: boolean
     default: false
   - name: deployCode
@@ -49,28 +54,10 @@ resources:
 lockBehavior: runLatest
 
 stages:
-  # Production shared resources: gateway, dashboard API and SPA, and the production database.
-  - stage: Deploy_prdshared
-    displayName: Deploy production shared (prdshared)
-    condition: succeeded()
-    jobs:
-      - template: templates/deploy-environment.yml
-        parameters:
-          environment: prdshared
-          devopsEnvironment: eim-wtc-prdshared
-          serviceConnection: sc-eim-wtc-prd
-          variableGroup: eim-wtc-prd
-          packageSource: eim
-          deployInfra: ${{ parameters.deployInfra }}
-          applySettings: ${{ parameters.applySettings }}
-          runMigrations: ${{ parameters.runMigrations }}
-          ${{ if parameters.deployCode }}:
-            components: gateway, backend, frontend
-
+  # Production owns its Service Bus namespace, Key Vault, SQL server and database, plan, gateway, dashboard API and
+  # SPA, and Automation app. It shares nothing with bat or test.
   - stage: Deploy_prd
     displayName: Deploy production (prd)
-    dependsOn: Deploy_prdshared
-    # A rejected or failed shared stage stops production Automation.
     condition: succeeded()
     jobs:
       - template: templates/deploy-environment.yml
@@ -80,9 +67,10 @@ stages:
           serviceConnection: sc-eim-wtc-prd
           variableGroup: eim-wtc-prd
           packageSource: eim
+          ownsResources: true
           deployInfra: ${{ parameters.deployInfra }}
           applySettings: ${{ parameters.applySettings }}
-          # The environment scope rejects 'schema'; migrations run in Deploy_prdshared only.
-          runMigrations: false
+          runMigrations: ${{ parameters.runMigrations }}
+          grantDatabaseAccess: ${{ parameters.grantDatabaseAccess }}
           ${{ if parameters.deployCode }}:
-            components: automation
+            components: gateway, backend, frontend, automation

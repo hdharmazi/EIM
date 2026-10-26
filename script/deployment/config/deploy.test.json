@@ -1,12 +1,7 @@
 {
   "environment": "test",
-  "scope": "environment",
-  "legacy": {
-    "automationApp": "azf-eim-customer-wtc-test",
-    "resources": [
-      { "name": "azf-eim-customer-wtc-test", "type": "Microsoft.Web/sites" },
-      { "name": "stwtceimcustomertest", "type": "Microsoft.Storage/storageAccounts" },
-      { "name": "appins-eim-customer-wtc-test", "type": "Microsoft.Insights/components" }
-    ]
+  "uses": "bat",
+  "automation": {
+    "triggersEnabled": true
   }
 }

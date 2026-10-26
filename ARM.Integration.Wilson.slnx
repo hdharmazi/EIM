@@ -13,12 +13,13 @@
   </Folder>
   <Folder Name="/script/config/">
     <File Path="script/deployment/config/deploy.base.json" />
-    <File Path="script/deployment/config/deploy.nonprod.json" />
     <File Path="script/deployment/config/deploy.bat.json" />
     <File Path="script/deployment/config/deploy.test.json" />
+    <File Path="script/deployment/config/deploy.prd.json" />
   </Folder>
   <Folder Name="/pipelines/">
     <File Path="pipelines/eim.yml" />
+    <File Path="pipelines/eim-prd.yml" />
     <File Path="pipelines/templates/build-package.yml" />
     <File Path="pipelines/templates/deploy-environment.yml" />
     <File Path="pipelines/auto-ai-pull-request.yml" />
@@ -27,7 +28,7 @@
   <Folder Name="/Deployment Docs/">
     <File Path="docs/deployment/deployment.md" />
     <File Path="docs/deployment/devops-setup.md" />
-    <File Path="docs/deployment/resource-rename-cutover.md" />
+    <File Path="docs/deployment/production-go-live.md" />
     <File Path="docs/deployment/database-migrations.md" />
     <File Path="docs/deployment/deployment-plan.md" />
   </Folder>

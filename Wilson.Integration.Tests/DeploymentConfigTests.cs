@@ -14,8 +14,17 @@ public partial class DeploymentConfigTests
 {
     private static readonly string ConfigDirectory = Path.Combine(RepositoryPaths.Root(), "script", "deployment", "config");
 
-    // Development runs locally: there is no dev deployment configuration.
+    // Development runs locally: there is no dev deployment configuration. bat owns the non-production resources;
+    // test uses them.
     private static readonly string[] EnvironmentConfigurations = ["bat", "test"];
+
+    private static readonly string[] ProductionConfigurations = ["prd"];
+
+    private const string ProductionResourceGroup = "d365fsc-integration-prod";
+
+    // Split so no file in the repository names the removed keys.
+    private static readonly string RemovedSuffixKey = "shared" + "Suffix";
+    private static readonly string RemovedSection = "leg" + "acy";
 
     private static IReadOnlyList<string> ConfigFileNames() =>
         Directory.GetFiles(ConfigDirectory, "deploy.*.json").Select(f => Path.GetFileName(f)).Order(StringComparer.Ordinal).ToList();
@@ -70,53 +79,7 @@ public partial class DeploymentConfigTests
         return current.ValueKind == JsonValueKind.Array ? current.EnumerateArray().Select(e => e.GetString() ?? "").ToArray() : [];
     }
 
-    private static IEnumerable<string> LegacyNames(JsonElement root)
-    {
-        if (!root.TryGetProperty("legacy", out var legacy))
-            yield break;
-        foreach (var key in new[] { "automationApp", "gatewayApp" })
-            if (legacy.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
-                yield return value.GetString()!;
-        foreach (var retired in Strings(root, "legacy", "retiredAutomationApps"))
-            yield return retired;
-        if (legacy.TryGetProperty("resources", out var resources))
-            foreach (var resource in resources.EnumerateArray())
-                yield return resource.GetProperty("name").GetString()!;
-    }
-
-    private static IEnumerable<(string Name, string Type)> LegacyResources(JsonElement root) =>
-        root.TryGetProperty("legacy", out var legacy) && legacy.TryGetProperty("resources", out var resources)
-            ? resources.EnumerateArray().Select(r => (r.GetProperty("name").GetString()!, r.GetProperty("type").GetString()!)).ToList()
-            : [];
-
-    // The design D7 tables: every derived name, plus the pattern defaults the kept names override. Production names
-    // are those of the production-stamp spec.
-    private static IEnumerable<string> DerivedNames()
-    {
-        static string[] Shared(string suffix) =>
-        [
-            $"rg-eim-wtc-{suffix}", $"sbns-eim-wtc-{suffix}", $"kv-eim-wtc-{suffix}", $"sql-eim-wtc-{suffix}", $"sqldb-eim-wtc-{suffix}",
-            $"asp-eim-wtc-{suffix}", $"log-eim-wtc-{suffix}",
-            $"azf-eim-gateway-wtc-{suffix}", $"stwtceimgw{suffix}", $"appins-eim-gateway-wtc-{suffix}",
-            $"app-eim-dashboard-api-wtc-{suffix}", $"swa-eim-dashboard-wtc-{suffix}",
-        ];
-        static string[] Automation(string environment) =>
-            [$"azf-eim-automation-wtc-{environment}", $"stwtceimauto{environment}", $"appins-eim-automation-wtc-{environment}"];
-
-        return Shared("nonprod")
-            .Concat(EnvironmentConfigurations.SelectMany(Automation))
-            .Concat(Shared("prd"))
-            .Append(ProductionResourceGroup)
-            .Concat(ProductionEnvironmentConfigurations.SelectMany(Automation));
-    }
-
-    // ---- Merged configurations, mirroring Deploy-Wilson.ps1 (Merge-ConfigObject, Get-ResourceNames, Get-NamesInUse) ----
-
-    private const string ProductionResourceGroup = "d365fsc-integration-prod";
-
-    private static readonly string[] ProductionConfigurations = ["prd", "prdshared"];
-
-    private static readonly string[] ProductionEnvironmentConfigurations = ["prd"];
+    // ---- Merged configurations, mirroring Deploy-Wilson.ps1 (Merge-ConfigObject, Get-ResourceNames) ----
 
     private static IReadOnlyList<string> ConfigurationNames() =>
         ConfigFileNames().Select(ConfigName).Where(n => n != "base").ToList();
@@ -164,47 +127,77 @@ public partial class DeploymentConfigTests
 
     private static string? Text(JsonNode? root, string path) => AsText(NodeAt(root, path));
 
-    private static bool IsProduction(JsonObject config) =>
-        NodeAt(config, "production") is JsonValue v && v.TryGetValue<bool>(out var b) && b;
+    private static bool? Flag(JsonNode? root, string path) => NodeAt(root, path) is JsonValue v && v.TryGetValue<bool>(out var b) ? b : null;
+
+    private static bool IsProduction(JsonObject config) => Flag(config, "production") == true;
 
     private static bool IsPlaceholder(string? value) => value is not null && Regex.IsMatch(value, "^<.*>$");
 
-    private static Dictionary<string, string> ResourceNames(JsonObject config, bool withOverrides = true)
+    private static string? Uses(JsonObject config) => string.IsNullOrWhiteSpace(Text(config, "uses")) ? null : Text(config, "uses");
+
+    // The names a configuration with "uses" always takes from its owner (Deploy-Wilson.ps1 $LockedNameKeys).
+    private static readonly string[] LockedNameKeys =
+    [
+        "resourceGroup", "serviceBusNamespace", "sqlServer", "sqlDatabase", "appServicePlan",
+        "gatewayApp", "gatewayStorage", "gatewayInsights", "dashboardApi", "staticWebApp",
+    ];
+
+    // The names a configuration with "uses" takes from its owner unless names.<key> sets its own
+    // (Deploy-Wilson.ps1 $OverridableNameKeys).
+    private static readonly string[] OverridableNameKeys = ["keyVault", "logAnalytics"];
+
+    // Design D3: every name derives from the configuration's own environment; a non-blank names.<key> wins. A
+    // configuration with "uses" takes the locked keys from its owner's resolved names, and an overridable key too
+    // when names.<key> is blank or equals the owner's name (ignoring case).
+    private static Dictionary<string, string> ResourceNames(JsonObject config)
     {
         var c = Text(config, "client");
         var w = Text(config, "workload");
         var e = Text(config, "environment");
-        var s = Text(config, "sharedSuffix");
         string Pick(string key, string pattern)
         {
-            var value = withOverrides ? Text(config, $"names.{key}") : null;
+            var value = Text(config, $"names.{key}");
             return string.IsNullOrWhiteSpace(value) ? pattern : value;
         }
 
-        return new()
+        var names = new Dictionary<string, string>
         {
-            ["resourceGroup"] = Pick("resourceGroup", $"rg-{w}-{c}-{s}"),
-            ["serviceBusNamespace"] = Pick("serviceBusNamespace", $"sbns-{w}-{c}-{s}"),
-            ["keyVault"] = Pick("keyVault", $"kv-{w}-{c}-{s}"),
-            ["sqlServer"] = Pick("sqlServer", $"sql-{w}-{c}-{s}"),
-            ["sqlDatabase"] = Pick("sqlDatabase", $"sqldb-{w}-{c}-{s}"),
-            ["appServicePlan"] = Pick("appServicePlan", $"asp-{w}-{c}-{s}"),
-            ["logAnalytics"] = Pick("logAnalytics", $"log-{w}-{c}-{s}"),
-            ["gatewayApp"] = Pick("gatewayApp", $"azf-{w}-gateway-{c}-{s}"),
-            ["gatewayStorage"] = Pick("gatewayStorage", $"st{c}{w}gw{s}"),
-            ["gatewayInsights"] = Pick("gatewayInsights", $"appins-{w}-gateway-{c}-{s}"),
-            ["dashboardApi"] = Pick("dashboardApi", $"app-{w}-dashboard-api-{c}-{s}"),
-            ["staticWebApp"] = Pick("staticWebApp", $"swa-{w}-dashboard-{c}-{s}"),
+            ["resourceGroup"] = Pick("resourceGroup", $"rg-{w}-{c}-{e}"),
+            ["serviceBusNamespace"] = Pick("serviceBusNamespace", $"sbns-{w}-{c}-{e}"),
+            ["keyVault"] = Pick("keyVault", $"kv-{w}-{c}-{e}"),
+            ["sqlServer"] = Pick("sqlServer", $"sql-{w}-{c}-{e}"),
+            ["sqlDatabase"] = Pick("sqlDatabase", $"sqldb-{w}-{c}-{e}"),
+            ["appServicePlan"] = Pick("appServicePlan", $"asp-{w}-{c}-{e}"),
+            ["logAnalytics"] = Pick("logAnalytics", $"log-{w}-{c}-{e}"),
+            ["gatewayApp"] = Pick("gatewayApp", $"azf-{w}-gateway-{c}-{e}"),
+            ["gatewayStorage"] = Pick("gatewayStorage", $"st{c}{w}gw{e}"),
+            ["gatewayInsights"] = Pick("gatewayInsights", $"appins-{w}-gateway-{c}-{e}"),
+            ["dashboardApi"] = Pick("dashboardApi", $"app-{w}-dashboard-api-{c}-{e}"),
+            ["staticWebApp"] = Pick("staticWebApp", $"swa-{w}-dashboard-{c}-{e}"),
             ["automationApp"] = Pick("automationApp", $"azf-{w}-automation-{c}-{e}"),
             ["automationStorage"] = Pick("automationStorage", $"st{c}{w}auto{e}"),
             ["automationInsights"] = Pick("automationInsights", $"appins-{w}-automation-{c}-{e}"),
             ["queuePrefix"] = Pick("queuePrefix", e!),
         };
+
+        if (Uses(config) is { } owner)
+        {
+            var ownerNames = ResourceNames(Merged(owner));
+            foreach (var key in LockedNameKeys)
+                names[key] = ownerNames[key];
+            foreach (var key in OverridableNameKeys)
+            {
+                var own = Text(config, $"names.{key}");
+                if (string.IsNullOrWhiteSpace(own) || own.Equals(ownerNames[key], StringComparison.OrdinalIgnoreCase))
+                    names[key] = ownerNames[key];
+            }
+        }
+        return names;
     }
 
-    // Every resource name a configuration uses, derived and overridden; the queue prefix is not a resource.
+    // Every resource name a configuration resolves to; the queue prefix is not a resource.
     private static HashSet<string> NamesInUse(JsonObject config) =>
-        ResourceNames(config).Concat(ResourceNames(config, withOverrides: false))
+        ResourceNames(config)
             .Where(kv => kv.Key != "queuePrefix")
             .Select(kv => kv.Value)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -214,10 +207,7 @@ public partial class DeploymentConfigTests
     // tenant); a value that is a placeholder in both is not yet known on either side and is not a leak.
     private static readonly string[] NonProductionIdentifyingPaths =
     [
-        "sharedSuffix",
-        "names.resourceGroup", "names.serviceBusNamespace", "names.keyVault", "names.sqlServer", "names.sqlDatabase",
         "entra.tenantId", "entra.clientId", "entra.audience",
-        "gateway.legacyVerificationTargets",
         "automation.excludedUsers",
         "dashboard.simulationEnabled", "dashboard.simulationQueuePrefix",
     ];
@@ -254,7 +244,8 @@ public partial class DeploymentConfigTests
     public void The_expected_configurations_exist()
     {
         var names = ConfigFileNames().Select(ConfigName).Order(StringComparer.Ordinal);
-        Assert.Equal(["base", "bat", "nonprod", "prd", "prdshared", "test"], names);
+        Assert.Equal(["base", "bat", "prd", "test"], names);
+        Assert.Equal(EnvironmentConfigurations.Concat(ProductionConfigurations).Order(StringComparer.Ordinal), ConfigurationNames());
     }
 
     [Fact]
@@ -265,26 +256,9 @@ public partial class DeploymentConfigTests
             Assert.NotEqual("dev", StringAt(Load(fileName), "environment"));
     }
 
-    [Fact]
-    public void Nonprod_retires_the_dev_automation_app()
-    {
-        Assert.Equal(["azf-eim-customer-wtc-dev"], Strings(Load("deploy.nonprod.json"), "legacy", "retiredAutomationApps"));
-    }
-
     [Theory]
     [MemberData(nameof(ConfigFiles))]
-    public void Each_retired_automation_app_is_a_legacy_site(string fileName)
-    {
-        var config = Load(fileName);
-        var resources = LegacyResources(config).ToList();
-        foreach (var retired in Strings(config, "legacy", "retiredAutomationApps"))
-            Assert.True(resources.Contains((retired, "Microsoft.Web/sites")),
-                $"{fileName}: retired Automation app '{retired}' must also be a Microsoft.Web/sites entry in legacy.resources so remove deletes it.");
-    }
-
-    [Theory]
-    [MemberData(nameof(ConfigFiles))]
-    public void Environment_matches_the_file_name_and_scope_is_set(string fileName)
+    public void Environment_matches_the_file_name(string fileName)
     {
         var config = Load(fileName);
         var name = ConfigName(fileName);
@@ -296,8 +270,6 @@ public partial class DeploymentConfigTests
         }
 
         Assert.Equal(name, StringAt(config, "environment"));
-        // One shared configuration per stamp: nonprod for non-production, prdshared for production.
-        Assert.Equal(name is "nonprod" or "prdshared" ? "shared" : "environment", StringAt(config, "scope"));
     }
 
     [Fact]
@@ -336,35 +308,49 @@ public partial class DeploymentConfigTests
     }
 
     [Fact]
-    public void Nonprod_keeps_the_dashboard_names()
+    public void Bat_keeps_the_existing_resource_names()
     {
-        var nonprod = Load("deploy.nonprod.json");
+        var own = LoadObject("deploy.bat.json")["names"]!.AsObject();
+        var expected = new Dictionary<string, string>
+        {
+            ["resourceGroup"] = "d365fsc-integration-nonprod",
+            ["serviceBusNamespace"] = "asb-eim-wtc-nonprod",
+            ["keyVault"] = "kv-d365fsc-wtc-nonprod",
+            ["sqlServer"] = "azql-wtc-sandbox",
+            ["sqlDatabase"] = "eimdb",
+            ["dashboardApi"] = "wtc-dashboard-api-dev",
+            ["staticWebApp"] = "wtc-dashboard-frontend-dev",
+        };
 
-        Assert.Equal("wtc-dashboard-api-dev", StringAt(nonprod, "names", "dashboardApi"));
-        Assert.Equal("wtc-dashboard-frontend-dev", StringAt(nonprod, "names", "staticWebApp"));
+        Assert.Equal(expected.Keys.Order(StringComparer.Ordinal), own.Select(p => p.Key).Order(StringComparer.Ordinal));
+        foreach (var (key, value) in expected)
+            Assert.Equal(value, Text(own, key));
+
+        // Everything else derives from the environment, bat.
+        var names = ResourceNames(Merged("bat"));
+        Assert.Equal("asp-eim-wtc-bat", names["appServicePlan"]);
+        Assert.Equal("log-eim-wtc-bat", names["logAnalytics"]);
+        Assert.Equal("azf-eim-gateway-wtc-bat", names["gatewayApp"]);
+        Assert.Equal("stwtceimgwbat", names["gatewayStorage"]);
+        Assert.Equal("appins-eim-gateway-wtc-bat", names["gatewayInsights"]);
+        Assert.Equal("azf-eim-automation-wtc-bat", names["automationApp"]);
+        Assert.Equal("stwtceimautobat", names["automationStorage"]);
+        Assert.Equal("appins-eim-automation-wtc-bat", names["automationInsights"]);
+        Assert.Equal("bat", names["queuePrefix"]);
     }
 
     [Fact]
-    public void Legacy_names_are_never_names_in_use_and_never_the_dashboard()
+    public void Test_resolves_to_bat_resources_and_its_own_automation()
     {
-        var inUse = new HashSet<string>(DerivedNames(), StringComparer.OrdinalIgnoreCase);
-        foreach (var fileName in ConfigFileNames())
-        {
-            var config = Load(fileName);
-            if (config.TryGetProperty("names", out var names))
-                foreach (var property in names.EnumerateObject())
-                    if (property.Value.ValueKind == JsonValueKind.String)
-                        inUse.Add(property.Value.GetString()!);
-        }
+        var bat = ResourceNames(Merged("bat"));
+        var test = ResourceNames(Merged("test"));
 
-        foreach (var fileName in ConfigFileNames())
-        {
-            foreach (var legacy in LegacyNames(Load(fileName)))
-            {
-                Assert.False(inUse.Contains(legacy), $"{fileName}: legacy name '{legacy}' is also a name in use; remove would delete it.");
-                Assert.DoesNotContain("dashboard", legacy, StringComparison.OrdinalIgnoreCase);
-            }
-        }
+        foreach (var key in LockedNameKeys.Concat(OverridableNameKeys))
+            Assert.Equal(bat[key], test[key]);
+        Assert.Equal("azf-eim-automation-wtc-test", test["automationApp"]);
+        Assert.Equal("stwtceimautotest", test["automationStorage"]);
+        Assert.Equal("appins-eim-automation-wtc-test", test["automationInsights"]);
+        Assert.Equal("test", test["queuePrefix"]);
     }
 
     [GeneratedRegex(@"(?i)(Server|Data Source|Endpoint|AccountKey|SharedAccessKey|Password|Pwd|User ID)\s*=")]
@@ -385,63 +371,207 @@ public partial class DeploymentConfigTests
     }
 
     [Fact]
-    public void No_secrets_in_configuration_covers_the_production_files()
+    public void No_secrets_in_configuration_covers_every_file()
     {
-        var covered = ConfigFileNames();
-
-        Assert.Contains("deploy.prdshared.json", covered);
-        Assert.Contains("deploy.prd.json", covered);
+        Assert.Equal(["deploy.base.json", "deploy.bat.json", "deploy.prd.json", "deploy.test.json"], ConfigFileNames());
     }
 
-    // ---- Spec production-stamp: production is a separate stamp that shares nothing with non-production ----
+    // ---- Spec deployment-automation: owners, uses, and the configuration keys of design D1 ----
 
     [Fact]
-    public void Production_configurations_are_exactly_prdshared_and_prd()
+    public void Base_has_no_names_and_no_shared_suffix()
+    {
+        var baseConfig = LoadObject("deploy.base.json");
+
+        Assert.False(baseConfig.ContainsKey("names"), "deploy.base.json must not set names; every name derives from the environment.");
+        Assert.False(baseConfig.ContainsKey(RemovedSuffixKey), $"deploy.base.json must not set {RemovedSuffixKey}.");
+        Assert.False(baseConfig.ContainsKey("uses"), "deploy.base.json must not set 'uses'.");
+    }
+
+    [Theory]
+    [MemberData(nameof(ConfigFiles))]
+    public void No_configuration_has_scope_shared_suffix_or_retired_sections(string fileName)
+    {
+        var config = LoadObject(fileName);
+
+        // entra.scope is the dashboard's OAuth scope, not the removed top-level "scope".
+        Assert.False(config.ContainsKey("scope"), $"{fileName} sets the removed top-level 'scope'.");
+        Assert.False(config.ContainsKey(RemovedSuffixKey), $"{fileName} sets the removed '{RemovedSuffixKey}'.");
+        Assert.False(config.ContainsKey(RemovedSection), $"{fileName} has the removed '{RemovedSection}' section.");
+        Assert.False(HasPath(config, $"gateway.{RemovedSection}VerificationTargets"), $"{fileName} sets the removed gateway verification targets.");
+
+        var retiredApps = "retired" + "AutomationApps";
+        var keys = Walk(Load(fileName)).Select(node => node.Path.Split('.', '[')[^1]).ToList();
+        Assert.DoesNotContain(retiredApps, keys);
+        Assert.DoesNotContain(keys, key => key.Contains(RemovedSection, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Test_uses_bat_and_overrides_no_locked_name()
+    {
+        var test = LoadObject("deploy.test.json");
+
+        Assert.Equal("bat", Text(test, "uses"));
+        var overridden = test["names"] is JsonObject names
+            ? names.Where(p => LockedNameKeys.Contains(p.Key) && !string.IsNullOrWhiteSpace(AsText(p.Value))).Select(p => p.Key).ToList()
+            : [];
+        Assert.True(overridden.Count == 0, $"deploy.test.json overrides names it takes from bat: {string.Join(", ", overridden)}.");
+    }
+
+    [Fact]
+    public void Locked_and_overridable_name_keys_split_the_inherited_names()
+    {
+        Assert.Equal(10, LockedNameKeys.Length);
+        Assert.Contains("appServicePlan", LockedNameKeys);
+        Assert.Equal(["keyVault", "logAnalytics"], OverridableNameKeys);
+        Assert.Empty(LockedNameKeys.Intersect(OverridableNameKeys));
+    }
+
+    // A merged test configuration with names.<key> set, as a configuration that owns that resource.
+    private static JsonObject TestWithName(string key, string value)
+    {
+        var test = Merged("test");
+        if (test["names"] is not JsonObject names)
+            test["names"] = names = new JsonObject();
+        names[key] = value;
+        return test;
+    }
+
+    [Fact]
+    public void Overridable_key_vault_resolves_to_its_own_name()
+    {
+        var bat = ResourceNames(Merged("bat"));
+        var test = ResourceNames(TestWithName("keyVault", "kv-eim-wtc-test"));
+
+        Assert.Equal("kv-eim-wtc-test", test["keyVault"]);
+        foreach (var key in LockedNameKeys)
+            Assert.Equal(bat[key], test[key]);
+        Assert.Equal(bat["logAnalytics"], test["logAnalytics"]);
+    }
+
+    [Fact]
+    public void Overridable_name_that_is_blank_or_equal_inherits_the_owner_name()
+    {
+        var bat = ResourceNames(Merged("bat"));
+
+        Assert.Equal(bat["logAnalytics"], ResourceNames(TestWithName("logAnalytics", ""))["logAnalytics"]);
+        Assert.Equal(bat["keyVault"], ResourceNames(TestWithName("keyVault", bat["keyVault"].ToUpperInvariant()))["keyVault"]);
+    }
+
+    [Fact]
+    public void Bat_and_prd_have_no_uses()
+    {
+        foreach (var name in new[] { "bat", "prd" })
+            Assert.Null(Uses(Merged(name)));
+
+        // An owner is never itself a user of another configuration, and production never uses one.
+        foreach (var name in ConfigurationNames())
+        {
+            var merged = Merged(name);
+            if (Uses(merged) is not { } owner)
+                continue;
+            Assert.False(IsProduction(merged), $"{name}: a production configuration must own its resources.");
+            Assert.Null(Uses(Merged(owner)));
+            Assert.False(IsProduction(Merged(owner)), $"{name} uses the production configuration {owner}.");
+        }
+    }
+
+    [Fact]
+    public void Trigger_switch_is_off_in_base_and_explicit_per_environment()
+    {
+        Assert.True(Flag(LoadObject("deploy.base.json"), "automation.triggersEnabled") == false,
+            "deploy.base.json must set automation.triggersEnabled to false.");
+
+        var expected = new Dictionary<string, bool> { ["bat"] = true, ["test"] = true, ["prd"] = false };
+        foreach (var (name, value) in expected)
+        {
+            var own = LoadObject($"deploy.{name}.json");
+            Assert.True(HasPath(own, "automation.triggersEnabled"), $"deploy.{name}.json must set automation.triggersEnabled itself.");
+            Assert.Equal(value, Flag(own, "automation.triggersEnabled"));
+        }
+    }
+
+    [Fact]
+    public void KeepDisabled_names_only_gated_functions()
+    {
+        foreach (var name in ConfigurationNames())
+        {
+            var merged = Merged(name);
+            var gated = Strings(JsonDocument.Parse(merged.ToJsonString()).RootElement, "automation", "gatedFunctions");
+            var keepDisabled = Strings(JsonDocument.Parse(merged.ToJsonString()).RootElement, "automation", "keepDisabled");
+            var unknown = keepDisabled.Except(gated, StringComparer.Ordinal).ToList();
+            Assert.True(unknown.Count == 0, $"{name}: automation.keepDisabled names functions that are not gated: {string.Join(", ", unknown)}.");
+        }
+    }
+
+    [Fact]
+    public void Sql_defaults_mirror_wastequip()
+    {
+        var baseConfig = LoadObject("deploy.base.json");
+
+        Assert.Equal("S0", Text(baseConfig, "sql.sku"));
+        Assert.Equal("Local", Text(baseConfig, "sql.backupRedundancy"));
+        Assert.Equal("appOutboundIps", Text(baseConfig, "sql.firewall"));
+        Assert.Equal("Group", Text(baseConfig, "sql.entraAdminType"));
+    }
+
+    [Fact]
+    public void Prd_sql_admin_is_a_placeholder_or_filled()
+    {
+        // Deploy-Wilson.ps1 refuses to deploy sql while either value is a placeholder; neither may be blank.
+        var own = LoadObject("deploy.prd.json");
+        foreach (var path in new[] { "sql.entraAdmin", "sql.entraAdminObjectId" })
+        {
+            Assert.True(HasPath(own, path), $"deploy.prd.json must set {path} itself.");
+            Assert.False(string.IsNullOrWhiteSpace(Text(own, path)), $"deploy.prd.json {path} must be a placeholder or the production group.");
+        }
+
+        var objectId = Text(own, "sql.entraAdminObjectId")!;
+        Assert.True(IsPlaceholder(objectId) || Guid.TryParse(objectId, out _),
+            $"deploy.prd.json sql.entraAdminObjectId must be a placeholder or a GUID, not '{objectId}'.");
+    }
+
+    // ---- Spec production-stamp: production is an isolated configuration that shares nothing with non-production ----
+
+    [Fact]
+    public void Production_configuration_is_exactly_prd()
     {
         var production = ConfigurationNames().Where(n => IsProduction(Merged(n))).Order(StringComparer.Ordinal);
 
         Assert.Equal(ProductionConfigurations, production);
-        Assert.True(NodeAt(LoadObject("deploy.base.json"), "production")?.GetValue<bool>() == false, "deploy.base.json must set production to false.");
-        foreach (var name in ProductionConfigurations)
-            Assert.Equal("prd", Text(Merged(name), "sharedSuffix"));
+        Assert.True(Flag(LoadObject("deploy.base.json"), "production") == false, "deploy.base.json must set production to false.");
     }
 
     [Fact]
     public void Production_names_resolve_to_the_pattern()
     {
-        string[] blank = ["serviceBusNamespace", "keyVault", "sqlServer", "sqlDatabase"];
-        foreach (var name in ProductionConfigurations)
+        var own = LoadObject("deploy.prd.json")["names"]!.AsObject();
+        var overridden = own.Where(p => !string.IsNullOrWhiteSpace(AsText(p.Value))).Select(p => p.Key).ToList();
+        Assert.True(overridden.SequenceEqual(["resourceGroup"]),
+            $"deploy.prd.json may override only names.resourceGroup; it overrides [{string.Join(", ", overridden)}].");
+
+        var names = ResourceNames(Merged("prd"));
+        var expected = new Dictionary<string, string>
         {
-            var own = LoadObject($"deploy.{name}.json")["names"]!.AsObject();
-            var overridden = own.Where(p => !string.IsNullOrWhiteSpace(AsText(p.Value))).Select(p => p.Key).ToList();
-            Assert.True(overridden.SequenceEqual(["resourceGroup"]),
-                $"deploy.{name}.json may override only names.resourceGroup; it overrides [{string.Join(", ", overridden)}].");
-            foreach (var key in blank)
-                Assert.True(own.ContainsKey(key) && Text(own, key) == "", $"deploy.{name}.json must set names.{key} to \"\" so the pattern name is derived.");
-        }
-
-        var shared = ResourceNames(Merged("prdshared"));
-        Assert.Equal(ProductionResourceGroup, shared["resourceGroup"]);
-        Assert.Equal("sbns-eim-wtc-prd", shared["serviceBusNamespace"]);
-        Assert.Equal("sql-eim-wtc-prd", shared["sqlServer"]);
-        Assert.Equal("sqldb-eim-wtc-prd", shared["sqlDatabase"]);
-        Assert.Equal("asp-eim-wtc-prd", shared["appServicePlan"]);
-        Assert.Equal("log-eim-wtc-prd", shared["logAnalytics"]);
-        Assert.Equal("azf-eim-gateway-wtc-prd", shared["gatewayApp"]);
-        Assert.Equal("stwtceimgwprd", shared["gatewayStorage"]);
-        Assert.Equal("appins-eim-gateway-wtc-prd", shared["gatewayInsights"]);
-        Assert.Equal("app-eim-dashboard-api-wtc-prd", shared["dashboardApi"]);
-        Assert.Equal("swa-eim-dashboard-wtc-prd", shared["staticWebApp"]);
-
-        var environment = ResourceNames(Merged("prd"));
-        Assert.Equal("azf-eim-automation-wtc-prd", environment["automationApp"]);
-        Assert.Equal("stwtceimautoprd", environment["automationStorage"]);
-        Assert.Equal("appins-eim-automation-wtc-prd", environment["automationInsights"]);
-        Assert.Equal("prd", environment["queuePrefix"]);
-
-        // The shared names of prd equal those of prdshared.
-        foreach (var key in shared.Keys.Where(k => !k.StartsWith("automation", StringComparison.Ordinal) && k != "queuePrefix"))
-            Assert.Equal(shared[key], environment[key]);
+            ["resourceGroup"] = ProductionResourceGroup,
+            ["serviceBusNamespace"] = "sbns-eim-wtc-prd",
+            ["keyVault"] = "kv-eim-wtc-prd",
+            ["sqlServer"] = "sql-eim-wtc-prd",
+            ["sqlDatabase"] = "sqldb-eim-wtc-prd",
+            ["appServicePlan"] = "asp-eim-wtc-prd",
+            ["logAnalytics"] = "log-eim-wtc-prd",
+            ["gatewayApp"] = "azf-eim-gateway-wtc-prd",
+            ["gatewayStorage"] = "stwtceimgwprd",
+            ["gatewayInsights"] = "appins-eim-gateway-wtc-prd",
+            ["dashboardApi"] = "app-eim-dashboard-api-wtc-prd",
+            ["staticWebApp"] = "swa-eim-dashboard-wtc-prd",
+            ["automationApp"] = "azf-eim-automation-wtc-prd",
+            ["automationStorage"] = "stwtceimautoprd",
+            ["automationInsights"] = "appins-eim-automation-wtc-prd",
+            ["queuePrefix"] = "prd",
+        };
+        foreach (var (key, value) in expected)
+            Assert.Equal(value, names[key]);
     }
 
     [Fact]
@@ -458,6 +588,26 @@ public partial class DeploymentConfigTests
     }
 
     [Fact]
+    public void Disjoint_names_check_catches_a_shared_sql_server()
+    {
+        // prd pointed at the non-production SQL server shares a resolved name with bat and with test, which uses bat.
+        var prd = Merged("prd");
+        prd["names"]!["sqlServer"] = "azql-wtc-sandbox";
+
+        Assert.Contains("azql-wtc-sandbox", NamesInUse(prd).Intersect(NamesInUse(Merged("bat"))));
+        Assert.Contains("azql-wtc-sandbox", NamesInUse(prd).Intersect(NamesInUse(Merged("test"))));
+    }
+
+    [Fact]
+    public void Disjoint_names_check_catches_an_owned_vault_shared_with_production()
+    {
+        var prdVault = ResourceNames(Merged("prd"))["keyVault"];
+        var test = TestWithName("keyVault", prdVault);
+
+        Assert.Contains(prdVault, NamesInUse(Merged("prd")).Intersect(NamesInUse(test), StringComparer.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Production_does_not_inherit_nonproduction_values()
     {
         var baseConfig = LoadObject("deploy.base.json");
@@ -465,38 +615,20 @@ public partial class DeploymentConfigTests
             .SelectMany(name => InheritedNonProductionValues(name, baseConfig, LoadObject($"deploy.{name}.json")))
             .ToList();
         Assert.True(problems.Count == 0, "Production inherits non-production values:\n" + string.Join("\n", problems));
-
-        foreach (var name in ProductionConfigurations)
-        {
-            var merged = Merged(name);
-            Assert.NotEqual(Text(baseConfig, "names.resourceGroup"), Text(merged, "names.resourceGroup"));
-            Assert.Empty(NodeAt(merged, "gateway.legacyVerificationTargets")!.AsArray());
-        }
     }
 
     [Fact]
     public void Production_inheritance_check_names_a_leaked_client_id()
     {
-        // Scenario "Non-production client id leaks": prdshared omits entra.clientId and the base holds a real one.
+        // Scenario "Non-production client id leaks": prd omits entra.clientId and the base holds a real one.
         var baseConfig = LoadObject("deploy.base.json");
         baseConfig["entra"]!["clientId"] = "00000000-0000-0000-0000-000000000001";
-        var own = LoadObject("deploy.prdshared.json");
+        var own = LoadObject("deploy.prd.json");
         own["entra"]!.AsObject().Remove("clientId");
 
-        var problems = InheritedNonProductionValues("prdshared", baseConfig, own).ToList();
+        var problems = InheritedNonProductionValues("prd", baseConfig, own).ToList();
 
-        Assert.Contains(problems, p => p.Contains("prdshared") && p.Contains("entra.clientId"));
-    }
-
-    [Fact]
-    public void Production_has_no_legacy_section()
-    {
-        Assert.False(LoadObject("deploy.base.json").ContainsKey("legacy"), "deploy.base.json must not have a legacy section; production would inherit it.");
-        foreach (var name in ProductionConfigurations)
-        {
-            Assert.False(Merged(name).ContainsKey("legacy"), $"deploy.{name}.json must not have a legacy section.");
-            Assert.Empty(LegacyNames(Load($"deploy.{name}.json")));
-        }
+        Assert.Contains(problems, p => p.Contains("prd") && p.Contains("entra.clientId"));
     }
 
     [Fact]
@@ -505,7 +637,7 @@ public partial class DeploymentConfigTests
         foreach (var name in ConfigurationNames())
         {
             var merged = Merged(name);
-            var enabled = NodeAt(merged, "dashboard.simulationEnabled")?.GetValue<bool>();
+            var enabled = Flag(merged, "dashboard.simulationEnabled");
             var prefix = Text(merged, "dashboard.simulationQueuePrefix");
 
             if (IsProduction(merged))
@@ -526,25 +658,5 @@ public partial class DeploymentConfigTests
     {
         foreach (var name in ProductionConfigurations)
             Assert.Equal("P0v3", Text(Merged(name), "appServicePlan.sku"));
-    }
-
-    [Fact]
-    public void Each_stamp_has_one_shared_configuration()
-    {
-        var stamps = ConfigurationNames()
-            .Select(n => (Name: n, Config: Merged(n)))
-            .GroupBy(c => Text(c.Config, "sharedSuffix"))
-            .ToDictionary(g => g.Key!, g => g.ToList());
-
-        Assert.Equal(["nonprod", "prd"], stamps.Keys.Order(StringComparer.Ordinal));
-        foreach (var (suffix, members) in stamps)
-        {
-            var shared = members.Where(m => Text(m.Config, "scope") == "shared").Select(m => m.Name).ToList();
-            Assert.True(shared.Count == 1, $"The stamp '{suffix}' must have exactly one shared configuration; found [{string.Join(", ", shared)}].");
-            Assert.True(members.All(m => IsProduction(m.Config) == IsProduction(members[0].Config)),
-                $"The stamp '{suffix}' mixes production and non-production configurations.");
-        }
-        Assert.Equal("nonprod", stamps["nonprod"].Single(m => Text(m.Config, "scope") == "shared").Name);
-        Assert.Equal("prdshared", stamps["prd"].Single(m => Text(m.Config, "scope") == "shared").Name);
     }
 }

@@ -1,19 +1,32 @@
 {
   "client": "wtc",
   "workload": "eim",
-  "sharedSuffix": "nonprod",
   "production": false,
   "location": "centralus",
   "subscriptionId": "<subscription id or name>",
-  "names": {
-    "resourceGroup": "d365fsc-integration-nonprod",
-    "serviceBusNamespace": "asb-eim-wtc-nonprod",
-    "keyVault": "kv-d365fsc-wtc-nonprod",
-    "sqlServer": "azql-wtc-sandbox",
-    "sqlDatabase": "eimdb"
-  },
   "appServicePlan": {
     "sku": "P0v3"
+  },
+  "serviceBus": {
+    "sku": "Standard"
+  },
+  "serviceBusQueues": [
+    { "name": "d365fsc-dataevent", "setting": "D365FscDataEventQueue" },
+    { "name": "d365fsc-businessevents", "setting": "D365BusinessEventQueue" },
+    { "name": "d365fsc-to-capture", "setting": "D365ToCaptureQueue" },
+    { "name": "capture-to-d365fsc", "setting": "CaptureToD365Queue" },
+    { "name": "capture-to-d365fsc-response", "setting": "CaptureToD365QueueResponse" }
+  ],
+  "logAnalytics": {
+    "retentionDays": 30
+  },
+  "sql": {
+    "sku": "S0",
+    "backupRedundancy": "Local",
+    "firewall": "appOutboundIps",
+    "entraAdmin": "",
+    "entraAdminObjectId": "",
+    "entraAdminType": "Group"
   },
   "entra": {
     "tenantId": "<dashboard entra tenant id>",
@@ -25,13 +38,7 @@
     "baseUrl": null,
     "maxRequestBytes": 4194304,
     "idempotencyRetention": "1.00:00:00",
-    "idempotencyPurgeSchedule": "0 15 * * * *",
-    "legacyVerificationTargets": [
-      {
-        "name": "azf-d365fsc-gateway-wtc-nonprod",
-        "baseUrl": "https://azf-d365fsc-gateway-wtc-nonprod.azurewebsites.net"
-      }
-    ]
+    "idempotencyPurgeSchedule": "0 15 * * * *"
   },
   "automation": {
     "excludedUsers": "<semicolon separated user guids>",
@@ -52,6 +59,7 @@
       "ReleaseSweepHandler",
       "RetrySweepHandler"
     ],
+    "triggersEnabled": false,
     "keepDisabled": [],
     "retiredSettings": [
       "PollSchedule"

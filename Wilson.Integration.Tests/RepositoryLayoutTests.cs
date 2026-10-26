@@ -84,33 +84,40 @@ public class RepositoryLayoutTests
         Assert.DoesNotContain("Docker", launchSettings, StringComparison.OrdinalIgnoreCase);
     }
 
-    // Built by concatenation, like OldProjectName, so this file does not match its own search.
+    // Built by concatenation, like OldProjectName, so this file does not match its own search. The names of the
+    // earlier gateway, Automation and plan resources, and the nonprod-suffixed names of the shared layout that
+    // bat now owns under its own names (spec resource-naming-cutover).
     private static readonly string[] RetiredDeploymentNames =
     [
-        string.Join("-", "azf", "d365fsc", "gateway", "wtc", "nonprod"),
+        string.Join("-", "azf", "d365fsc", "gateway", "wtc"),
+        string.Join("-", "azf", "eim", "customer", "wtc"),
+        "stwtceim" + "customer",
+        string.Join("-", "appins", "eim", "customer", "wtc"),
+        "stwtcd365" + "gw",
+        string.Join("-", "appins", "d365fsc", "gateway", "wtc"),
+        string.Join("-", "asp", "appservice", "p0v3", "linux"),
+        string.Join("-", "asp", "eim", "wtc", "nonprod"),
+        string.Join("-", "azf", "eim", "gateway", "wtc", "nonprod"),
+        string.Join("-", "log", "eim", "wtc", "nonprod"),
         "Deploy-" + "Eim.ps1",
         "Deploy-ZipWith" + "PublishProfile.ps1",
     ];
 
-    // Places that name the retired gateway and scripts on purpose: change records, the cutover runbook (the
-    // old -> new table), the configs' legacy sections, and the gateway tests' fixed sample host names.
+    // Places that name the retired resources and scripts on purpose: change records, the superseded scripts, and
+    // the gateway tests' fixed sample host names.
     private static readonly string[] RetiredNameExclusions =
     [
         "openspec/changes/",
-        "docs/deployment/resource-rename-cutover.md",
+        "script/Superseded/",
         "ARM.Integration.D365FSC.Gateway.Tests/",
     ];
-
-    private static bool IsDeploymentConfig(string file) =>
-        file.StartsWith("script/deployment/config/", StringComparison.OrdinalIgnoreCase)
-        && Path.GetExtension(file).Equals(".json", StringComparison.OrdinalIgnoreCase);
 
     [Fact]
     public void No_file_references_the_retired_gateway_or_deployment_scripts()
     {
         var offenders = RepositoryPaths.CandidateFiles(Root)
             .Where(f => TextExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
-            .Where(f => !RetiredNameExclusions.Any(p => f.StartsWith(p, StringComparison.OrdinalIgnoreCase)) && !IsDeploymentConfig(f))
+            .Where(f => !RetiredNameExclusions.Any(p => f.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
             .SelectMany(f =>
             {
                 var text = File.ReadAllText(Path.Combine(Root, f));
@@ -119,7 +126,63 @@ public class RepositoryLayoutTests
             .ToList();
 
         Assert.True(offenders.Count == 0,
-            "Files still referencing the retired gateway name or deployment scripts (see docs/deployment/resource-rename-cutover.md):\n"
+            "Files still referencing a retired resource name or deployment script:\n" + string.Join("\n", offenders));
+    }
+
+    // Spec resource-naming-cutover: the deployment describes only the current layout, with no move, overlap or
+    // reversal procedure, no retired configuration keys or stages, and no secret variables. Built by
+    // concatenation, like OldProjectName, so this file does not match its own search.
+    private static readonly string[] RollbackTerms = ["roll" + "back", "roll " + "back"];
+
+    private static readonly string[] DeploymentBannedTerms =
+    [
+        "leg" + "acy",
+        "cut" + "over",
+        "cut " + "over",
+        .. RollbackTerms,
+        "retired" + "AutomationApps",
+        "Include" + "DefaultKeys",
+        "shared" + "Suffix",
+        "prd" + "shared",
+        "Deploy_" + "shared",
+        "EIM_DEPLOY_" + "EIMDB",
+        "EIM_DEPLOY_" + "SERVICEBUS",
+    ];
+
+    private static readonly string[] DeploymentFolders = ["script/deployment/", "pipelines/", "docs/deployment/"];
+
+    private static readonly string[] DeploymentFiles =
+        ["README.md", "docs/README.md", "script/README.md", "CLAUDE.md", RepositoryPaths.SolutionFile];
+
+    // The migration guide explains why the schema only moves forward, which needs the word.
+    private const string RollbackExemptFile = "docs/deployment/database-migrations.md";
+
+    [Fact]
+    public void No_deployment_file_describes_a_cutover()
+    {
+        var files = RepositoryPaths.CandidateFiles(Root)
+            .Where(f => DeploymentFolders.Any(d => f.StartsWith(d, StringComparison.OrdinalIgnoreCase))
+                || DeploymentFiles.Contains(f, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+        Assert.Contains(files, f => f.Equals("script/deployment/Deploy-Wilson.ps1", StringComparison.OrdinalIgnoreCase));
+
+        var offenders = new List<string>();
+        foreach (var file in files)
+        {
+            var terms = file.Equals(RollbackExemptFile, StringComparison.OrdinalIgnoreCase)
+                ? DeploymentBannedTerms.Except(RollbackTerms).ToArray()
+                : DeploymentBannedTerms;
+
+            var lines = File.ReadAllLines(Path.Combine(Root, file));
+            for (var i = 0; i < lines.Length; i++)
+            {
+                foreach (var term in terms.Where(t => lines[i].Contains(t, StringComparison.OrdinalIgnoreCase)))
+                    offenders.Add($"{file}:{i + 1}: {term}");
+            }
+        }
+
+        Assert.True(offenders.Count == 0,
+            "Deployment files still describing a move, a retired key or stage, or a secret variable:\n"
             + string.Join("\n", offenders));
     }
 
