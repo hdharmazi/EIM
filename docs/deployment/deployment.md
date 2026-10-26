@@ -1,15 +1,17 @@
 # Deployment
 
-Non-production deployment is one script, `script/deployment/Deploy-Wilson.ps1`, run by one pipeline,
-`pipelines/eim.yml`. The script reads a configuration from `script/deployment/config/` and takes application code
-from a package built by `script/deployment/New-DeploymentPackage.ps1`. There is no Bicep or ARM template in this
-repository; everything on the Azure side is a component of the script.
+Deployment is one script, `script/deployment/Deploy-Wilson.ps1`, run by two pipelines: `pipelines/eim.yml` for
+non-production and `pipelines/eim-prd.yml` for production. The script reads a configuration from
+`script/deployment/config/` and takes application code from a package built by
+`script/deployment/New-DeploymentPackage.ps1`. There is no Bicep or ARM template in this repository; everything on
+the Azure side is a component of the script.
 
 | Document | For |
 |---|---|
-| this file | how the script, configuration and pipeline work |
-| [devops-setup.md](devops-setup.md) | the one-time Azure DevOps setup (environments, service connection, variable group) |
+| this file | how the script, configuration and pipelines work |
+| [devops-setup.md](devops-setup.md) | the one-time Azure DevOps setup (environments, service connections, variable groups) |
 | [resource-rename-cutover.md](resource-rename-cutover.md) | the #5246 move from the old resource names to the new ones |
+| [production-go-live.md](production-go-live.md) | standing up the production stamp and going live |
 | [database-migrations.md](database-migrations.md) | migrations, and the expand/contract rule |
 | [d365fsc-gateway.md](d365fsc-gateway.md) | the D365 F&SC gateway: consumers, keys, hosting |
 | [deploy-from-scratch.md](deploy-from-scratch.md) | standing the system up in an empty subscription |
@@ -50,14 +52,26 @@ ticked), `myip`, `schema`, `myipremove` (if ticked, shared stage only), the code
 and `health`. A manual run with `deployCode` cleared and nothing else ticked deploys nothing: every stage runs
 preflight only and skips `verify` and `health`.
 
+The `Build` stage packages every configuration, `nonprod,bat,test,prdshared,prd`, but `eim.yml` deploys only the
+non-production ones. The production configurations travel in the same package so that `eim-prd.yml` can promote
+it (see [Production](#production)).
+
 ## Configurations and scopes
 
-`-Environment` names a configuration file, `script/deployment/config/deploy.<name>.json`. Today there are three:
+`-Environment` names a configuration file, `script/deployment/config/deploy.<name>.json`. Today there are five, in
+two stamps:
 
-| Configuration | Scope | Owns |
-|---|---|---|
-| `nonprod` | `shared` | App Service plan, Log Analytics workspace, gateway, dashboard API and SPA, database migrations |
-| `bat`, `test` | `environment` | the five Service Bus queues, and the Automation storage, Insights and Function App |
+| Configuration | Stamp | Scope | Owns |
+|---|---|---|---|
+| `nonprod` | non-production | `shared` | App Service plan, Log Analytics workspace, gateway, dashboard API and SPA, database migrations |
+| `bat`, `test` | non-production | `environment` | the five Service Bus queues, and the Automation storage, Insights and Function App |
+| `prdshared` | production | `shared` | the same as `nonprod`, for production |
+| `prd` | production | `environment` | the same as `bat`, for production |
+
+A stamp is the set of configurations with the same `sharedSuffix` (`nonprod` or `prd`). Each stamp has exactly
+one `shared` configuration; preflight fails, naming them, when a stamp has none or more than one. Messages that
+name the owning configuration (for example "`gateway` is owned by the shared configuration 'prdshared'") are
+resolved from the stamp, not from the suffix.
 
 There is no `dev` configuration, so `-Environment dev` fails as an unknown configuration. The legacy dev
 Automation app, `azf-eim-customer-wtc-dev`, is retired with no replacement: it is listed under
@@ -85,6 +99,26 @@ Merged in this order, later layers winning:
 Objects merge key by key. Lists and plain values are replaced, so an override of
 `automation.gatedFunctions` must list every function.
 
+`deploy.base.json` holds the non-production values (resource group, namespace, SQL server, legacy verification
+targets, simulation prefix). The production files reset each of them explicitly. **Every new key in
+`deploy.base.json` must be judged for production:** if it identifies a non-production resource or behaviour, reset
+it in `deploy.prdshared.json` and `deploy.prd.json`. `DeploymentConfigTests` guards the keys known today; it cannot
+know about a key added later.
+
+### Dashboard simulation
+
+`dashboard.simulationEnabled` (base: `true`; production: `false`) controls the dashboard's Simulation console.
+`settings` for a shared configuration always writes `Simulation__Enabled` to the dashboard API:
+
+- `true`: it also writes `Simulation__ServiceBusConnectionString` and the four queue settings, with the queues of
+  `dashboard.simulationQueuePrefix` (`bat`). A blank or placeholder prefix throws before anything is written.
+- `false`: it writes none of them, and deletes any other `Simulation__*` setting the app still has.
+
+The API reads `Simulation:Enabled` fail-safe: only `true` turns simulation on. Absent, empty or anything else
+means off, and then every `/api/simulation/*` route returns 404 and the SPA hides the console. Because the
+preflight drift check expects `Simulation__Enabled`, the first code-only run after this setting was introduced
+fails until a run with `applySettings` has written it.
+
 Values written as `<...>` are placeholders (subscription, Entra, excluded users). Preflight names every
 placeholder the requested components need and stops before changing anything. Fill them in a commit (none of
 them is secret) or through `EIM_DEPLOY_CONFIG_OVERRIDES`. **The Entra values must be committed** if the
@@ -104,8 +138,14 @@ The script reads them from the environment, or prompts for them (input hidden) w
 a pipeline. It writes them to Azure through temporary files that are deleted afterwards, and never prints them
 or puts them on a command line. No configuration file holds a secret, and a test fails the build if one does.
 
-In the pipeline they are secret variables in the `eim-wtc-nonprod` variable group. Secret variables reach a
-script only when mapped, so every `AzureCLI@2` step maps them through `env:`.
+In the pipeline they are secret variables in the `eim-wtc-nonprod` variable group (production: `eim-wtc-prd`).
+Secret variables reach a script only when mapped, so every `AzureCLI@2` step maps them through `env:`.
+
+Preflight checks that each secret points at the configured resources: the server and `Initial Catalog` (or
+`Database`) of `EIM_DEPLOY_EIMDB` must equal `names.sqlServer` and `names.sqlDatabase`, and the namespace in the
+`Endpoint` of `EIM_DEPLOY_SERVICEBUS` must equal `names.serviceBusNamespace`. A mismatch names the variable, the
+parsed name and the expected name, never the connection string. This catches a non-production secret in the
+production group (and the reverse), and a connection string to `eimdb_dev`.
 
 ## Running the script by hand
 
@@ -141,10 +181,10 @@ Always run in this order:
 
 | Component | Scope | Does |
 |---|---|---|
-| `preflight` | both | Fails, changing nothing, on unfilled placeholders, missing secrets, a legacy name equal to a name in use, missing package artifacts, or a package whose queue/timer functions differ from `automation.gatedFunctions`. When code is deployed without `settings`, also fails on settings the configuration defines that an app lacks, and warns on differing values and retired settings. Names only, never values. Added automatically before any component that changes something. |
+| `preflight` | both | Fails, changing nothing, on unfilled placeholders, missing secrets, a legacy name equal to a name in use, missing package artifacts, or a package whose queue/timer functions differ from `automation.gatedFunctions`. Also fails when the resource group, Service Bus namespace, SQL server or database does not exist (only the group is reported when it is missing); when a secret points at a different server, catalog or namespace than the configuration names; when a name used by a production configuration is also used by a non-production one; and when the stamp has no single shared configuration. When code is deployed without `settings`, also fails on settings the configuration defines that an app lacks, and warns on differing values and retired settings. Names only, never values. Added automatically before any component that changes something. |
 | `infra` | shared | plan, Log Analytics, gateway storage/Insights/app; the dashboard API and static web app **only if absent** |
 | `infra` | environment | the five queues; Automation storage, Insights and app. Requires the shared plan, workspace and Service Bus namespace. |
-| `settings` | shared | gateway and dashboard API app settings |
+| `settings` | shared | gateway and dashboard API app settings (including `Simulation__Enabled`; see [Dashboard simulation](#dashboard-simulation)) |
 | `settings` | environment | Automation app settings; gated triggers written disabled only when absent; retired settings deleted |
 | `myip` | shared | adds this machine's (or agent's) public IP to the SQL server |
 | `schema` | shared | runs the packaged `ARM.Integration.DbMigrator.exe` (`--whatif` under `-WhatIf`) |
@@ -166,9 +206,9 @@ On demand only, never part of `all`, and each run on its own:
 
 | Component | Environment scope | Shared scope |
 |---|---|---|
-| `cutover` | moves the gated triggers from the legacy Automation app to the new one | copies the named gateway host keys and `D365Data`/`D365Service` function keys to the new gateway |
-| `rollback` | the reverse of `cutover`; refused once the legacy app is gone | refused: consumers roll back by switching their base URL |
-| `remove` | deletes the resources listed under `legacy` | the same, for the shared legacy resources and the retired dev Automation app |
+| `cutover` | moves the gated triggers from the legacy Automation app to the new one; with no legacy app (`prd`) enables every gated trigger except `automation.keepDisabled` | copies the named gateway host keys and `D365Data`/`D365Service` function keys to the new gateway; refused when there is no legacy gateway (`prdshared`) |
+| `rollback` | the reverse of `cutover`; refused once the legacy app is gone, and when there is no legacy app (`prd`) | refused: consumers roll back by switching their base URL |
+| `remove` | deletes the resources listed under `legacy`; refused for a production configuration | the same, for the shared legacy resources and the retired dev Automation app; refused for a production configuration |
 
 `cutover`, `rollback` and `remove` are described in [resource-rename-cutover.md](resource-rename-cutover.md).
 `remove` runs only from an operator machine (never when `TF_BUILD` is set), needs a `remove -WhatIf` run the same
@@ -187,7 +227,8 @@ so a failing preflight cannot leave the rule open. Run `myipremove` yourself whe
 ## Names
 
 Pattern: `{type}-{workload}-{component}-{client}-{suffix}`, workload `eim`, client `wtc`. The suffix is the
-configuration name for per-environment resources and `nonprod` for shared ones. Storage accounts cannot have
+configuration name for per-environment resources and the stamp's `sharedSuffix` (`nonprod` or `prd`) for shared
+ones. Storage accounts cannot have
 hyphens, so they use `st{client}{workload}{shortcomponent}{suffix}`. The script rejects a storage name that is
 not `^[a-z0-9]{3,24}$` and a Function App name over 32 characters (longer names collide in the host ID).
 
@@ -226,7 +267,7 @@ One P0v3 Linux plan, `asp-eim-wtc-nonprod`, carries the gateway, the two Automat
 the runbook's plan move) the dashboard API. Every Function App gets Always On, HTTPS only, TLS 1.2, FTPS disabled
 and `DOTNET-ISOLATED|10.0`, converged on every `infra` run. The environments share compute, so load in one can
 affect another. A plan CPU/memory alert above 80% is part of the runbook; if it fires, change
-`appServicePlan.sku` to `P1v3`.
+`appServicePlan.sku` to `P1v3`. Production has its own P0v3 plan, `asp-eim-wtc-prd`, for `prdshared` and `prd`.
 
 The gateway can be shared because the D365 environment arrives in the request path. The Automation host cannot:
 its Service Bus triggers bind to one environment's queues at startup.
@@ -256,6 +297,59 @@ missing.
 
 No script change, no new gateway and no new dashboard.
 
+## Production
+
+Production is a separate stamp: configurations `prdshared` (shared scope) and `prd` (environment scope), with
+`"production": true` and `sharedSuffix` `prd`. It shares nothing with non-production: its own resource group,
+Service Bus namespace, SQL server and database, plan, gateway, dashboard and Entra registration. Standing it up
+and going live: [production-go-live.md](production-go-live.md).
+
+**Pipeline.** `pipelines/eim-prd.yml`, manual only:
+
+```
+Deploy_prdshared (eim-wtc-prdshared) -> Deploy_prd (eim-wtc-prd)
+```
+
+It has no `Build` stage. It promotes the `package` artifact of an `eim` run, picked under **Resources** on the
+manual run: a run from `main` whose `Deploy_test` stage succeeded, so production gets exactly the binaries bat and
+test ran. The resource has `branch: main`, so the default offered is the latest `eim` run from `main`, never a pull
+request or feature run. Both stages use the service connection `sc-eim-wtc-prd` and the variable group `eim-wtc-prd`;
+migrations run only in `Deploy_prdshared`, behind its approval. See [pipelines/README.md](../../pipelines/README.md).
+
+**Names.** Only `names.resourceGroup` is overridden, to the existing group `d365fsc-integration-prod`. Everything
+else uses the pattern:
+
+| Resource | Name |
+|---|---|
+| Service Bus namespace | `sbns-eim-wtc-prd` |
+| SQL server, database | `sql-eim-wtc-prd`, `sqldb-eim-wtc-prd` |
+| App Service plan, Log Analytics | `asp-eim-wtc-prd`, `log-eim-wtc-prd` |
+| Gateway Function App, storage, Insights | `azf-eim-gateway-wtc-prd`, `stwtceimgwprd`, `appins-eim-gateway-wtc-prd` |
+| Dashboard API, static web app | `app-eim-dashboard-api-wtc-prd`, `swa-eim-dashboard-wtc-prd` |
+| Automation Function App, storage, Insights | `azf-eim-automation-wtc-prd`, `stwtceimautoprd`, `appins-eim-automation-wtc-prd` |
+| Service Bus queues | `prd-d365fsc-dataevent`, `prd-d365fsc-businessevents`, `prd-d365fsc-to-capture`, `prd-capture-to-d365fsc`, `prd-capture-to-d365fsc-response` |
+
+The script never creates the resource group, namespace, SQL server or database; the runbook does, and preflight
+fails until they exist.
+
+**Isolation rules.**
+
+- The production files reset every non-production value they inherit from the base: names, Entra, excluded
+  users, legacy verification targets and simulation. `DeploymentConfigTests` fails when one leaks.
+- No name in use by a production configuration may be in use by a non-production one. Preflight checks this
+  across every configuration, and so do the tests.
+- The secrets must point at the production server, database and namespace (preflight secret-target check).
+- There is no `legacy` section. `remove` refuses every configuration with `"production": true`, before any Azure
+  call and even with `-WhatIf`. `cutover` for `prdshared` and `rollback` for `prd` are refused: there is no
+  legacy gateway or Automation app. `cutover` for `prd` is the go-live switch that enables the gated triggers.
+
+**The `production` flag.** `deploy.base.json` sets `"production": false`; `prdshared` and `prd` set `true`. The
+script reads it for the `remove` refusal and the isolation check, and the package README for its notes.
+
+**Simulation off.** `dashboard.simulationEnabled` is `false`, so the production dashboard API gets
+`Simulation__Enabled=false` and no other `Simulation__*` setting. The API removes the simulation routes (404) and
+the SPA hides the console. See [Dashboard simulation](#dashboard-simulation).
+
 ## Differences from the Wastequip scripts
 
 `Deploy-Wilson.ps1` and `New-DeploymentPackage.ps1` are ports of the Wastequip EIM scripts. Where they differ,
@@ -275,9 +369,11 @@ Keep this list current when merging changes from Wastequip.
 
 ## Decisions
 
-**Production is out of scope.** It shares nothing with non-production and will be a separate stamp: its own
-resource group, Service Bus namespace, plan, dashboard, gateway and database. Do not extend these configurations
-to cover it.
+**Production is a separate stamp.** It shares nothing with non-production: its own resource group, Service Bus
+namespace, plan, dashboard, gateway, database and pipeline (see [Production](#production)). It is built from base
+plus explicit resets in `deploy.prdshared.json` and `deploy.prd.json`, guarded by tests. If a third stamp appears,
+introduce a stamp layer (`deploy.stamp.<sharedSuffix>.json`) between the base and the configuration rather than
+adding more resets.
 
 **`eimdb_dev` is not a deployment target.** Every non-production environment uses `eimdb`. The `eimdb_dev`
 catalog on the same server is a leftover of the old development setup; it will be dropped by hand later, outside

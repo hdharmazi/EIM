@@ -115,8 +115,13 @@ Non-production is deployed by one pipeline, [`pipelines/eim.yml`](pipelines/eim.
 package and promotes it through `Deploy_shared` (gateway, dashboard, migrations), then `bat` and `test` (Wilson
 Automation). A merge to `main` deploys code only; infrastructure, settings and migrations run on a manual run.
 
+Production is a separate stamp (`prdshared`, `prd`) in `d365fsc-integration-prod` that shares nothing with
+non-production and has no Simulation console. The manual pipeline [`pipelines/eim-prd.yml`](pipelines/eim-prd.yml)
+promotes the package of an `eim` run that passed `test`, through `Deploy_prdshared`, then `Deploy_prd`.
+
 - [Deployment overview](docs/deployment/deployment.md)
 - [Azure DevOps setup](docs/deployment/devops-setup.md)
+- [Production go-live](docs/deployment/production-go-live.md)
 - [Resource rename and cutover (#5246)](docs/deployment/resource-rename-cutover.md)
 - [Deploying from scratch](docs/deployment/deploy-from-scratch.md)
 - [Database migrations](docs/deployment/database-migrations.md)

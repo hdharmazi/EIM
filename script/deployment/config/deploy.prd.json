@@ -1,0 +1,28 @@
+{
+  "environment": "prd",
+  "scope": "environment",
+  "production": true,
+  "sharedSuffix": "prd",
+  "names": {
+    "resourceGroup": "d365fsc-integration-prod",
+    "serviceBusNamespace": "",
+    "keyVault": "",
+    "sqlServer": "",
+    "sqlDatabase": ""
+  },
+  "entra": {
+    "tenantId": "<production dashboard entra tenant id>",
+    "clientId": "<production dashboard entra client id>",
+    "audience": "<production api://... or client id>"
+  },
+  "gateway": {
+    "legacyVerificationTargets": []
+  },
+  "automation": {
+    "excludedUsers": "<production semicolon separated user guids>"
+  },
+  "dashboard": {
+    "simulationEnabled": false,
+    "simulationQueuePrefix": ""
+  }
+}

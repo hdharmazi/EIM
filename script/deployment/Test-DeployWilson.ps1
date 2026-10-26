@@ -121,10 +121,11 @@ try {
 
     # ---------------------------------------------------------------------------------------------
     Write-Host '== configurations and names'
-    Assert-Equal @('bat', 'nonprod', 'test') $configNames 'the configured names are read from deploy.*.json (base excluded); there is no dev configuration'
-    Assert-Equal 'shared' $configs.nonprod.scope 'nonprod is the shared scope'
-    foreach ($name in 'bat', 'test') { Assert-Equal 'environment' $configs[$name].scope "$name is an environment scope" }
-    Assert-Throws { Get-DeployConfig 'dev' $ConfigDirectory } "'dev'.*Configured: bat, nonprod, test" 'dev is rejected as an unknown configuration, naming it and the configured names'
+    Assert-Equal @('bat', 'nonprod', 'prd', 'prdshared', 'test') $configNames 'the configured names are read from deploy.*.json (base excluded); there is no dev configuration'
+    foreach ($name in 'nonprod', 'prdshared') { Assert-Equal 'shared' $configs[$name].scope "$name is a shared scope" }
+    foreach ($name in 'bat', 'test', 'prd') { Assert-Equal 'environment' $configs[$name].scope "$name is an environment scope" }
+    Assert-Equal @('prd', 'prdshared') @($configNames | Where-Object { $configs[$_].production -eq $true }) 'exactly prdshared and prd are production configurations'
+    Assert-Throws { Get-DeployConfig 'dev' $ConfigDirectory } "'dev'.*Configured: bat, nonprod, prd, prdshared, test" 'dev is rejected as an unknown configuration, naming it and the configured names'
 
     $shared = Get-ResourceNames $configs.nonprod
     $expectedShared = [ordered]@{
@@ -152,6 +153,34 @@ try {
         foreach ($key in 'ResourceGroup', 'ServiceBusNamespace', 'SqlServer', 'SqlDatabase', 'AppServicePlan', 'LogAnalytics', 'GatewayApp') {
             Assert-Equal $expectedShared[$key] $n.$key "$name $key (shared resource)"
         }
+    }
+
+    # The production stamp: only the resource group is overridden; everything else follows the pattern with 'prd'.
+    $prdShared = Get-ResourceNames $configs.prdshared
+    $expectedPrd = [ordered]@{
+        ResourceGroup       = 'd365fsc-integration-prod'
+        ServiceBusNamespace = 'sbns-eim-wtc-prd'
+        KeyVault            = 'kv-eim-wtc-prd'
+        SqlServer           = 'sql-eim-wtc-prd'
+        SqlDatabase         = 'sqldb-eim-wtc-prd'
+        AppServicePlan      = 'asp-eim-wtc-prd'
+        LogAnalytics        = 'log-eim-wtc-prd'
+        GatewayApp          = 'azf-eim-gateway-wtc-prd'
+        GatewayStorage      = 'stwtceimgwprd'
+        GatewayInsights     = 'appins-eim-gateway-wtc-prd'
+        DashboardApi        = 'app-eim-dashboard-api-wtc-prd'
+        StaticWebApp        = 'swa-eim-dashboard-wtc-prd'
+    }
+    foreach ($key in $expectedPrd.Keys) { Assert-Equal $expectedPrd[$key] $prdShared.$key "prdshared $key" }
+    Assert-Equal 'azf-eim-automation-wtc-prdshared' $prdShared.AutomationApp 'prdshared derives an Automation name of exactly 32 characters (never deployed, but it must resolve)'
+    Assert-Equal 32 $prdShared.AutomationApp.Length 'the prdshared Automation name is at the Function App limit'
+    $prdNames = Get-ResourceNames $configs.prd
+    Assert-Equal 'azf-eim-automation-wtc-prd' $prdNames.AutomationApp 'prd AutomationApp'
+    Assert-Equal 'stwtceimautoprd' $prdNames.AutomationStorage 'prd AutomationStorage'
+    Assert-Equal 'appins-eim-automation-wtc-prd' $prdNames.AutomationInsights 'prd AutomationInsights'
+    Assert-Equal 'prd' $prdNames.QueuePrefix 'prd QueuePrefix'
+    foreach ($key in 'ResourceGroup', 'ServiceBusNamespace', 'SqlServer', 'SqlDatabase', 'AppServicePlan', 'LogAnalytics', 'GatewayApp') {
+        Assert-Equal $expectedPrd[$key] $prdNames.$key "prd $key (production shared resource)"
     }
 
     # No configuration derives (or overrides to) a dev Automation resource.
@@ -186,7 +215,7 @@ try {
     $qa = Get-DeployConfig 'qa' $fixtureDir
     Assert-Equal 'azf-eim-automation-wtc-qa' (Get-ResourceNames $qa).AutomationApp 'a new deploy.qa.json is accepted and named by convention'
     Assert-Equal @('environment', 'preflight', 'infra', 'settings', 'automation', 'verify', 'health') (@($qa.scope) + @(Resolve-Components @('all') $qa.scope $qa.sharedSuffix)) 'the new configuration gets the environment scope components'
-    Assert-Throws { Get-DeployConfig 'staging' $ConfigDirectory } "'staging'.*bat, nonprod, test" 'an unknown configuration is rejected, naming it and the configured names'
+    Assert-Throws { Get-DeployConfig 'staging' $ConfigDirectory } "'staging'.*bat, nonprod, prd, prdshared, test" 'an unknown configuration is rejected, naming it and the configured names'
     Assert-Throws { Get-DeployConfig 'base' $ConfigDirectory } "'base'" 'base is not a configuration'
     Assert-Throws { Get-DeployConfig 'mismatch' $fixtureDir } "declares environment 'other'" 'environment must equal the file name'
     Assert-Throws { Get-ResourceNames (Get-DeployConfig 'abcdefghijk' $fixtureDir) } "Function App name 'azf-eim-automation-wtc-abcdefghijk' exceeds 32" 'a long environment name breaks the Function App length rule'
@@ -230,6 +259,27 @@ try {
     Assert-Equal @('cutover') (Resolve-Components @('cutover') 'environment' 'nonprod') 'cutover runs on its own'
     Assert-Throws { Resolve-Components @('remove', 'automation') 'environment' 'nonprod' } 'run on their own' 'on-demand components cannot be combined'
     Assert-True (-not ((Resolve-Components @('all') 'environment' 'nonprod') -contains 'cutover')) "'all' never includes cutover"
+
+    # Each stamp has one shared configuration; the scope messages name the stamp's own configurations.
+    Assert-Equal 'prdshared' (Get-SharedConfigurationName $configs.prd $ConfigDirectory) 'prd resolves to the shared configuration prdshared'
+    Assert-Equal 'prdshared' (Get-SharedConfigurationName $configs.prdshared $ConfigDirectory) 'prdshared is its own shared configuration'
+    Assert-Equal 'nonprod' (Get-SharedConfigurationName $configs.bat $ConfigDirectory) 'bat resolves to the shared configuration nonprod'
+    Assert-Equal @('prd') @(Get-StampConfigurations $configs.prdshared $ConfigDirectory | Where-Object Scope -eq 'environment' | ForEach-Object Name) 'the production stamp has the one environment configuration prd'
+    Assert-Equal @('bat', 'test') @(Get-StampConfigurations $configs.nonprod $ConfigDirectory | Where-Object Scope -eq 'environment' | ForEach-Object Name) 'the non-production stamp has bat and test'
+    $stampDir = New-TempFolder
+    Copy-Item (Join-Path $ConfigDirectory 'deploy.base.json') $stampDir
+    Copy-Item (Join-Path $ConfigDirectory 'deploy.nonprod.json') $stampDir
+    '{ "environment": "nonprod2", "scope": "shared" }' | Set-Content (Join-Path $stampDir 'deploy.nonprod2.json')
+    Assert-Throws { Get-SharedConfigurationName $configs.bat $stampDir } "sharedSuffix 'nonprod'.*found nonprod, nonprod2" 'two shared configurations in one stamp fail, naming the suffix and both'
+    $noSharedDir = New-TempFolder
+    Copy-Item (Join-Path $ConfigDirectory 'deploy.base.json') $noSharedDir
+    '{ "environment": "qa", "scope": "environment" }' | Set-Content (Join-Path $noSharedDir 'deploy.qa.json')
+    Assert-Throws { Get-SharedConfigurationName (Get-DeployConfig 'qa' $noSharedDir) $noSharedDir } "sharedSuffix 'nonprod'.*found none" 'a stamp without a shared configuration fails'
+    Assert-Throws { Resolve-Components @('gateway') 'environment' 'prdshared' @('prd') } "'gateway' is a shared component.*'prdshared'.*-Environment prdshared" "'gateway' against prd names prdshared"
+    Assert-Throws { Resolve-Components @('automation') 'shared' 'prdshared' @('prd') } "'automation' is a per-environment component.*\(prd\).*'prdshared'" "'automation' against prdshared names prd"
+    $prdOwners = $null
+    try { Resolve-Components @('automation') 'shared' 'prdshared' @('prd') } catch { $prdOwners = $_.Exception.Message }
+    Assert-True ($prdOwners -notmatch 'bat|test|nonprod') 'the production scope message names no non-production configuration'
 
     Assert-Equal @('EIM_DEPLOY_EIMDB', 'EIM_DEPLOY_SERVICEBUS') (Get-RequiredSecrets @('preflight', 'settings') 'environment') 'settings needs both secrets'
     Assert-Equal @('EIM_DEPLOY_EIMDB') (Get-RequiredSecrets @('preflight', 'myip', 'schema', 'myipremove') 'shared') 'schema needs only EIMDB'
@@ -282,6 +332,12 @@ try {
     Assert-True ($batText -notmatch 'appservice plan create|gateway|dashboard|staticwebapp') 'bat creates no shared resource'
     $batMissing = @(Get-InfraPlan $configs.bat $batNames @{ Plan = $false; LogAnalytics = $true; ServiceBusNamespace = $true; Queues = @{} })
     Assert-True (@($batMissing | Where-Object { $_.Kind -eq 'require' -and $_.Label -match 'asp-eim-wtc-nonprod.*nonprod' }).Count -eq 1) 'bat requires the shared plan from nonprod'
+    $prdMissing = @(Get-InfraPlan $configs.prd $prdNames @{ Plan = $false; LogAnalytics = $true; ServiceBusNamespace = $true; Queues = @{} } 'prdshared')
+    Assert-True (@($prdMissing | Where-Object { $_.Kind -eq 'require' -and $_.Label -match "asp-eim-wtc-prd does not exist; run 'infra' for the shared configuration 'prdshared' first" }).Count -eq 1) 'prd without the plan says run infra for prdshared first'
+    $prdText = (@(Get-InfraPlan $configs.prd $prdNames @{ Plan = $true; LogAnalytics = $true; ServiceBusNamespace = $true; Queues = @{} } 'prdshared') | ForEach-Object { $_.Args -join ' ' }) -join "`n"
+    Assert-True ($prdText -match 'servicebus queue create -g d365fsc-integration-prod --namespace-name sbns-eim-wtc-prd -n prd-d365fsc-dataevent ') 'prd creates its queues in the production namespace and resource group'
+    Assert-True ($prdText -match 'functionapp create -g d365fsc-integration-prod -n azf-eim-automation-wtc-prd --plan asp-eim-wtc-prd ') 'prd creates its Automation app on the production plan'
+    Assert-True ($prdText -notmatch 'nonprod|group create') 'prd plans nothing in the non-production stamp and never creates a resource group'
 
     # ---------------------------------------------------------------------------------------------
     Write-Host '== settings'
@@ -317,15 +373,35 @@ try {
     Assert-Equal 'https://azf-eim-gateway-wtc-nonprod.azurewebsites.net' $gatewaySettings.Gateway__BaseUrl 'gateway base URL from the new app name'
 
     $dashboard = Get-DashboardApiSettings $configs.nonprod $shared $fakeSecrets
-    Assert-Equal @('ASPNETCORE_ENVIRONMENT', 'ConnectionStrings__EIMDB', 'AzureAd__TenantId', 'AzureAd__ClientId', 'AzureAd__Audience',
+    Assert-Equal @('ASPNETCORE_ENVIRONMENT', 'ConnectionStrings__EIMDB', 'AzureAd__TenantId', 'AzureAd__ClientId', 'AzureAd__Audience', 'Simulation__Enabled',
         'Simulation__ServiceBusConnectionString', 'Simulation__D365FscDataEventQueue', 'Simulation__CaptureToD365Queue', 'Simulation__CaptureToD365ResponseQueue',
         'Simulation__D365ToCaptureQueue', 'Gateway__BaseUrl', 'Gateway__AppName', 'Gateway__Applications__0__Name', 'Gateway__Applications__0__BaseUrl') @($dashboard.Keys) 'dashboard API setting names'
+    Assert-Equal 'true' $dashboard.Simulation__Enabled 'nonprod writes Simulation__Enabled=true'
     Assert-Equal 'azf-eim-gateway-wtc-nonprod' $dashboard.Gateway__AppName 'the dashboard points at the new gateway'
     # The legacy name is read from the config: outside the configs and the runbook it must not be written.
     Assert-Equal $configs.nonprod.legacy.gatewayApp $dashboard.Gateway__Applications__0__Name 'the legacy gateway stays verifiable during the overlap'
     Assert-Equal 'bat-d365fsc-dataevent' $dashboard.Simulation__D365FscDataEventQueue 'simulation queues use dashboard.simulationQueuePrefix'
     Assert-Equal 'bat-capture-to-d365fsc-response' $dashboard.Simulation__CaptureToD365ResponseQueue 'the simulation response queue'
     Assert-Equal @('Gateway__Applications__1__Name') @(Get-StaleVerificationTargetSettings $dashboard @((New-Setting 'Gateway__Applications__0__Name' 'x'), (New-Setting 'Gateway__Applications__1__Name' 'y'), (New-Setting 'Other' 'z'))) 'verification targets no longer configured are deleted'
+
+    # Production: simulation is off, so only Simulation__Enabled=false is written and every other Simulation__* goes.
+    $prdDashboard = Get-DashboardApiSettings $configs.prdshared $prdShared $fakeSecrets
+    Assert-Equal 'false' $prdDashboard.Simulation__Enabled 'prdshared writes Simulation__Enabled=false'
+    Assert-Equal @('Simulation__Enabled') @($prdDashboard.Keys | Where-Object { $_ -like 'Simulation__*' }) 'prdshared writes no other Simulation__ setting'
+    Assert-Equal @() @($prdDashboard.Keys | Where-Object { $_ -like 'Gateway__Applications__*' }) 'prdshared has no legacy verification target'
+    Assert-Equal 'azf-eim-gateway-wtc-prd' $prdDashboard.Gateway__AppName 'the production dashboard points at the production gateway'
+    $leftover = @((New-Setting 'Simulation__ServiceBusConnectionString' 'x'), (New-Setting 'Simulation__Enabled' 'true'), (New-Setting 'Other' 'y'))
+    Assert-Equal @('Simulation__ServiceBusConnectionString') @(Get-StaleSimulationSettings $prdDashboard $leftover) 'a leftover simulation connection string is deleted on prdshared'
+    Assert-Equal @() @(Get-StaleSimulationSettings $dashboard $leftover) 'nothing simulation-related is deleted on nonprod'
+    $blankPrefix = Get-DeployConfig 'prdshared' $ConfigDirectory $null '{ "dashboard": { "simulationEnabled": true } }'
+    Assert-Throws { Get-DashboardApiSettings $blankPrefix $prdShared $fakeSecrets } 'dashboard\.simulationQueuePrefix' 'simulation enabled with a blank prefix fails, naming the key'
+    $placeholderPrefix = Get-DeployConfig 'nonprod' $ConfigDirectory $null '{ "dashboard": { "simulationQueuePrefix": "<prefix>" } }'
+    Assert-Throws { Get-DashboardApiSettings $placeholderPrefix $shared $fakeSecrets } 'dashboard\.simulationQueuePrefix' 'simulation enabled with a placeholder prefix fails, naming the key'
+    Assert-True (((@(Get-PlaceholderProblems $configs.prdshared @('preflight', 'settings'))) -join ' ') -notmatch 'simulationQueuePrefix') 'a blank simulationQueuePrefix is not a placeholder'
+    $prdExpected = Get-DashboardApiSettings $configs.prdshared $prdShared @{ EIMDB = '<EIM_DEPLOY_EIMDB>'; ServiceBus = '<EIM_DEPLOY_SERVICEBUS>' }
+    $prdCurrent = @($prdExpected.Keys | Where-Object { $_ -ne 'Simulation__Enabled' } | ForEach-Object { New-Setting $_ "$($prdExpected[$_])" })
+    $simulationDrift = Get-SettingsDrift 'app-eim-dashboard-api-wtc-prd' $prdExpected $prdCurrent @()
+    Assert-True (($simulationDrift.Failures -join ' ') -match 'app-eim-dashboard-api-wtc-prd: missing Simulation__Enabled; a manual run with applySettings') 'the drift check fails on a missing Simulation__Enabled, naming the app'
 
     Write-Host '== drift'
     $expected = Get-AutomationSettings $configs.bat $batNames @{ EIMDB = '<EIM_DEPLOY_EIMDB>'; ServiceBus = '<EIM_DEPLOY_SERVICEBUS>' } '<insights>'
@@ -387,6 +463,14 @@ try {
     Assert-Equal 90 (ConvertTo-LockSeconds 'PT1M30S') 'ISO 8601 lock duration'
     Assert-Equal 60 (ConvertTo-LockSeconds '00:01:00') 'TimeSpan lock duration'
     Assert-Equal 60 (ConvertTo-LockSeconds '') 'default lock duration'
+
+    # Production has no legacy apps: gateway cutover and Automation rollback have nothing to act on.
+    Assert-Equal "'prdshared' has no legacy gateway; there are no keys to copy. Nothing was changed." (Get-CutoverRefusal $configs.prdshared $false) 'cutover for prdshared is refused (no legacy gateway)'
+    Assert-Equal "'prd' has no legacy Automation app to roll back to. Nothing was changed." (Get-CutoverRefusal $configs.prd $true) 'rollback for prd is refused (no legacy app)'
+    Assert-True ($null -eq (Get-CutoverRefusal $configs.prd $false)) 'cutover for prd is not refused (it enables the gated triggers)'
+    Assert-True ($null -eq (Get-CutoverRefusal $configs.nonprod $false)) 'cutover for nonprod is not refused'
+    Assert-True ($null -eq (Get-CutoverRefusal $configs.bat $true)) 'rollback for bat is not refused'
+    Assert-True ($null -eq (Get-CutoverRefusal $configs.bat $false)) 'cutover for bat is not refused'
 
     $hostKeys = [pscustomobject]@{ _master = 'm'; default = 'd'; consumerA = 'a' }
     Assert-Equal @('consumerA') @((Select-CopyableKeys $hostKeys).Keys) 'master and default keys are not copied'
@@ -472,6 +556,14 @@ try {
     Assert-True (((Test-RemoveAllowed @removeArgs -Entries $swaEntry).Refusals -join ' ') -match "'Microsoft.Web/staticSites', which remove never deletes") 'remove refuses a static web app (type allow-list)'
     $vaultEntry = @([pscustomobject]@{ Name = 'some-old-vault'; Type = 'Microsoft.KeyVault/vaults'; Exists = $true; HostedApps = @() })
     Assert-True ((Test-RemoveAllowed @removeArgs -Entries $vaultEntry).Refusals.Count -eq 1) 'remove refuses any type outside the allow-list'
+    Assert-True (((Test-RemoveAllowed @removeArgs).Refusals -join ' ') -notmatch 'production') 'a non-production remove gets no production refusal'
+
+    # Production: refused whatever else is in order (preview, marker, confirmation, no entries).
+    $prdRemove = @{ Environment = 'prd'; Entries = @(); NamesInUse = $inUse; IsPipeline = $false; MarkerExists = $true; Production = $true }
+    foreach ($case in @(@{ Preview = $true }, @{ Preview = $false; CheckConfirmation = $true; Confirmation = 'prd' })) {
+        $prdDecision = Test-RemoveAllowed @prdRemove @case
+        Assert-True (($prdDecision.Refusals -join ' ') -match "remove never runs against a production configuration \('prd'\)") "remove refuses a production configuration (preview $($case.Preview))"
+    }
 
     # Trigger guard: the legacy Automation app per environment, plus nonprod's retired Automation apps.
     Assert-Equal @('azf-eim-customer-wtc-dev') @(Get-TriggerGuardApps $configs.nonprod) 'nonprod guards the retired dev Automation app'
@@ -545,8 +637,44 @@ try {
         $guardReads.Clear()
         Assert-Throws { & $runRemove $configs.bat (Get-ResourceNames $configs.bat) @{ 'azf-eim-customer-wtc-bat' = $oneEnabled } } 'azf-eim-customer-wtc-bat/QueueCaptureCustomer' 'remove for bat refuses while its legacy app consumes, naming the function'
         Assert-Equal @('azf-eim-customer-wtc-bat') @($guardReads) 'the bat guard reads only its legacy app'
+
+        $guardReads.Clear()
+        Assert-Throws { & $runRemove $configs.prd $prdNames @{} } "production configuration \('prd'\)" 'remove -WhatIf for prd is refused'
+        Assert-Throws { & $runRemove $configs.prdshared $prdShared @{} } "production configuration \('prdshared'\)" 'remove -WhatIf for prdshared is refused'
+        Assert-Equal @() @($guardReads) 'a production remove is refused before any Azure call'
+        Assert-True (-not (Test-Path (Join-Path $markerDir 'remove-prd.marker'))) 'a refused production remove records no preview'
+
+        # Main's early refusals: pure, and checked before Assert-AzureCli (az account show and set).
+        $runEarly = {
+            param($Config, [string[]]$Selected)
+            $Preview = $true
+            $ConfirmDisabled = $false
+            function Get-RemoveMarkerPath([string]$Environment) { Join-Path $markerDir "remove-$Environment.marker" }
+            Assert-NoEarlyRefusal $Config $Selected
+        }
+        Assert-Throws { & $runEarly $configs.prd @('remove') } "production configuration \('prd'\)" 'main refuses remove -WhatIf for prd before any Azure call'
+        Assert-Throws { & $runEarly $configs.prdshared @('remove') } "production configuration \('prdshared'\)" 'main refuses remove -WhatIf for prdshared before any Azure call'
+        Assert-Throws { & $runEarly $configs.prdshared @('cutover') } 'no legacy gateway' 'main refuses cutover for prdshared before any Azure call'
+        Assert-Throws { & $runEarly $configs.prd @('rollback') } 'no legacy Automation app' 'main refuses rollback for prd before any Azure call'
+        & $runEarly $configs.nonprod @('remove')
+        & $runEarly $configs.prd @('cutover')
+        & $runEarly $configs.bat @('rollback')
+        & $runEarly $configs.prd @('preflight', 'infra', 'settings', 'automation')
+        Assert-True $true 'main lets a non-production remove preview, prd cutover, bat rollback and a prd deploy through to the Azure checks'
+        $env:TF_BUILD = 'True'
+        Assert-Throws { & $runEarly $configs.nonprod @('remove') } 'TF_BUILD' 'main refuses a pipeline remove before any Azure call'
+        $env:TF_BUILD = $null
     }
     finally { $env:TF_BUILD = $savedTfBuild }
+
+    # Main runs the early refusals before its first az call.
+    $mainText = (Get-Content $deployScriptPath -Raw) -split '(?m)^if \(\$MyInvocation\.InvocationName -ne ''\.''\) \{', 2
+    Assert-Equal 2 $mainText.Count 'Deploy-Wilson.ps1 has its main block'
+    $earlyAt = $mainText[1].IndexOf('Assert-NoEarlyRefusal $config $selected')
+    $azAt = $mainText[1].IndexOf('Assert-AzureCli $config')
+    Assert-True ($earlyAt -ge 0 -and $azAt -gt $earlyAt) 'main checks the remove, cutover and rollback refusals before Assert-AzureCli'
+    $firstAz = [regex]::Match($mainText[1], '\b(Invoke-Az|Test-Az|Invoke-AzRest|Invoke-AzProcess)\b')
+    Assert-True (-not $firstAz.Success -or $firstAz.Index -gt $earlyAt) 'main makes no az call before the early refusals'
 
     # ---------------------------------------------------------------------------------------------
     Write-Host '== verify targets'
@@ -564,6 +692,64 @@ try {
     Assert-Equal 'azql-wtc-sandbox' (Get-SqlServerFromConnection 'Server=tcp:azql-wtc-sandbox.database.windows.net,1433;Initial Catalog=eimdb;User ID=<sql user>;Password=<sql password>') 'server from Server=tcp:'
     Assert-Equal 'azql-wtc-sandbox' (Get-SqlServerFromConnection 'Data Source=azql-wtc-sandbox.database.windows.net;Initial Catalog=eimdb') 'server from Data Source='
     Assert-Throws { Get-SqlServerFromConnection 'Host=elsewhere;Secret=SECRETVALUE123' } '^(?!.*SECRETVALUE123)' 'an unreadable connection string fails without echoing it'
+
+    Write-Host '== secret targets, foundations and stamp isolation'
+    # Fake connection strings: resource names only, and <...> markers where a credential would be.
+    $fakeSql = { param($Server, $Catalog) "Server=tcp:$Server.database.windows.net,1433;Initial Catalog=$Catalog;User ID=<fake user>;Password=<not a real password>" }
+    $fakeBus = { param($Namespace) "Endpoint=sb://$Namespace.servicebus.windows.net/;SharedAccessKeyName=<fake key name>;SharedAccessKey=<not a real key>" }
+    Assert-Equal 'eimdb_dev' (Get-SqlCatalogFromConnection (& $fakeSql 'azql-wtc-sandbox' 'eimdb_dev')) 'catalog from Initial Catalog='
+    Assert-Equal 'eimdb' (Get-SqlCatalogFromConnection 'Server=tcp:azql-wtc-sandbox.database.windows.net;Database=eimdb') 'catalog from Database='
+    Assert-Throws { Get-SqlCatalogFromConnection 'Server=tcp:x.database.windows.net;Secret=SECRETVALUE123' } '^(?!.*SECRETVALUE123).*EIM_DEPLOY_EIMDB' 'a connection string without a catalog fails without echoing it'
+    Assert-Equal 'sbns-eim-wtc-prd' (Get-ServiceBusNamespaceFromConnection (& $fakeBus 'sbns-eim-wtc-prd')) 'namespace from Endpoint=sb://'
+    Assert-Throws { Get-ServiceBusNamespaceFromConnection 'Endpoint=https://elsewhere;SharedAccessKey=SECRETVALUE123' } '^(?!.*SECRETVALUE123).*EIM_DEPLOY_SERVICEBUS' 'an unreadable Service Bus connection string fails without echoing it'
+
+    $both = @('EIM_DEPLOY_EIMDB', 'EIM_DEPLOY_SERVICEBUS')
+    $prdSecrets = @{ EIMDB = (& $fakeSql 'sql-eim-wtc-prd' 'sqldb-eim-wtc-prd'); ServiceBus = (& $fakeBus 'sbns-eim-wtc-prd') }
+    Assert-Equal @() @(Get-SecretTargetProblems $prdSecrets $prdShared $both) 'production secrets that point at the production resources pass'
+    $nonprodSecrets = @{ EIMDB = (& $fakeSql 'azql-wtc-sandbox' 'eimdb'); ServiceBus = (& $fakeBus 'asb-eim-wtc-nonprod') }
+    Assert-Equal @() @(Get-SecretTargetProblems $nonprodSecrets $shared $both) 'non-production secrets that point at the non-production resources pass'
+    $wrongServer = @(Get-SecretTargetProblems @{ EIMDB = (& $fakeSql 'azql-wtc-sandbox' 'sqldb-eim-wtc-prd') } $prdShared @('EIM_DEPLOY_EIMDB'))
+    Assert-Equal 1 $wrongServer.Count 'a secret on the wrong SQL server is one problem'
+    Assert-True ($wrongServer[0] -match 'EIM_DEPLOY_EIMDB' -and $wrongServer[0] -match "'azql-wtc-sandbox'" -and $wrongServer[0] -match "'sql-eim-wtc-prd'") 'the wrong server names the variable, the parsed server and the expected server'
+    $wrongCatalog = @(Get-SecretTargetProblems @{ EIMDB = (& $fakeSql 'azql-wtc-sandbox' 'eimdb_dev') } $shared @('EIM_DEPLOY_EIMDB'))
+    Assert-Equal 1 $wrongCatalog.Count 'a secret on the wrong catalog is one problem'
+    Assert-True ($wrongCatalog[0] -match 'EIM_DEPLOY_EIMDB' -and $wrongCatalog[0] -match "'eimdb_dev'" -and $wrongCatalog[0] -match "'eimdb'") 'the wrong catalog names the variable, eimdb_dev and eimdb'
+    $wrongNamespace = @(Get-SecretTargetProblems @{ ServiceBus = (& $fakeBus 'asb-eim-wtc-nonprod') } $prdShared @('EIM_DEPLOY_SERVICEBUS'))
+    Assert-Equal 1 $wrongNamespace.Count 'a secret on the wrong namespace is one problem'
+    Assert-True ($wrongNamespace[0] -match 'EIM_DEPLOY_SERVICEBUS' -and $wrongNamespace[0] -match "'asb-eim-wtc-nonprod'" -and $wrongNamespace[0] -match "'sbns-eim-wtc-prd'") 'the wrong namespace names the variable, the parsed and the expected namespace'
+    Assert-Equal @() @(Get-SecretTargetProblems $nonprodSecrets $prdShared @()) 'no required secret, nothing compared'
+    $unreadable = @(Get-SecretTargetProblems @{ EIMDB = 'Secret=SECRETVALUE123'; ServiceBus = 'Secret=SECRETVALUE123' } $prdShared $both)
+    Assert-True ($unreadable.Count -ge 2 -and ($unreadable -join ' ') -notmatch 'SECRETVALUE123') 'unreadable secrets are problems that never echo the value'
+    $allMessages = (@($wrongServer) + @($wrongCatalog) + @($wrongNamespace) + @($unreadable)) -join "`n"
+    # 'Password\=' is the regex for the literal text; escaped so the repository secret scan does not read it as a value.
+    Assert-True ($allMessages -notmatch 'Password\=|SharedAccessKey|User ID\=|not a real|<fake|Initial Catalog\=sqldb|Endpoint\=sb://asb') 'secret-target messages contain no credential and no connection string'
+
+    $present = @{ ResourceGroup = $true; ServiceBusNamespace = $true; SqlServer = $true; SqlDatabase = $true }
+    $probeCalls = [System.Collections.Generic.List[string]]::new()
+    $probe = { param([string]$Kind, [string]$Name) $probeCalls.Add("$Kind $Name"); [bool]$present[$Kind] }
+    Assert-Equal @() @(Get-FoundationProblems $prdShared $probe) 'all foundations present: no problem'
+    Assert-Equal @('ResourceGroup d365fsc-integration-prod', 'ServiceBusNamespace sbns-eim-wtc-prd', 'SqlServer sql-eim-wtc-prd', 'SqlDatabase sqldb-eim-wtc-prd') @($probeCalls) 'the probe checks the group, namespace, server and database by their configured names'
+    $present.ServiceBusNamespace = $false
+    Assert-True ((@(Get-FoundationProblems $prdShared $probe) -join ' ') -match "Service Bus namespace 'sbns-eim-wtc-prd' was not found in 'd365fsc-integration-prod'.*never creates it") 'a missing namespace is named'
+    $present.ServiceBusNamespace = $true
+    $present.SqlServer = $false
+    $serverProblems = @(Get-FoundationProblems $prdShared $probe)
+    Assert-True ($serverProblems.Count -eq 1 -and $serverProblems[0] -match "SQL server 'sql-eim-wtc-prd' was not found") 'a missing SQL server is named (its database is not probed)'
+    $present.SqlServer = $true
+    $present.SqlDatabase = $false
+    Assert-True ((@(Get-FoundationProblems $prdShared $probe) -join ' ') -match "database 'sqldb-eim-wtc-prd' was not found on SQL server 'sql-eim-wtc-prd'") 'a missing database names the database and the server'
+    $present.SqlDatabase = $true
+    $present.ResourceGroup = $false
+    $probeCalls.Clear()
+    Assert-Equal @("resource group 'd365fsc-integration-prod' was not found or you have no access to it") @(Get-FoundationProblems $prdShared $probe) 'a missing resource group is the only problem reported'
+    Assert-Equal @('ResourceGroup d365fsc-integration-prod') @($probeCalls) 'nothing else is probed without the resource group'
+
+    $realConfigs = @($configNames | ForEach-Object { $configs[$_] })
+    Assert-Equal @() @(Get-StampIsolationProblems $realConfigs) 'the committed configurations share no name between the stamps'
+    $leaky = Get-DeployConfig 'prdshared' $ConfigDirectory $null '{ "names": { "sqlServer": "azql-wtc-sandbox" } }'
+    $leaks = @(Get-StampIsolationProblems (@($realConfigs | Where-Object { $_.environment -ne 'prdshared' }) + @($leaky)))
+    Assert-True ($leaks.Count -gt 0 -and @($leaks | Where-Object { $_ -notmatch "'azql-wtc-sandbox'" }).Count -eq 0) 'a production configuration on the non-production SQL server is reported, naming the server'
+    Assert-True (@($leaks | Where-Object { $_ -match "production configuration 'prdshared' and non-production configuration 'nonprod'" }).Count -eq 1) 'the isolation problem names both configurations'
 
     # 'myipremove' runs without preflight, so it resolves EIM_DEPLOY_EIMDB itself.
     $savedEnv = @{ EIM_DEPLOY_EIMDB = $env:EIM_DEPLOY_EIMDB; BUILD_BUILDID = $env:BUILD_BUILDID }
@@ -603,6 +789,13 @@ try {
     $readme = Get-PackageReadme 'v1' 'abc1234' @('nonprod', 'bat', 'test')
     Assert-True ($readme -match 'Deploy-Wilson\.ps1 -Environment nonprod -Component all -WhatIf') 'README.txt carries the operator steps'
     Assert-True ($readme -cnotmatch '\bdev\b') 'README.txt names no dev environment'
+    Assert-True ($readme -match 'd365fsc-integration-nonprod' -and $readme -notmatch 'prdshared|d365fsc-integration-prod') 'a non-production package README names only the non-production stamp'
+    $fullReadme = Get-PackageReadme 'v1' 'abc1234' @('nonprod', 'bat', 'test', 'prdshared', 'prd')
+    Assert-True ($fullReadme -match 'Deploy-Wilson\.ps1 -Environment prdshared -Component all -WhatIf' -and $fullReadme -match 'Deploy-Wilson\.ps1 -Environment prd -Component all') 'a package with the production stamp names prdshared and prd in the steps'
+    Assert-True ($fullReadme -match '(?m)^  prdshared  shared scope \(production stamp, resource group d365fsc-integration-prod\)' -and $fullReadme -match '(?m)^  prd  environment scope') 'the README lists prdshared and prd under CONFIGURATIONS'
+    Assert-True ($fullReadme -match 'Deploy-Wilson\.ps1 -Environment nonprod -Component all -WhatIf') 'the non-production steps stay in a full package'
+    Assert-True ($fullReadme -notmatch 'Environment prdshared -Component cutover') 'the README offers no gateway key copy for production (there is no legacy gateway)'
+    Assert-True ($fullReadme -cnotmatch '\bdev\b') 'the full README names no dev environment'
     $packageAst = [System.Management.Automation.Language.Parser]::ParseFile($packageScriptPath, [ref]$null, [ref]$null)
     $environmentParam = $packageAst.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Environment' }
     $defaultEnvironments = @($environmentParam.DefaultValue.FindAll({ param($node) $node -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true) | ForEach-Object { $_.Value })

@@ -1,0 +1,88 @@
+# Wilson EIM production: promotes the package of an eim run (pipelines/eim.yml) to the production stamp.
+# Builds nothing: the binaries are the ones eim already deployed to bat and test. On a manual run, pick the eim run
+# under Resources; it must be a run from main whose Deploy_test stage succeeded
+# (docs/deployment/production-go-live.md).
+#
+# One-time setup (docs/deployment/devops-setup.md):
+#   - Azure DevOps environments: eim-wtc-prdshared and eim-wtc-prd (production approvers + exclusive lock)
+#   - ARM service connection 'sc-eim-wtc-prd' (workload identity, Contributor on d365fsc-integration-prod only,
+#     authorised for this pipeline only)
+#   - Library variable group 'eim-wtc-prd': EIM_DEPLOY_EIMDB (secret), EIM_DEPLOY_SERVICEBUS (secret) and
+#     optional EIM_DEPLOY_CONFIG_OVERRIDES, restricted to this pipeline
+# Infrastructure, app settings and migrations run only when ticked. Migrations run in Deploy_prdshared, which the
+# eim-wtc-prdshared approval gates.
+
+parameters:
+  - name: deployInfra
+    displayName: Infrastructure (plan, apps, storage, Insights, queues)
+    type: boolean
+    default: false
+  - name: applySettings
+    displayName: Apply app settings
+    type: boolean
+    default: false
+  - name: runMigrations
+    displayName: Run database migrations (prdshared stage only)
+    type: boolean
+    default: false
+  - name: deployCode
+    displayName: Deploy code (gateway, dashboard, Automation)
+    type: boolean
+    default: true
+
+name: eim-prd-$(Date:yyyyMMdd)$(Rev:.r)
+
+# Manual runs only: never on a push, a pull request or an eim run.
+trigger: none
+pr: none
+
+resources:
+  pipelines:
+    # The default run offered at queue time is the latest eim run from main; pull request and feature runs publish
+    # a package too, and must not become the production default.
+    - pipeline: eim
+      source: eim
+      branch: main
+      trigger: none
+
+# A newer run waiting at an environment replaces an older one that was never approved.
+lockBehavior: runLatest
+
+stages:
+  # Production shared resources: gateway, dashboard API and SPA, and the production database.
+  - stage: Deploy_prdshared
+    displayName: Deploy production shared (prdshared)
+    condition: succeeded()
+    jobs:
+      - template: templates/deploy-environment.yml
+        parameters:
+          environment: prdshared
+          devopsEnvironment: eim-wtc-prdshared
+          serviceConnection: sc-eim-wtc-prd
+          variableGroup: eim-wtc-prd
+          packageSource: eim
+          deployInfra: ${{ parameters.deployInfra }}
+          applySettings: ${{ parameters.applySettings }}
+          runMigrations: ${{ parameters.runMigrations }}
+          ${{ if parameters.deployCode }}:
+            components: gateway, backend, frontend
+
+  - stage: Deploy_prd
+    displayName: Deploy production (prd)
+    dependsOn: Deploy_prdshared
+    # A rejected or failed shared stage stops production Automation.
+    condition: succeeded()
+    jobs:
+      - template: templates/deploy-environment.yml
+        parameters:
+          environment: prd
+          devopsEnvironment: eim-wtc-prd
+          serviceConnection: sc-eim-wtc-prd
+          variableGroup: eim-wtc-prd
+          packageSource: eim
+          deployInfra: ${{ parameters.deployInfra }}
+          applySettings: ${{ parameters.applySettings }}
+          # The environment scope rejects 'schema'; migrations run in Deploy_prdshared only.
+          runMigrations: false
+          ${{ if parameters.deployCode }}:
+            components: automation

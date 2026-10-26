@@ -9,13 +9,21 @@ using Microsoft.Identity.Web;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+// Simulation is off unless Simulation:Enabled is true: the controller is removed (every /api/simulation/* route
+// returns 404) and its services are not registered. Production deploys Simulation__Enabled=false.
+var simulationEnabled = SimulationFeature.IsEnabled(builder.Configuration);
+builder.Services.AddControllers()
+    .ConfigureApplicationPartManager(manager =>
+        manager.FeatureProviders.Add(new SimulationControllerFeatureProvider(builder.Configuration)));
 builder.Services.AddScoped<MessageQueueRepository>();
 builder.Services.AddScoped<EnvironmentRepository>();
 builder.Services.AddScoped<ConfigurationRepository>();
 builder.Services.AddScoped<UserRepository>();
-builder.Services.AddScoped<SimulationService>();
-builder.Services.AddScoped<SalesOrderExcelParser>();
+if (simulationEnabled)
+{
+    builder.Services.AddScoped<SimulationService>();
+    builder.Services.AddScoped<SalesOrderExcelParser>();
+}
 builder.Services.AddScoped<RouteRepository>();
 builder.Services.AddScoped<StatusRepository>();
 builder.Services.AddScoped<GatewayConsumerRepository>();

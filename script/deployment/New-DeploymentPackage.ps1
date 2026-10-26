@@ -6,7 +6,7 @@
     Writes artifacts/package/wtc-eim-deploy-<version>/ and a zip of it, containing:
       Deploy-Wilson.ps1, config/deploy.base.json and config/deploy.<name>.json for each -Environment
       artifacts/wilson-automation.zip, gateway.zip, dashboard-api.zip   (dotnet publish -c Release)
-      artifacts/dashboard-frontend.<name>.zip   the SPA, for each shared-scope configuration (nonprod)
+      artifacts/dashboard-frontend.<name>.zip   the SPA, for each shared-scope configuration (nonprod, prdshared)
       artifacts/dbmigrator/ARM.Integration.DbMigrator.exe   self-contained win-x64 migrator
       artifacts/manifest.json, README.txt
 
@@ -89,7 +89,81 @@ function Merge-PackageConfig($Target, $Patch) {
     }
 }
 
-function Get-PackageReadme([string]$Version, [string]$Commit, [string[]]$Environments) {
+# deploy.base.json merged with deploy.<name>.json, as Deploy-Wilson.ps1 reads it (without the overrides layers).
+function Get-PackageConfig([string]$Name, [string]$Directory) {
+    $path = Join-Path $Directory "deploy.$Name.json"
+    if ($Name -eq 'base' -or -not (Test-Path $path)) { throw "No configuration at '$path'." }
+    $own = Get-Content $path -Raw | ConvertFrom-Json
+    if ($own.environment -ne $Name) { throw "'$path' declares environment '$($own.environment)'." }
+    $config = Get-Content (Join-Path $Directory 'deploy.base.json') -Raw | ConvertFrom-Json
+    Merge-PackageConfig $config $own
+    $config
+}
+
+# The packaged configurations grouped by stamp (same sharedSuffix), in package order. Each stamp names its shared
+# configuration (from the package, or else from the configuration folder) and its resource group.
+function Get-PackageStamps([string[]]$Environments, [string]$Directory) {
+    $configs = [ordered]@{}
+    foreach ($name in $Environments) { $configs[$name] = Get-PackageConfig $name $Directory }
+    $stamps = [ordered]@{}
+    foreach ($name in $configs.Keys) {
+        $suffix = "$($configs[$name].sharedSuffix)"
+        if (-not $stamps.Contains($suffix)) {
+            $stamps[$suffix] = [pscustomobject]@{
+                Suffix        = $suffix
+                Production    = $configs[$name].production -eq $true
+                ResourceGroup = "$($configs[$name].names.resourceGroup)"
+                Shared        = $null
+                Environments  = [System.Collections.Generic.List[string]]::new()
+            }
+        }
+        if ($configs[$name].scope -eq 'shared') { $stamps[$suffix].Shared = $name } else { $stamps[$suffix].Environments.Add($name) }
+    }
+    foreach ($stamp in $stamps.Values) {
+        if ($stamp.Shared) { continue }
+        $stamp.Shared = @(Get-ChildItem -Path $Directory -Filter 'deploy.*.json' | ForEach-Object { $_.BaseName -replace '^deploy\.', '' } |
+                Where-Object { $_ -ne 'base' } | Where-Object {
+                    $other = Get-PackageConfig $_ $Directory
+                    "$($other.sharedSuffix)" -eq $stamp.Suffix -and $other.scope -eq 'shared'
+                } | Sort-Object)[0]
+        if (-not $stamp.Shared) { $stamp.Shared = '<shared configuration>' }
+    }
+    @($stamps.Values)
+}
+
+function Get-PackageReadme([string]$Version, [string]$Commit, [string[]]$Environments, [string]$ConfigDirectory = (Join-Path $PSScriptRoot 'config')) {
+    $stamps = @(Get-PackageStamps $Environments $ConfigDirectory)
+    $groups = @($stamps.ResourceGroup | Where-Object { $_ } | Sort-Object -Unique)
+    $configurations = foreach ($stamp in $stamps) {
+        $label = if ($stamp.Production) { 'production stamp' } else { 'non-production stamp' }
+        "  $($stamp.Shared)  shared scope ($label, resource group $($stamp.ResourceGroup)): App Service plan, Log"
+        '           Analytics, gateway, dashboard API and SPA, database migrations.'
+        if ($stamp.Environments.Count) {
+            "  $($stamp.Environments -join ', ')  environment scope: the five queues and the Automation Function App."
+        }
+        if ($stamp.Production) {
+            "  The production stamp shares nothing with the non-production one: 'remove' never runs against it and"
+            '  the dashboard has no Simulation console. Its Service Bus namespace, SQL server and database exist'
+            '  before the first run (docs/deployment/production-go-live.md); the script never creates them.'
+        }
+    }
+    $steps = foreach ($stamp in $stamps) {
+        $first = if ($stamp.Environments.Count) { $stamp.Environments[0] } else { '<environment>' }
+        ''
+        "  Stamp $($stamp.Shared)$(if ($stamp.Environments.Count) { " ($($stamp.Environments -join ', '))" }):"
+        '  1. Preview, changes nothing:'
+        "       .\Deploy-Wilson.ps1 -Environment $($stamp.Shared) -Component all -WhatIf"
+        '  2. Shared resources, settings, migrations and the shared apps:'
+        "       .\Deploy-Wilson.ps1 -Environment $($stamp.Shared) -Component all"
+        "  3. Each environment$(if ($stamp.Environments.Count) { " ($($stamp.Environments -join ', then '))" }):"
+        "       .\Deploy-Wilson.ps1 -Environment $first -Component all"
+        '     The queue and timer triggers of a new Automation app stay disabled until cutover:'
+        "       .\Deploy-Wilson.ps1 -Environment $first -Component cutover     $(if ($stamp.Production) { '(no legacy app, so no rollback)' } else { '(rollback undoes it)' })"
+        if (-not $stamp.Production) {
+            '  4. Gateway keys (once, after the shared apps run):'
+            "       .\Deploy-Wilson.ps1 -Environment $($stamp.Shared) -Component cutover"
+        }
+    }
     @"
 Wilson EIM deployment package $Version (commit $Commit)
 Configurations: $($Environments -join ', ')
@@ -97,14 +171,12 @@ Configurations: $($Environments -join ', ')
 REQUIREMENTS
   - PowerShell 7.2 or later (pwsh) and Azure CLI 2.60 or later, on Windows.
   - Node.js LTS for the frontend step only (it uses the Static Web Apps CLI through npx).
-  - az login as a user with Contributor on the resource group d365fsc-integration-nonprod.
+  - az login as a user with Contributor on the resource group of the stamp you deploy: $($groups -join ', ').
   - Secrets come from the environment variables EIM_DEPLOY_EIMDB and EIM_DEPLOY_SERVICEBUS, or a hidden
     prompt when they are not set. They are never written to disk in this folder.
 
 CONFIGURATIONS
-  nonprod  shared scope: App Service plan, Log Analytics, gateway, dashboard API and SPA (deployed in
-           place), database migrations.
-  bat, test  environment scope: the five queues and the Automation Function App.
+$($configurations -join "`n")
   These are deployment configurations, not ENVIRONMENT values in eimdb (DEV2, for example, has no
   Function App). Development runs locally; no configuration deploys a development environment.
 
@@ -117,27 +189,19 @@ STEPS
      change on unfilled <...> values, missing secrets, missing package files and (for code-only runs)
      settings an app lacks. Run it alone with:
        .\Deploy-Wilson.ps1 -Environment <name> -Component preflight
-  1. Preview, changes nothing:
-       .\Deploy-Wilson.ps1 -Environment nonprod -Component all -WhatIf
-  2. Shared resources, settings, migrations and the shared apps:
-       .\Deploy-Wilson.ps1 -Environment nonprod -Component all
-  3. Each environment (bat, then test):
-       .\Deploy-Wilson.ps1 -Environment bat -Component all
-     The queue and timer triggers of a new Automation app stay disabled until cutover:
-       .\Deploy-Wilson.ps1 -Environment bat -Component cutover     (rollback undoes it)
-  4. Gateway keys (once, after the shared apps run):
-       .\Deploy-Wilson.ps1 -Environment nonprod -Component cutover
-  5. 'verify' prints the state of every app; 'health' fails unless the hosts run and the dashboard
-     answers.
+$($steps -join "`n")
 
-REMOVE (after cutover and the observation window; operator machine only)
+  'verify' prints the state of every app; 'health' fails unless the hosts run and the dashboard answers.
+
+REMOVE (non-production only, after cutover and the observation window; operator machine only)
        .\Deploy-Wilson.ps1 -Environment <name> -Component remove -WhatIf
        .\Deploy-Wilson.ps1 -Environment <name> -Component remove
-  Deletes only the resources listed under "legacy" in the configuration. For nonprod that includes the
-  retired Automation apps in legacy.retiredAutomationApps; remove refuses until every gated function on
-  them is disabled (see the runbook).
+  Deletes only the resources listed under "legacy" in the configuration. A shared configuration may also
+  list retired Automation apps in legacy.retiredAutomationApps; remove refuses until every gated function
+  on them is disabled (see the runbook). Remove refuses every production configuration.
 
-Runbook: docs/deployment/resource-rename-cutover.md in the repository.
+Runbooks: docs/deployment/resource-rename-cutover.md and docs/deployment/production-go-live.md in the
+repository.
 Full help: Get-Help .\Deploy-Wilson.ps1 -Full
 "@
 }
@@ -151,13 +215,7 @@ if ($MyInvocation.InvocationName -ne '.') {
 
     $configs = [ordered]@{}
     foreach ($name in $Environment) {
-        $path = Join-Path $configDir "deploy.$name.json"
-        if ($name -eq 'base' -or -not (Test-Path $path)) { throw "No configuration at '$path'." }
-        $own = Get-Content $path -Raw | ConvertFrom-Json
-        if ($own.environment -ne $name) { throw "'$path' declares environment '$($own.environment)'." }
-        $config = Get-Content $basePath -Raw | ConvertFrom-Json
-        Merge-PackageConfig $config $own
-        $configs[$name] = @{ Path = $path; Config = $config }
+        $configs[$name] = @{ Path = (Join-Path $configDir "deploy.$name.json"); Config = (Get-PackageConfig $name $configDir) }
     }
 
     $commit = Invoke-Tool 'git' @('rev-parse', '--short', 'HEAD') -Capture
@@ -233,7 +291,7 @@ if ($MyInvocation.InvocationName -ne '.') {
             gatewayFunctions                 = @($gatewayFunctions)
         } | ConvertTo-Json | Set-Content (Join-Path $artifacts 'manifest.json') -Encoding utf8NoBOM
 
-        Set-Content (Join-Path $packageDir 'README.txt') (Get-PackageReadme $Version $commit @($configs.Keys)) -Encoding utf8NoBOM
+        Set-Content (Join-Path $packageDir 'README.txt') (Get-PackageReadme $Version $commit @($configs.Keys) $configDir) -Encoding utf8NoBOM
 
         $zip = "$packageDir.zip"
         New-Zip $packageDir $zip

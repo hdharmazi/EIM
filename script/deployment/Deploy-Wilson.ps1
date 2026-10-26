@@ -3,24 +3,28 @@
     Deploys the Wilson EIM apps (Automation, D365 F&SC gateway, dashboard) to Azure.
 
 .DESCRIPTION
-    One script for every non-production configuration. -Environment names a configuration file
-    script/deployment/config/deploy.<name>.json (today nonprod, bat and test); any file with a matching
-    name is accepted, and nothing here lists the environments or reads the ENVIRONMENT values in eimdb
-    (DEV, DEV2, BAT, TEST are database rows, not deployment configurations). There is no dev configuration:
-    development runs on a developer's machine.
+    One script for every deployment configuration. -Environment names a configuration file
+    script/deployment/config/deploy.<name>.json (today nonprod, bat and test for non-production, prdshared
+    and prd for production); any file with a matching name is accepted, and nothing here lists the
+    environments or reads the ENVIRONMENT values in eimdb (DEV, DEV2, BAT, TEST, PRD are database rows, not
+    deployment configurations). There is no dev configuration: development runs on a developer's machine.
 
     Configuration is merged in this order: deploy.base.json, deploy.<name>.json, -ConfigOverridesFile, then the
     JSON in EIM_DEPLOY_CONFIG_OVERRIDES. Objects merge key by key; lists and plain values are replaced.
 
     Names follow {type}-{workload}-{component}-{client}-{suffix}: the suffix is the configuration name for
-    per-environment resources and sharedSuffix (nonprod) for shared ones. Storage uses st{client}{workload}
-    {shortcomponent}{suffix}. Any derived name can be overridden under "names"; the kept resources (resource
-    group, Service Bus namespace, Key Vault, SQL server, database, dashboard API and static web app) are.
+    per-environment resources and sharedSuffix (nonprod or prd) for shared ones. Storage uses st{client}{workload}
+    {shortcomponent}{suffix}. Any derived name can be overridden under "names" (a blank override falls back to
+    the derived name); the kept non-production resources (resource group, Service Bus namespace, Key Vault, SQL
+    server, database, dashboard API and static web app) and the production resource group are.
 
+    A stamp is the set of configurations with the same sharedSuffix: nonprod, bat and test (non-production) and
+    prdshared and prd (production, "production": true). Each stamp has exactly one shared configuration.
     Each configuration has a scope:
-      shared       (nonprod)       plan, Log Analytics, gateway, dashboard API and SPA, schema migrations
-      environment  (bat, test)     the five queues and the Automation storage, Insights and Function App
-    A component outside the scope is rejected, naming the scope that owns it; 'all' expands to the scope's own.
+      shared       (nonprod, prdshared)  plan, Log Analytics, gateway, dashboard API and SPA, schema migrations
+      environment  (bat, test, prd)      the five queues and the Automation storage, Insights and Function App
+    A component outside the scope is rejected, naming the stamp's configuration that owns it; 'all' expands to
+    the scope's own.
 
     Secrets come only from EIM_DEPLOY_EIMDB and EIM_DEPLOY_SERVICEBUS, or a hidden prompt when run
     interactively outside a pipeline. They are written to Azure through temporary files deleted afterwards,
@@ -31,7 +35,10 @@
 
     Components, always run in this order:
       preflight   fails, changing nothing, on unfilled <...> values the requested components need, missing
-                  secrets, a derived name equal to a legacy name, missing package artifacts, and a package
+                  secrets, secrets that point at another SQL server, database or Service Bus namespace than
+                  the configuration names, a missing resource group, Service Bus namespace, SQL server or
+                  database, a derived name equal to a legacy name, a production name also used by a
+                  non-production configuration, missing package artifacts, and a package
                   whose queue/timer functions differ from automation.gatedFunctions. When code is deployed
                   without 'settings', also fails on settings the config defines that an app lacks, warns on
                   differing values and on retired settings still present. Names only, never values. Added
@@ -40,7 +47,9 @@
       infra       shared: plan, Log Analytics, gateway storage/Insights/app; the dashboard API and static web
                   app only when absent. environment: queues, Automation storage/Insights/app. New Function Apps
                   get Always On, HTTPS only, TLS 1.2, FTPS disabled and DOTNET-ISOLATED|10.0 on every run.
-      settings    shared: gateway and dashboard API. environment: Automation, with the gated triggers
+      settings    shared: gateway and dashboard API (Simulation__Enabled from dashboard.simulationEnabled; the
+                  other Simulation__* settings only when it is true, and deleted when it is false).
+                  environment: Automation, with the gated triggers
                   AzureWebJobs.<fn>.Disabled=true written only when absent; retired settings deleted.
       myip        allow this machine's (or agent's) public IP on the SQL server
       schema      database migrations with the packaged ARM.Integration.DbMigrator.exe (--whatif under -WhatIf)
@@ -55,11 +64,13 @@
                   answers below HTTP 500 and the static web app serves its root
 
     On demand only, never part of 'all', and each runs on its own:
-      cutover     environment: move the gated triggers from the legacy Automation app to the new one.
-                  shared: copy the named gateway host and D365Data/D365Service function keys.
-                  Never touches an app in legacy.retiredAutomationApps.
-      rollback    environment: the reverse of cutover; refused once the legacy app is gone
-      remove      delete the resources listed under "legacy" in the configuration. Operator machine only:
+      cutover     environment: move the gated triggers from the legacy Automation app to the new one; with
+                  no legacy app (prd), enable every gated trigger except automation.keepDisabled.
+                  shared: copy the named gateway host and D365Data/D365Service function keys; refused when
+                  there is no legacy.gatewayApp. Never touches an app in legacy.retiredAutomationApps.
+      rollback    environment: the reverse of cutover; refused without a legacy app, or once it is gone
+      remove      delete the resources listed under "legacy" in the configuration. Never for a configuration
+                  marked "production": true, even with -WhatIf. Operator machine only:
                   needs a 'remove -WhatIf' run first the same day and the configuration name typed to confirm.
                   Refused while a gated function is enabled on legacy.automationApp or on any app in
                   legacy.retiredAutomationApps (stopping the app is not enough).
@@ -446,6 +457,41 @@ function Get-NamesInUse($Config) {
     @($all | Where-Object { $_ } | Sort-Object -Unique)
 }
 
+# The configurations of $Config's stamp (same sharedSuffix), as Name and Scope. $Config itself is used as given,
+# with its overrides; the others are read from $Directory.
+function Get-StampConfigurations($Config, [string]$Directory = $ConfigDirectory) {
+    foreach ($name in (Get-ConfigurationNames $Directory)) {
+        $other = if ($name -eq $Config.environment) { $Config } else { Get-DeployConfig $name $Directory }
+        if ("$($other.sharedSuffix)" -eq "$($Config.sharedSuffix)") { [pscustomobject]@{ Name = $name; Scope = "$($other.scope)" } }
+    }
+    if ((Get-ConfigurationNames $Directory) -notcontains $Config.environment) {
+        [pscustomobject]@{ Name = "$($Config.environment)"; Scope = "$($Config.scope)" }
+    }
+}
+
+# The one configuration with scope 'shared' in $Config's stamp: nonprod for non-production, prdshared for production.
+function Get-SharedConfigurationName($Config, [string]$Directory = $ConfigDirectory) {
+    $shared = @(Get-StampConfigurations $Config $Directory | Where-Object Scope -eq 'shared' | ForEach-Object Name | Sort-Object -Unique)
+    if ($shared.Count -ne 1) {
+        throw "The stamp with sharedSuffix '$($Config.sharedSuffix)' must have exactly one shared configuration; found $(if ($shared) { $shared -join ', ' } else { 'none' })."
+    }
+    $shared[0]
+}
+
+# Every name a production configuration uses that a non-production configuration also uses. Pure.
+function Get-StampIsolationProblems($Configs) {
+    $all = @($Configs | Where-Object { $_ })
+    $nonProduction = @($all | Where-Object { $_.production -ne $true })
+    foreach ($production in @($all | Where-Object { $_.production -eq $true })) {
+        $productionNames = @(Get-NamesInUse $production)
+        foreach ($other in $nonProduction) {
+            foreach ($name in @(Get-NamesInUse $other | Where-Object { $productionNames -contains $_ })) {
+                "production configuration '$($production.environment)' and non-production configuration '$($other.environment)' both use the name '$name'"
+            }
+        }
+    }
+}
+
 function Get-LegacyNames($Config) {
     $legacy = $Config.legacy
     if (-not $legacy) { return @() }
@@ -480,7 +526,8 @@ function Get-QueueNames([string]$Prefix) {
 # Components and scope (pure)
 # --------------------------------------------------------------------------------------------
 
-function Resolve-Components([string[]]$Requested, [string]$Scope, [string]$SharedName) {
+# $SharedName: the stamp's shared configuration; $EnvironmentNames: the stamp's environment configurations.
+function Resolve-Components([string[]]$Requested, [string]$Scope, [string]$SharedName, [string[]]$EnvironmentNames) {
     $requested = @($Requested | Where-Object { $_ } | ForEach-Object { "$_".ToLowerInvariant() } | Select-Object -Unique)
     if ($requested.Count -eq 0) { throw "-Component is required, e.g. -Component all." }
 
@@ -498,7 +545,8 @@ function Resolve-Components([string[]]$Requested, [string]$Scope, [string]$Share
             throw "'$name' is a shared component, owned by the shared configuration '$SharedName'; run it with -Environment $SharedName."
         }
         if ($ComponentOrder -notcontains $name) { throw "Unknown component '$name'." }
-        throw "'$name' is a per-environment component, owned by the environment configurations (e.g. bat, test); it is not deployed from the shared configuration '$SharedName'."
+        $owners = @($EnvironmentNames | Where-Object { $_ })
+        throw "'$name' is a per-environment component, owned by the environment configurations$(if ($owners) { " ($($owners -join ', '))" }); it is not deployed from the shared configuration '$SharedName'."
     }
 
     $wanted = if ($requested -contains 'all') { $owned } else { $requested }
@@ -601,25 +649,36 @@ function Get-GatewaySettings($Config, $Names, $Secrets, [string]$InsightsConnect
     $settings
 }
 
+function Test-SimulationEnabled($Config) { $Config.dashboard.simulationEnabled -eq $true }
+
 function Get-DashboardApiSettings($Config, $Names, $Secrets) {
     $entra = $Config.entra
-    $queues = Get-QueueNames $Config.dashboard.simulationQueuePrefix
+    $simulation = Test-SimulationEnabled $Config
     $settings = [ordered]@{
-        ASPNETCORE_ENVIRONMENT                 = 'Production'
-        ConnectionStrings__EIMDB               = $Secrets.EIMDB
-        AzureAd__TenantId                      = $entra.tenantId
-        AzureAd__ClientId                      = $entra.clientId
-        AzureAd__Audience                      = $entra.audience
-        Simulation__ServiceBusConnectionString = $Secrets.ServiceBus
-        Simulation__D365FscDataEventQueue      = $queues.D365FscDataEventQueue
-        Simulation__CaptureToD365Queue         = $queues.CaptureToD365Queue
-        Simulation__CaptureToD365ResponseQueue = $queues.CaptureToD365QueueResponse
-        Simulation__D365ToCaptureQueue         = $queues.D365ToCaptureQueue
-        # Same value the gateway is deployed with, so the address the dashboard verifies keys against
-        # cannot drift from the one the gateway actually answers on.
-        Gateway__BaseUrl                       = Get-GatewayBaseUrl $Config $Names
-        Gateway__AppName                       = $Names.GatewayApp
+        ASPNETCORE_ENVIRONMENT   = 'Production'
+        ConnectionStrings__EIMDB = $Secrets.EIMDB
+        AzureAd__TenantId        = $entra.tenantId
+        AzureAd__ClientId        = $entra.clientId
+        AzureAd__Audience        = $entra.audience
+        # Always written: the API treats a missing value as off, so simulation is on only where this says true.
+        Simulation__Enabled      = if ($simulation) { 'true' } else { 'false' }
     }
+    if ($simulation) {
+        $prefix = "$($Config.dashboard.simulationQueuePrefix)"
+        if ([string]::IsNullOrWhiteSpace($prefix) -or (Test-Placeholder $prefix)) {
+            throw "dashboard.simulationQueuePrefix must name the queue prefix the simulation publishes to while dashboard.simulationEnabled is true; it is '$prefix'."
+        }
+        $queues = Get-QueueNames $prefix
+        $settings['Simulation__ServiceBusConnectionString'] = $Secrets.ServiceBus
+        $settings['Simulation__D365FscDataEventQueue'] = $queues.D365FscDataEventQueue
+        $settings['Simulation__CaptureToD365Queue'] = $queues.CaptureToD365Queue
+        $settings['Simulation__CaptureToD365ResponseQueue'] = $queues.CaptureToD365QueueResponse
+        $settings['Simulation__D365ToCaptureQueue'] = $queues.D365ToCaptureQueue
+    }
+    # Same value the gateway is deployed with, so the address the dashboard verifies keys against
+    # cannot drift from the one the gateway actually answers on.
+    $settings['Gateway__BaseUrl'] = Get-GatewayBaseUrl $Config $Names
+    $settings['Gateway__AppName'] = $Names.GatewayApp
     # Extra gateways the dashboard can verify keys against: the legacy gateway during the overlap.
     $i = 0
     foreach ($target in @($Config.gateway.legacyVerificationTargets | Where-Object { $_ })) {
@@ -655,6 +714,12 @@ function Get-RetiredSettingsToDelete([string[]]$RetiredSettings, $Current) {
 # Gateway__Applications__<n>__* entries on the dashboard API that the configuration no longer lists.
 function Get-StaleVerificationTargetSettings($Settings, $Current) {
     @($Current | ForEach-Object { "$($_.name)" } | Where-Object { $_ -like 'Gateway__Applications__*' -and -not $Settings.Contains($_) })
+}
+
+# Simulation__* entries on the dashboard API that the settings no longer write (all but Simulation__Enabled when
+# simulation is off).
+function Get-StaleSimulationSettings($Settings, $Current) {
+    @($Current | ForEach-Object { "$($_.name)" } | Where-Object { $_ -like 'Simulation__*' -and -not $Settings.Contains($_) })
 }
 
 function ConvertTo-SettingMap($List) {
@@ -731,11 +796,13 @@ function Get-FunctionAppSteps($Config, $Names, [string]$App, [string]$Storage, [
 
 # $Existing: Plan, LogAnalytics, ServiceBusNamespace, GatewayStorage, GatewayInsights, GatewayApp, DashboardApi,
 # StaticWebApp, AutomationStorage, AutomationInsights, AutomationApp (booleans) and Queues (queue name -> boolean).
-function Get-InfraPlan($Config, $Names, $Existing) {
+# $SharedName: the stamp's shared configuration, named when shared resources are missing.
+function Get-InfraPlan($Config, $Names, $Existing, [string]$SharedName) {
     $rg = $Names.ResourceGroup
     $location = $Config.location
     $tags = Get-ResourceTags $Config
     $tagArgs = @($tags.Keys | ForEach-Object { "$_=$($tags[$_])" })
+    if ([string]::IsNullOrWhiteSpace($SharedName)) { $SharedName = "$($Config.sharedSuffix)" }
 
     if ($Config.scope -eq 'shared') {
         if (-not $Existing.Plan) {
@@ -776,7 +843,7 @@ function Get-InfraPlan($Config, $Names, $Existing) {
             @{ Exists = $Existing.Plan; Label = "App Service plan $($Names.AppServicePlan)" }
             @{ Exists = $Existing.LogAnalytics; Label = "Log Analytics workspace $($Names.LogAnalytics)" }
             @{ Exists = $Existing.ServiceBusNamespace; Label = "Service Bus namespace $($Names.ServiceBusNamespace)" })) {
-        if (-not $shared.Exists) { New-InfraStep require "$($shared.Label) does not exist; run 'infra' for the shared configuration '$($Config.sharedSuffix)' first" @() }
+        if (-not $shared.Exists) { New-InfraStep require "$($shared.Label) does not exist; run 'infra' for the shared configuration '$SharedName' first" @() }
     }
 
     $queues = Get-QueueNames $Names.QueuePrefix
@@ -794,6 +861,17 @@ function Get-InfraPlan($Config, $Names, $Existing) {
 # --------------------------------------------------------------------------------------------
 # Cutover and remove decisions (pure)
 # --------------------------------------------------------------------------------------------
+
+# Why cutover or rollback cannot run at all for this configuration, before any Azure call; nothing when it can.
+function Get-CutoverRefusal($Config, [bool]$Rollback) {
+    $environment = "$($Config.environment)"
+    if ($Config.scope -eq 'shared' -and -not $Rollback -and [string]::IsNullOrWhiteSpace("$($Config.legacy.gatewayApp)")) {
+        return "'$environment' has no legacy gateway; there are no keys to copy. Nothing was changed."
+    }
+    if ($Config.scope -eq 'environment' -and $Rollback -and [string]::IsNullOrWhiteSpace("$($Config.legacy.automationApp)")) {
+        return "'$environment' has no legacy Automation app to roll back to. Nothing was changed."
+    }
+}
 
 # $LegacyStates: function -> $true when enabled, $false when disabled ($null for the whole map when there is no
 # legacy app). Mirrors the legacy app; without one, enables everything except keepDisabled.
@@ -855,12 +933,15 @@ function Test-RemoveAllowed {
         [bool]$MarkerExists,
         [bool]$ConfirmDisabled,
         [bool]$CheckConfirmation,
-        [AllowNull()][AllowEmptyString()][string]$Confirmation
+        [AllowNull()][AllowEmptyString()][string]$Confirmation,
+        # The configuration is marked "production": true; remove never deletes production resources.
+        [bool]$Production
     )
     $refusals = [System.Collections.Generic.List[string]]::new()
     $kept = [System.Collections.Generic.List[object]]::new()
     $enabledLegacy = @($EnabledLegacyFunctions | Where-Object { $_ })
 
+    if ($Production) { $refusals.Add("remove never runs against a production configuration ('$Environment')") }
     if ($IsPipeline) { $refusals.Add("remove never runs in a pipeline (TF_BUILD is set); run it from an operator machine") }
     if ($ConfirmDisabled) { $refusals.Add("-Confirm:`$false is not accepted for remove") }
     if (-not $Preview -and -not $MarkerExists) { $refusals.Add("run 'remove -WhatIf' for '$Environment' first (today, on this machine)") }
@@ -919,6 +1000,51 @@ function Get-SqlServerFromConnection([string]$ConnectionString) {
     $match = [regex]::Match("$ConnectionString", '(?:Data Source|Server)\s*=\s*(?:tcp:)?([^.,;]+)\.database\.windows\.net', 'IgnoreCase')
     if (-not $match.Success) { throw "Could not read the SQL server name from EIM_DEPLOY_EIMDB; expected 'Server=tcp:<server>.database.windows.net' or 'Data Source=tcp:<server>...'." }
     $match.Groups[1].Value
+}
+
+# The database name only; the error never repeats the connection string.
+function Get-SqlCatalogFromConnection([string]$ConnectionString) {
+    $match = [regex]::Match("$ConnectionString", '(?:^|;)\s*(?:Initial Catalog|Database)\s*=\s*([^;]*)', 'IgnoreCase')
+    if (-not $match.Success -or [string]::IsNullOrWhiteSpace($match.Groups[1].Value)) {
+        throw "Could not read the database name from EIM_DEPLOY_EIMDB; expected 'Initial Catalog=<database>' or 'Database=<database>'."
+    }
+    $match.Groups[1].Value.Trim()
+}
+
+# The namespace name only; the error never repeats the connection string.
+function Get-ServiceBusNamespaceFromConnection([string]$ConnectionString) {
+    $match = [regex]::Match("$ConnectionString", 'Endpoint\s*=\s*sb://([^.;/]+)\.servicebus\.windows\.net', 'IgnoreCase')
+    if (-not $match.Success) { throw "Could not read the Service Bus namespace from EIM_DEPLOY_SERVICEBUS; expected 'Endpoint=sb://<namespace>.servicebus.windows.net/'." }
+    $match.Groups[1].Value
+}
+
+# Where the required secrets point compared with the configured names, so a secret from another stamp (or the
+# eimdb_dev catalog) is caught before anything is written. Resource names only in the messages, never the secret.
+function Get-SecretTargetProblems($Secrets, $Names, [string[]]$Required) {
+    $check = {
+        param([string]$Variable, [string]$What, [scriptblock]$Parse, [string]$Value, [string]$Expected)
+        # The parse errors name the variable and never repeat its value.
+        try { $actual = & $Parse $Value } catch { return $_.Exception.Message }
+        if ($actual -ne $Expected) { "$Variable points at $What '$actual', but the configuration expects '$Expected'" }
+    }
+    if ($Required -contains 'EIM_DEPLOY_EIMDB') {
+        & $check 'EIM_DEPLOY_EIMDB' 'SQL server' ${function:Get-SqlServerFromConnection} $Secrets.EIMDB $Names.SqlServer
+        & $check 'EIM_DEPLOY_EIMDB' 'database' ${function:Get-SqlCatalogFromConnection} $Secrets.EIMDB $Names.SqlDatabase
+    }
+    if ($Required -contains 'EIM_DEPLOY_SERVICEBUS') {
+        & $check 'EIM_DEPLOY_SERVICEBUS' 'Service Bus namespace' ${function:Get-ServiceBusNamespaceFromConnection} $Secrets.ServiceBus $Names.ServiceBusNamespace
+    }
+}
+
+# The four foundation resources the script never creates. $Exists: param([string]$Kind, [string]$Name) -> bool, with
+# Kind ResourceGroup, ServiceBusNamespace, SqlServer or SqlDatabase. Without the resource group nothing else is probed.
+function Get-FoundationProblems($Names, [scriptblock]$Exists) {
+    $rg = $Names.ResourceGroup
+    if (-not (& $Exists 'ResourceGroup' $rg)) { return "resource group '$rg' was not found or you have no access to it" }
+    $runbook = 'create it by the runbook (docs/deployment/production-go-live.md); the script never creates it'
+    if (-not (& $Exists 'ServiceBusNamespace' $Names.ServiceBusNamespace)) { "Service Bus namespace '$($Names.ServiceBusNamespace)' was not found in '$rg'; $runbook" }
+    if (-not (& $Exists 'SqlServer' $Names.SqlServer)) { "SQL server '$($Names.SqlServer)' was not found in '$rg'; $runbook" }
+    elseif (-not (& $Exists 'SqlDatabase' $Names.SqlDatabase)) { "database '$($Names.SqlDatabase)' was not found on SQL server '$($Names.SqlServer)'; $runbook" }
 }
 
 # --------------------------------------------------------------------------------------------
@@ -1064,13 +1190,22 @@ function Invoke-PreflightComponent($Config, $Names, [string[]]$Selected) {
 
     foreach ($problem in @(Get-PlaceholderProblems $Config $Selected)) { $problems.Add($problem) }
 
-    foreach ($variable in @(Resolve-DeploySecrets (Get-RequiredSecrets $Selected $Config.scope))) {
-        $problems.Add("secret variable $variable is not set")
+    $requiredSecrets = @(Get-RequiredSecrets $Selected $Config.scope)
+    $missingSecrets = @(Resolve-DeploySecrets $requiredSecrets)
+    foreach ($variable in $missingSecrets) { $problems.Add("secret variable $variable is not set") }
+    # A secret from the other stamp (or the wrong catalog) would write settings or migrate the wrong database.
+    $resolvedSecrets = @($requiredSecrets | Where-Object { $missingSecrets -notcontains $_ })
+    if ($resolvedSecrets.Count -gt 0) {
+        foreach ($problem in @(Get-SecretTargetProblems $script:Secrets $Names $resolvedSecrets)) { $problems.Add($problem) }
     }
 
     # Every configuration's names count, so a per-environment 'legacy' entry cannot name a shared resource either.
-    $inUse = @(foreach ($name in (Get-ConfigurationNames $ConfigDirectory)) { Get-NamesInUse (Get-DeployConfig $name $ConfigDirectory) }) + @(Get-NamesInUse $Config) | Sort-Object -Unique
+    $saved = @(foreach ($name in (Get-ConfigurationNames $ConfigDirectory)) { Get-DeployConfig $name $ConfigDirectory })
+    $inUse = @(foreach ($other in $saved) { Get-NamesInUse $other }) + @(Get-NamesInUse $Config) | Sort-Object -Unique
     foreach ($conflict in @(Get-LegacyNameConflicts (Get-LegacyNames $Config) $inUse)) { $problems.Add($conflict) }
+    # This configuration as merged with its overrides, against every other one.
+    $stamps = @($saved | Where-Object { $_.environment -ne $Config.environment }) + @($Config)
+    foreach ($problem in @(Get-StampIsolationProblems $stamps)) { $problems.Add($problem) }
 
     $artifacts = @(Get-RequiredArtifacts $Selected $Config)
     if ($artifacts.Count -gt 0 -and -not $InPackage) {
@@ -1083,10 +1218,22 @@ function Invoke-PreflightComponent($Config, $Names, [string[]]$Selected) {
     }
     $manifest = Get-PackageManifest
     if ($manifest) {
+        # The approver checks which build is being promoted.
+        Write-Host "  package: version $($manifest.version), commit $($manifest.commit), built $($manifest.builtUtc)"
         foreach ($problem in @(Compare-GatedFunctions @($manifest.automationQueueAndTimerFunctions) @($Config.automation.gatedFunctions))) { $problems.Add($problem) }
     }
 
-    if (-not (Test-Az group show -n $rg)) { $problems.Add("resource group '$rg' was not found or you have no access to it") }
+    # Read-only probes of the resources the script never creates.
+    $exists = {
+        param([string]$Kind, [string]$Name)
+        switch ($Kind) {
+            'ResourceGroup'       { Test-Az group show -n $Name }
+            'ServiceBusNamespace' { Test-Az servicebus namespace show -g $rg -n $Name }
+            'SqlServer'           { Test-Az sql server show -g $rg -n $Name }
+            'SqlDatabase'         { Test-Az sql db show -g $rg -s $Names.SqlServer -n $Name }
+        }
+    }
+    foreach ($problem in @(Get-FoundationProblems $Names $exists)) { $problems.Add($problem) }
 
     $codeApps = @{ gateway = $Names.GatewayApp; backend = $Names.DashboardApi; automation = $Names.AutomationApp }
     $deployed = @($CodeComponents | Where-Object { $Selected -contains $_ -and $codeApps.ContainsKey($_) })
@@ -1143,9 +1290,9 @@ function Get-ExistingResources($Config, $Names) {
     $existing
 }
 
-function Invoke-InfraComponent($Config, $Names) {
+function Invoke-InfraComponent($Config, $Names, [string]$SharedName) {
     $rg = $Names.ResourceGroup
-    $steps = @(Get-InfraPlan $Config $Names (Get-ExistingResources $Config $Names))
+    $steps = @(Get-InfraPlan $Config $Names (Get-ExistingResources $Config $Names) $SharedName)
 
     $missing = @($steps | Where-Object Kind -eq 'require')
     if ($missing) {
@@ -1215,15 +1362,18 @@ function Invoke-SettingsComponent($Config, $Names) {
     }
 
     if ($Config.scope -eq 'shared') {
+        # Built before any write, so a configuration error (such as a missing simulation queue prefix) changes nothing.
+        $dashboard = Get-DashboardApiSettings $Config $Names $script:Secrets
         if (& $target $Names.GatewayApp) {
             $gateway = Get-GatewaySettings $Config $Names $script:Secrets (& $insights $Names.GatewayInsights)
             Update-AppSettings $rg $Names.GatewayApp $gateway @() 'functionapp'
         }
 
-        # In place: the kept dashboard API keeps every setting name; only the gateway it points at changes.
+        # In place: the kept dashboard API keeps every setting name; only the gateway it points at changes, and the
+        # Simulation__* settings other than Simulation__Enabled go when simulation is off.
         if (& $target $Names.DashboardApi) {
-            $dashboard = Get-DashboardApiSettings $Config $Names $script:Secrets
-            $stale = Get-StaleVerificationTargetSettings $dashboard (Get-AppSettingList $rg $Names.DashboardApi)
+            $current = Get-AppSettingList $rg $Names.DashboardApi
+            $stale = @(Get-StaleVerificationTargetSettings $dashboard $current) + @(Get-StaleSimulationSettings $dashboard $current)
             Update-AppSettings $rg $Names.DashboardApi $dashboard $stale 'webapp'
         }
         return
@@ -1493,6 +1643,10 @@ function Write-CutoverTable([string]$ResourceGroup, [string[]]$Apps, [string[]]$
 }
 
 function Invoke-CutoverComponent($Config, $Names, [bool]$Rollback) {
+    # Before any Azure call: nothing to copy (no legacy gateway) or nothing to roll back to (no legacy app).
+    $refusal = Get-CutoverRefusal $Config $Rollback
+    if ($refusal) { throw $refusal }
+
     if ($Config.scope -eq 'shared') {
         if ($Rollback) { throw "'rollback' applies to environment configurations; the legacy gateway keeps serving until 'remove', so consumers roll back by switching their base URL." }
         Invoke-GatewayKeyCopy $Config $Names
@@ -1659,18 +1813,39 @@ function Get-RemoveEntries($Config, $Names) {
     @($entries)
 }
 
+# The Test-RemoveAllowed arguments that need no Azure call.
+function Get-RemoveGuardArguments($Config) {
+    @{
+        Environment     = $Config.environment
+        IsPipeline      = [bool]$env:TF_BUILD
+        Preview         = $Preview
+        MarkerExists    = Test-Path (Get-RemoveMarkerPath $Config.environment)
+        ConfirmDisabled = $ConfirmDisabled
+        Production      = $Config.production -eq $true
+    }
+}
+
+# The remove, cutover and rollback refusals that need no Azure call. Main runs this before Assert-AzureCli, so a
+# production remove or an impossible cutover or rollback stops before the first az call; the components check again.
+function Assert-NoEarlyRefusal($Config, [string[]]$Selected) {
+    if ($Selected -contains 'remove') {
+        $common = Get-RemoveGuardArguments $Config
+        $early = Test-RemoveAllowed @common -Entries @()
+        if ($early.Refusals.Count -gt 0) { throw "remove refused; nothing was deleted:`n  - $($early.Refusals -join "`n  - ")" }
+    }
+    foreach ($rollback in $false, $true) {
+        if ($Selected -notcontains $(if ($rollback) { 'rollback' } else { 'cutover' })) { continue }
+        $refusal = Get-CutoverRefusal $Config $rollback
+        if ($refusal) { throw $refusal }
+    }
+}
+
 function Invoke-RemoveComponent($Config, $Names) {
     $rg = $Names.ResourceGroup
     $environment = $Config.environment
     $marker = Get-RemoveMarkerPath $environment
-    $common = @{
-        Environment     = $environment
-        IsPipeline      = [bool]$env:TF_BUILD
-        Preview         = $Preview
-        MarkerExists    = Test-Path $marker
-        ConfirmDisabled = $ConfirmDisabled
-    }
-    # Fail fast on the guards that need no Azure call.
+    $common = Get-RemoveGuardArguments $Config
+    # Fail fast on the guards that need no Azure call; production is refused here, even under -WhatIf.
     $early = Test-RemoveAllowed @common -Entries @()
     if ($early.Refusals.Count -gt 0) { throw "remove refused; nothing was deleted:`n  - $($early.Refusals -join "`n  - ")" }
 
@@ -1713,18 +1888,23 @@ if ($MyInvocation.InvocationName -ne '.') {
     if ($IncludeDefaultKeys -and $Component -notcontains 'cutover') { throw "-IncludeDefaultKeys only applies to 'cutover'." }
     $config = Get-DeployConfig $Environment $ConfigDirectory $ConfigOverridesFile $env:EIM_DEPLOY_CONFIG_OVERRIDES
     $names = Get-ResourceNames $config
-    $selected = @(Resolve-Components $Component $config.scope $config.sharedSuffix)
+    # The stamp's owning configurations, named when a component is requested outside this scope.
+    $sharedName = Get-SharedConfigurationName $config $ConfigDirectory
+    $environmentNames = @(Get-StampConfigurations $config $ConfigDirectory | Where-Object Scope -eq 'environment' | ForEach-Object Name)
+    $selected = @(Resolve-Components $Component $config.scope $sharedName $environmentNames)
 
     Write-Host "Configuration: $Environment (scope: $($config.scope))$(if ($InPackage) { "  package: $PackageRoot" })$(if ($Preview) { '  (preview - no changes)' })"
     Write-Host "Components: $($selected -join ', ')"
     $names.PSObject.Properties | ForEach-Object { Write-Host ("  {0,-20} {1}" -f $_.Name, $_.Value) }
+    # Before the first az call (Assert-AzureCli runs az account show and set).
+    Assert-NoEarlyRefusal $config $selected
     Assert-AzureCli $config
 
     foreach ($name in $selected) {
         Write-Host "== $name"
         switch ($name) {
             'preflight'  { Invoke-PreflightComponent $config $names $selected }
-            'infra'      { Invoke-InfraComponent $config $names }
+            'infra'      { Invoke-InfraComponent $config $names $sharedName }
             'settings'   { Invoke-SettingsComponent $config $names }
             'myip'       { Invoke-MyIpComponent $config $names }
             'schema'     { Invoke-SchemaComponent $config $names }

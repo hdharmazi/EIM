@@ -10,19 +10,23 @@ import { useRecentFailed, useStatusCounts } from "@/features/messagequeue/api";
 import { useSimulationConfig } from "@/features/simulation/api";
 import { useEnvironments } from "@/features/environment/api";
 import { useUsers } from "@/features/users/api";
+import { useFeature } from "@/auth/useMe";
 
 export function DashboardPage() {
   const navigate = useNavigate();
   const counts = useStatusCounts();
   const recentFailed = useRecentFailed(8);
-  const config = useSimulationConfig();
+  // The Service Bus card reports the Simulation console's connection, which does not exist when simulation is off.
+  const simulationOn = useFeature("simulation");
+  const config = useSimulationConfig({ enabled: simulationOn });
   const environments = useEnvironments({});
   const users = useUsers();
 
   function refreshAll() {
     counts.refetch();
     recentFailed.refetch();
-    config.refetch();
+    // refetch() ignores 'enabled', so it is skipped explicitly.
+    if (simulationOn) config.refetch();
     environments.refetch();
     users.refetch();
   }
@@ -69,7 +73,9 @@ export function DashboardPage() {
             <ServerCog className="h-8 w-8 text-muted-foreground" />
             <div>
               <div className="text-sm text-muted-foreground">Service Bus</div>
-              {config.data?.isServiceBusConfigured ? (
+              {!simulationOn ? (
+                <Badge variant="secondary">Simulation off</Badge>
+              ) : config.data?.isServiceBusConfigured ? (
                 <Badge variant="success">Configured</Badge>
               ) : (
                 <Badge variant="warning">Not configured</Badge>

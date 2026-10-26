@@ -68,7 +68,8 @@ stages:
     jobs:
       - template: templates/build-package.yml
         parameters:
-          environments: nonprod,bat,test
+          # prdshared and prd are packaged, not deployed here: eim-prd.yml promotes this package to production.
+          environments: nonprod,bat,test,prdshared,prd
           # Runs that change settings or the schema are recognisable in the run list.
           ${{ if and(parameters.applySettings, parameters.runMigrations) }}:
             buildNumberSuffix: +settings+migrations

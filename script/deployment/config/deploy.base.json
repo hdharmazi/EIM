@@ -2,6 +2,7 @@
   "client": "wtc",
   "workload": "eim",
   "sharedSuffix": "nonprod",
+  "production": false,
   "location": "centralus",
   "subscriptionId": "<subscription id or name>",
   "names": {
@@ -57,6 +58,7 @@
     ]
   },
   "dashboard": {
+    "simulationEnabled": true,
     "simulationQueuePrefix": "bat"
   }
 }

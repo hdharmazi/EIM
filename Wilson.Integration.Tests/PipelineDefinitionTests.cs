@@ -15,35 +15,36 @@ public partial class PipelineDefinitionTests
     // Development runs locally: there is no dev stage.
     private static readonly string[] StageOrder = ["Build", "Deploy_shared", "Deploy_bat", "Deploy_test"];
 
-    private static string ReadFile(params string[] relative) => File.ReadAllText(Path.Combine([Root, .. relative]));
+    internal static string ReadFile(params string[] relative) => File.ReadAllText(Path.Combine([Root, .. relative]));
 
     private static string Pipeline => ReadFile("pipelines", "eim.yml");
 
     private static string BuildTemplate => ReadFile("pipelines", "templates", "build-package.yml");
 
-    private static string DeployTemplate => ReadFile("pipelines", "templates", "deploy-environment.yml");
+    internal static string DeployTemplate => ReadFile("pipelines", "templates", "deploy-environment.yml");
 
     [GeneratedRegex(@"^  - stage: (?<name>\S+)\s*$", RegexOptions.Multiline)]
     private static partial Regex StageLine();
 
     /// <summary>Each stage's name and its block of text, up to the next stage.</summary>
-    private static List<(string Name, string Block)> Stages()
+    internal static List<(string Name, string Block)> StagesOf(string text)
     {
-        var text = Pipeline;
         var matches = StageLine().Matches(text);
         return matches
             .Select((m, i) => (m.Groups["name"].Value, text[m.Index..(i + 1 < matches.Count ? matches[i + 1].Index : text.Length)]))
             .ToList();
     }
 
+    private static List<(string Name, string Block)> Stages() => StagesOf(Pipeline);
+
     private static string Stage(string name) =>
         Stages().SingleOrDefault(s => s.Name == name).Block ?? throw new Xunit.Sdk.XunitException($"Stage '{name}' not found in pipelines/eim.yml.");
 
-    private static string? DependsOn(string block) =>
+    internal static string? DependsOn(string block) =>
         Regex.Match(block, @"^\s+dependsOn: (\S+)\s*$", RegexOptions.Multiline) is { Success: true } m ? m.Groups[1].Value : null;
 
     /// <summary>The default of a top-level template or pipeline parameter, or null when it has none.</summary>
-    private static string? ParameterDefault(string text, string name)
+    internal static string? ParameterDefault(string text, string name)
     {
         var parameter = Regex.Match(text, $@"^  - name: {name}\b.*$(?<body>(?:\r?\n {{4,}}.*)*)", RegexOptions.Multiline);
         Assert.True(parameter.Success, $"Parameter '{name}' not found.");
@@ -155,7 +156,44 @@ public partial class PipelineDefinitionTests
         Assert.Contains("artifact: package", build[publish..]);
         Assert.Contains("dotnet test ARM.Integration.Wilson.slnx -c Release", build);
         Assert.Contains("-Environment $environments", build);
-        Assert.Contains("environments: nonprod,bat,test", Stage("Build"));
+        // The package carries the production configurations too; eim-prd.yml promotes it (spec deployment-pipeline).
+        Assert.Matches(new Regex(@"^\s+environments: nonprod,bat,test,prdshared,prd\s*$", RegexOptions.Multiline), Stage("Build"));
+    }
+
+    [Fact]
+    public void The_nonproduction_pipeline_names_no_production_stage_or_resource()
+    {
+        var pipeline = Pipeline;
+
+        foreach (var word in new[] { "Deploy_prdshared", "Deploy_prd", "sc-eim-wtc-prd", "eim-wtc-prd", "eim-wtc-prdshared" })
+            Assert.False(pipeline.Contains(word, StringComparison.Ordinal), $"pipelines/eim.yml contains '{word}'; production deploys only from pipelines/eim-prd.yml.");
+        Assert.DoesNotContain("packageSource:", pipeline);
+    }
+
+    [Fact]
+    public void Every_deploy_script_path_uses_the_package_root()
+    {
+        // Every line that names the script outside a comment names it under the package root.
+        var code = DeployTemplate.Split('\n')
+            .Select(line => Regex.Replace(line, @"(^|\s)#.*$", ""))
+            .Where(line => line.Contains("Deploy-Wilson.ps1", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.NotEmpty(code);
+        Assert.All(code, line => Assert.Contains("'$(packageRoot)/Deploy-Wilson.ps1'", line));
+        Assert.All(code, line => Assert.Single(Regex.Matches(line, @"Deploy-Wilson\.ps1")));
+    }
+
+    [Fact]
+    public void Deploy_template_downloads_the_package_from_its_source()
+    {
+        var deploy = DeployTemplate;
+
+        Assert.Equal("current", ParameterDefault(deploy, "packageSource"));
+        Assert.Matches(new Regex(@"^\s+- download: \$\{\{ parameters\.packageSource \}\}\s*\r?\n\s+artifact: package\s*$", RegexOptions.Multiline), deploy);
+        Assert.Contains("value: $(Pipeline.Workspace)/package", deploy);
+        Assert.Contains("value: $(Pipeline.Workspace)/${{ parameters.packageSource }}/package", deploy);
+        Assert.Contains("${{ if eq(parameters.packageSource, 'current') }}:", deploy);
     }
 
     [Fact]

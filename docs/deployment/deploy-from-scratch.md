@@ -8,8 +8,8 @@ There is no Bicep and no ARM template. Everything on the Azure side is a compone
 The normal route is the `eim` pipeline ([devops-setup.md](devops-setup.md)). This page uses the script by hand,
 which makes each step visible. The pipeline runs the same commands.
 
-Production is out of scope. It will be a separate stamp with its own configurations; do not reuse these
-(see "Decisions" in [deployment.md](deployment.md)).
+This page stands up a non-production stamp. Production is a separate stamp with its own configurations
+(`prdshared`, `prd`) and pipeline (`eim-prd`); follow [production-go-live.md](production-go-live.md) for it.
 
 ## What you need first
 

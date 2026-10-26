@@ -3,6 +3,9 @@
 # Order: preflight and preview, infrastructure, settings, migrations, code, then verify and health. With nothing
 # selected (a manual run with deployCode cleared) only preflight runs.
 #
+# packageSource: eim.yml deploys the package its own Build stage published ('current'); eim-prd.yml promotes the
+# package of an eim run through its pipeline resource ('eim'). Every script path goes through $(packageRoot).
+#
 # Secret variables are not exposed to scripts unless mapped, so every AzureCLI@2 step maps the three deployment
 # variables explicitly through env:. Deploy-Wilson.ps1 reads them from the environment only and never puts them on
 # a command line.
@@ -30,6 +33,9 @@ parameters:
   - name: components           # Deploy-Wilson.ps1 code components, e.g. 'gateway, backend, frontend'; empty skips the step
     type: string
     default: ''
+  - name: packageSource        # 'current' (this run's artifact) or a pipeline resource alias (eim-prd.yml: 'eim')
+    type: string
+    default: current
 
 jobs:
   - deployment: Deploy_${{ parameters.environment }}
@@ -37,13 +43,19 @@ jobs:
     environment: ${{ parameters.devopsEnvironment }}
     variables:
       - group: ${{ parameters.variableGroup }}
+      # Where the 'package' artifact lands: a pipeline resource's artifacts go under a folder named after its alias.
+      - name: packageRoot
+        ${{ if eq(parameters.packageSource, 'current') }}:
+          value: $(Pipeline.Workspace)/package
+        ${{ else }}:
+          value: $(Pipeline.Workspace)/${{ parameters.packageSource }}/package
     pool:
       vmImage: windows-latest
     strategy:
       runOnce:
         deploy:
           steps:
-            - download: current
+            - download: ${{ parameters.packageSource }}
               artifact: package
 
             - ${{ if contains(parameters.components, 'frontend') }}:
@@ -70,7 +82,7 @@ jobs:
                   $components += @('${{ parameters.components }}' -split '\s*,\s*' | Where-Object { $_ })
                   # Like the last step: health only when something is deployed.
                   if ($components.Count -gt 1) { $components += 'health' }
-                  & '$(Pipeline.Workspace)/package/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component $components -WhatIf
+                  & '$(packageRoot)/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component $components -WhatIf
 
             - ${{ if parameters.deployInfra }}:
               - task: AzureCLI@2
@@ -84,7 +96,7 @@ jobs:
                   scriptType: pscore
                   scriptLocation: inlineScript
                   inlineScript: |
-                    & '$(Pipeline.Workspace)/package/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component infra
+                    & '$(packageRoot)/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component infra
 
             - ${{ if parameters.applySettings }}:
               - task: AzureCLI@2
@@ -98,7 +110,7 @@ jobs:
                   scriptType: pscore
                   scriptLocation: inlineScript
                   inlineScript: |
-                    & '$(Pipeline.Workspace)/package/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component settings
+                    & '$(packageRoot)/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component settings
 
             - ${{ if parameters.runMigrations }}:
               - task: AzureCLI@2
@@ -112,7 +124,7 @@ jobs:
                   scriptType: pscore
                   scriptLocation: inlineScript
                   inlineScript: |
-                    $deploy = '$(Pipeline.Workspace)/package/Deploy-Wilson.ps1'
+                    $deploy = '$(packageRoot)/Deploy-Wilson.ps1'
                     & $deploy -Environment ${{ parameters.environment }} -Component myip
                     # The agent's IP changes per run; never leave it on the firewall.
                     try { & $deploy -Environment ${{ parameters.environment }} -Component schema }
@@ -130,7 +142,7 @@ jobs:
                   scriptType: pscore
                   scriptLocation: inlineScript
                   inlineScript: |
-                    & '$(Pipeline.Workspace)/package/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component ${{ parameters.components }}
+                    & '$(packageRoot)/Deploy-Wilson.ps1' -Environment ${{ parameters.environment }} -Component ${{ parameters.components }}
 
             # Only after something was deployed. A preflight-only run (deployCode cleared, nothing else ticked) stops
             # after preflight, so it passes before the apps exist. eim.yml passes deployCode as a non-empty components.
@@ -146,6 +158,6 @@ jobs:
                   scriptType: pscore
                   scriptLocation: inlineScript
                   inlineScript: |
-                    $deploy = '$(Pipeline.Workspace)/package/Deploy-Wilson.ps1'
+                    $deploy = '$(packageRoot)/Deploy-Wilson.ps1'
                     & $deploy -Environment ${{ parameters.environment }} -Component verify
                     & $deploy -Environment ${{ parameters.environment }} -Component health

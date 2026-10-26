@@ -1,7 +1,8 @@
 # Azure DevOps setup (one time)
 
-The checklist for running [`pipelines/eim.yml`](../../pipelines/eim.yml). Do it once, before the first run.
-How the pipeline and the script work is in [deployment.md](deployment.md).
+The checklist for running [`pipelines/eim.yml`](../../pipelines/eim.yml) and, for production,
+[`pipelines/eim-prd.yml`](../../pipelines/eim-prd.yml) (section 9). Do it once, before the first run.
+How the pipelines and the script work is in [deployment.md](deployment.md).
 
 Nothing in this list puts a secret in the repository. The two connection strings live only in the variable
 group, marked secret.
@@ -65,7 +66,8 @@ it needs through the service connection at run time.
 - `EIM_DEPLOY_CONFIG_OVERRIDES` may be left out. An undefined variable reaches the script as the literal text
   `$(EIM_DEPLOY_CONFIG_OVERRIDES)`, which the script ignores. An undefined connection string arrives the same way
   and counts as missing, so preflight names it.
-- One group serves every stage, because every configuration uses the same database and namespace.
+- One group serves every non-production stage, because every non-production configuration uses the same database
+  and namespace. Production has its own group, `eim-wtc-prd` (section 9).
 - **Pipeline permissions:** restrict the group to the `eim` pipeline.
 - `EIM_DEPLOY_CONFIG_OVERRIDES` is read by the deploy stages only. The SPA is built in the `Build` stage from the
   committed configuration, so the Entra values must be committed in `deploy.base.json`; they are not secret.
@@ -113,3 +115,55 @@ Three definitions were created from the deleted YAML files `deploy-dashboard-non
    with their pipeline variables (publish profiles and the static web app token), and the old environments
    `eim-customer-dev`, `eim-customer-bat`, `eim-customer-test`, `d365fsc-gateway-nonprod`,
    `dashboard-nonprod-api` and `dashboard-nonprod-frontend`.
+
+## 9. Production (`eim-prd`)
+
+The checklist for [`pipelines/eim-prd.yml`](../../pipelines/eim-prd.yml). Do it after `eim` runs, and after the
+production foundations exist ([production-go-live.md](production-go-live.md), steps 1 and 2). Every production
+resource is separate from its non-production counterpart; never point a production resource at a non-production
+one or the reverse.
+
+**Environments.** **Pipelines > Environments > New environment**, type **None**:
+
+| Environment | Used by | Approvals | Exclusive lock |
+|---|---|---|---|
+| `eim-wtc-prdshared` | `Deploy_prdshared` | yes, production approvers | yes |
+| `eim-wtc-prd` | `Deploy_prd` | yes, production approvers | yes |
+
+The `eim-wtc-prdshared` approval also gates production migrations: they run only in `Deploy_prdshared`.
+
+**Service connection** `sc-eim-wtc-prd`, created as in section 2 with these differences:
+
+| Field | Value |
+|---|---|
+| Scope level | Subscription, then resource group `d365fsc-integration-prod` |
+| Service connection name | `sc-eim-wtc-prd` |
+| Grant access permission to all pipelines | off; authorise the `eim-prd` pipeline only |
+
+The identity gets **Contributor** on `d365fsc-integration-prod` only, and no role on `d365fsc-integration-nonprod`.
+
+**Variable group** `eim-wtc-prd`:
+
+| Variable | Secret | Value |
+|---|---|---|
+| `EIM_DEPLOY_EIMDB` | **yes** | the `sqldb-eim-wtc-prd` connection string on `sql-eim-wtc-prd` (`Initial Catalog=sqldb-eim-wtc-prd`) |
+| `EIM_DEPLOY_SERVICEBUS` | **yes** | the `sbns-eim-wtc-prd` connection string |
+| `EIM_DEPLOY_CONFIG_OVERRIDES` | no | optional JSON merged over the configuration |
+
+- **Pipeline permissions:** restrict the group to the `eim-prd` pipeline. The `eim` pipeline must not be able to
+  read it, and `eim-prd` never uses `eim-wtc-nonprod`.
+- Preflight checks that both connection strings point at `sql-eim-wtc-prd`/`sqldb-eim-wtc-prd` and
+  `sbns-eim-wtc-prd`, so a non-production value in this group fails before anything changes.
+
+**Pipeline.**
+
+1. **Pipelines > New pipeline > Azure Repos Git >** `ARM.Integration.Wilson`, **Existing Azure Pipelines YAML
+   file**, path `/pipelines/eim-prd.yml`.
+2. **Save** (do not run yet). Rename it to `eim-prd`. Its pipeline resource has `source: eim` and `branch: main`, so
+   the `eim` pipeline must already carry that name, and the default package is the latest `eim` run from `main`.
+3. **Run pipeline** manually with `deployCode` cleared and nothing else ticked. Under **Resources**, pick an `eim`
+   run from `main` whose `Deploy_test` stage succeeded. **Permit** the service connection, the variable group and
+   both environments. The run is preflight only.
+
+The build service identity needs **Use** on `sc-eim-wtc-prd`, the `eim-wtc-prd` variable group and the two
+production environments, granted to `eim-prd` only.

@@ -12,6 +12,8 @@ import { ConfigurationFormPage } from "@/features/configuration/ConfigurationFor
 import { UserListPage } from "@/features/users/UserListPage";
 import { UserFormPage } from "@/features/users/UserFormPage";
 import { SimulationPage } from "@/features/simulation/SimulationPage";
+import { SimulationUnavailable } from "@/features/simulation/SimulationUnavailable";
+import { useMe, useFeature } from "@/auth/useMe";
 import { RouteControlPage } from "@/features/routes/RouteControlPage";
 import { GatewayConsumerListPage } from "@/features/gateway/GatewayConsumerListPage";
 import { GatewayConsumerFormPage } from "@/features/gateway/GatewayConsumerFormPage";
@@ -26,7 +28,7 @@ export const router = createBrowserRouter([
       { path: "messages", element: <MessageListPage /> },
       { path: "messages/:id", element: <MessageDetailPage /> },
       { path: "cleanup", element: <CleanupPage /> },
-      { path: "simulation", element: <SimulationPage /> },
+      { path: "simulation", element: <SimulationRoute /> },
       {
         // Pausing a route stops production traffic, so it sits with the other admin screens.
         path: "routes",
@@ -145,6 +147,14 @@ export const router = createBrowserRouter([
     ],
   },
 ]);
+
+/** The console only when the API serves it; otherwise a notice. The API enforces it either way. */
+function SimulationRoute() {
+  const { isLoading } = useMe();
+  const simulationOn = useFeature("simulation");
+  if (isLoading) return <div className="text-muted-foreground">Loading…</div>;
+  return simulationOn ? <SimulationPage /> : <SimulationUnavailable />;
+}
 
 function AccessDenied() {
   return (
