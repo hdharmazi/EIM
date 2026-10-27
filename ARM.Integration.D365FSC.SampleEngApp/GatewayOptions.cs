@@ -1,4 +1,4 @@
-namespace ARM.Integration.D365FSC.SampleClient;
+namespace ARM.Integration.D365FSC.SampleEngApp;
 
 public sealed class GatewayOptions
 {
