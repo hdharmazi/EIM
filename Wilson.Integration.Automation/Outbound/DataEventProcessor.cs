@@ -12,7 +12,9 @@ namespace Wilson.Integration.Automation.Outbound;
 /// <summary>
 /// Processes D365 FSC data events received by <c>QueueDataEventsHandler</c>.
 /// Routes each event to the appropriate _To_Capture orchestration based on entity name.
-/// For update events, only processes messages where tracked fields have changed.
+/// For update events on an entity with tracked fields, only processes messages where a tracked
+/// field has changed (see <see cref="HasTrackedChange"/>); the soft-delete address entity tracks
+/// only its deleted flag, so re-notifications of an already-deleted address are not forwarded.
 /// </summary>
 internal sealed class DataEventProcessor(
     ILogger logger,
@@ -37,9 +39,10 @@ internal sealed class DataEventProcessor(
     };
 
     /// <summary>
-    /// Tracked fields per entity for OnExternalUpdated events.
+    /// Tracked fields per entity for OnExternalUpdated events, checked by <see cref="HasTrackedChange"/>.
     /// If an entity is not listed here, all update fields are processed.
-    /// If listed, at least one tracked field must be in the changed set.
+    /// If listed, at least one tracked field must be in the changed set; otherwise the message is
+    /// completed before DB insert.
     /// </summary>
     private static readonly Dictionary<string, HashSet<string>> TrackedFieldsByEntity = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -79,7 +82,15 @@ internal sealed class DataEventProcessor(
             "mserp_addressstreet",
             "mserp_addresscountryregionid",
             "mserp_addressstate",
-        }
+        },
+        // Soft-delete rows only ever have the flag set (WTC_IsDeleted is one-way). The flag is among the
+        // changed fields only when the location first enters the entity, i.e. the deletion itself.
+        // Later updates are D365 re-notifications (address version flips, backfill touches) and must
+        // not be forwarded as further deletes.
+        ["mserp_wtc_custpostaladdressdeletedv2entity"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "mserp_wtc_isdeleted",
+        },
     };
 
     /// <summary>
@@ -158,16 +169,16 @@ internal sealed class DataEventProcessor(
 
 
         // For updates, skip if no tracked fields were changed
-        if (context.MessageName == "OnExternalUpdated"
-            && TrackedFieldsByEntity.TryGetValue(context.PrimaryEntityName, out var trackedFields))
+        if (!HasTrackedChange(context, out var changedFields))
         {
-            var changedFields = D365FSCEventParser.GetChangedFields(context.InputParameters) ?? [];
-            if (!changedFields.Any(trackedFields.Contains))
-            {
-                logger.LogInformation("Message {id} has no tracked field changes, skipping.", message.MessageId);
-                await messageActions.CompleteMessageAsync(message);
-                return;
-            }
+            // An absent ChangedFields parameter is unexpected from D365; a present but
+            // untracked list is the normal re-notification case.
+            var hasChangedFieldsParameter = context.InputParameters?.Any(p => p.Key == "ChangedFields") == true;
+            logger.Log(hasChangedFieldsParameter ? LogLevel.Information : LogLevel.Warning,
+                "Message {id} has no tracked field changes, skipping. Entity={entity}, Event={eventName}, ChangedFields=[{changedFields}]",
+                message.MessageId, context.PrimaryEntityName, context.MessageName, string.Join(", ", changedFields));
+            await messageActions.CompleteMessageAsync(message);
+            return;
         }
 
         // Skip if a required field is missing or blank (before DB insert)
@@ -253,6 +264,26 @@ internal sealed class DataEventProcessor(
             logger.LogError(ex, "Processing failed for message {id}. Message will be retried or dead-lettered.", message.MessageId);
             throw; // Let the Functions host handle retry/dead-letter
         }
+    }
+
+    /// <summary>
+    /// True when the event should continue: it is not an OnExternalUpdated, its entity has no tracked
+    /// fields, or at least one tracked field is among its ChangedFields.
+    /// <paramref name="changedFields"/> is the event's changed-field list (empty when the
+    /// ChangedFields parameter is absent or not an update), for logging.
+    /// </summary>
+    internal static bool HasTrackedChange(EventContext context, out IReadOnlyList<string> changedFields)
+    {
+        if (context.MessageName != "OnExternalUpdated")
+        {
+            changedFields = [];
+            return true;
+        }
+
+        changedFields = D365FSCEventParser.GetChangedFields(context.InputParameters);
+
+        return !TrackedFieldsByEntity.TryGetValue(context.PrimaryEntityName, out var trackedFields)
+            || changedFields.Any(trackedFields.Contains);
     }
 
     /// <summary>

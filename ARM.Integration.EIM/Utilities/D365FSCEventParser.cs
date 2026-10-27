@@ -87,14 +87,19 @@ namespace ARM.Integration.EIM.Utilities
         }
 
         /// <summary>
-        /// Gets the list of changed fields
+        /// Gets the list of changed fields.
+        /// Returns an empty list when there is no ChangedFields parameter or its value is absent,
+        /// JSON null or not an array; non-string entries are ignored. Never throws.
         /// </summary>
         public static List<string> GetChangedFields(List<InputParameter> inputParameters)
         {
-            var changedFields = inputParameters.FirstOrDefault(p => p.Key == "ChangedFields");
-            if (changedFields.Value.ValueKind == JsonValueKind.Undefined) return new List<string>();
+            var changedFields = inputParameters?.FirstOrDefault(p => p.Key == "ChangedFields");
+            if (changedFields is null || changedFields.Value.ValueKind != JsonValueKind.Array) return new List<string>();
 
-            return JsonSerializer.Deserialize<List<string>>(changedFields.Value.GetRawText());
+            return changedFields.Value.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.String)
+                .Select(e => e.GetString()!)
+                .ToList();
         }
     }
 }
