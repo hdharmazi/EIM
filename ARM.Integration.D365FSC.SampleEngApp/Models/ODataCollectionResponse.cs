@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace ARM.Integration.D365FSC.SampleClient.Models;
+namespace ARM.Integration.D365FSC.SampleEngApp.Models;
 
 /// <summary>Envelope returned by D365 F&amp;O OData collection queries.</summary>
 public sealed record ODataCollectionResponse<T>

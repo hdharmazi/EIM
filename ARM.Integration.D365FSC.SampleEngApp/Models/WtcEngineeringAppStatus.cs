@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace ARM.Integration.D365FSC.SampleClient.Models;
+namespace ARM.Integration.D365FSC.SampleEngApp.Models;
 
 /// <summary>One row of the D365 F&amp;O <c>WTC_EngineeringAppStatuses</c> data entity.</summary>
 public sealed record WtcEngineeringAppStatus

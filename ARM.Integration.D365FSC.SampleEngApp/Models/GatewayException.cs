@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace ARM.Integration.D365FSC.SampleClient.Models;
+namespace ARM.Integration.D365FSC.SampleEngApp.Models;
 
 /// <summary>Thrown for any non-2xx gateway response. Quote <see cref="CorrelationId"/> when raising a support ticket.</summary>
 public sealed class GatewayException(
