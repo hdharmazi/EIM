@@ -3,6 +3,7 @@ name: luigi
 description: Developer. Use to implement an approved OpenSpec change (openspec/changes/<id>/tasks.md) or to fix review findings from Bowser. Writes code and tests and keeps the build green.
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: opus
+permissionMode: acceptEdits
 skills:
   - openspec-apply-change
 ---

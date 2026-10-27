@@ -1,4 +1,5 @@
 {
+  "agent": "peach",
   "permissions": {
     "allow": [
       "Bash(dotnet restore:*)",
@@ -12,6 +13,9 @@
       "Bash(openspec status:*)",
       "Bash(openspec instructions:*)",
       "Bash(openspec validate:*)",
+      "Bash(openspec new change:*)",
+      "Bash(git branch --show-current)",
+      "Bash(git rev-parse:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
