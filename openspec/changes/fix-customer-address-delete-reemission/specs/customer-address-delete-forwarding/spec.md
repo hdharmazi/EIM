@@ -32,8 +32,8 @@ The system SHALL forward an update event from the soft-delete entity only when t
 from that entity without creating a message record and without sending anything to Capture. D365 F&SC
 can re-raise update events on the soft-delete entity for addresses that are already deleted, for
 example when related customer data changes while the entity still exposes several versions of a
-deleted address, or when the one-off backfill touches an already-deleted location. This filter is the
-integration's safety net and applies whether or not the D365 source fix is deployed.
+deleted address. This filter is the integration's safety net and applies whether or not the D365
+source fix is deployed.
 
 #### Scenario: The deletion itself is forwarded
 
