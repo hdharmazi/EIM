@@ -52,13 +52,13 @@ Specs of current behaviour live in `openspec/specs/<capability>/spec.md`. Every 
 
 | Agent | Role | Writes to |
 |---|---|---|
-| `mario` | Architect/planner: designs the change as an OpenSpec proposal | `openspec/changes/<id>/` only |
+| `peach` | Architect/planner and team lead: designs the change as an OpenSpec proposal; when run top-level she also drives luigi and bowser | `openspec/changes/<id>/` only |
 | `luigi` | Developer: implements `tasks.md` and keeps the build and tests green | Source, tests, SQL, `tasks.md` checkboxes |
 | `bowser` | Reviewer: checks the diff against the spec and runs the tests | Nothing (read-only) |
 
-Subagents cannot call each other, so the main session orchestrates:
+Subagents cannot call each other. Start `claude --agent peach` and Peach orchestrates steps 2–4 herself after you approve the plan; in a plain `claude` session the main session orchestrates:
 
-1. **Plan**: delegate to `mario` with the request and ticket number. Show the user the proposal summary and any open questions, then **wait for approval** before any code is written.
+1. **Plan**: delegate to `peach` with the request and ticket number. Show the user the proposal summary and any open questions, then **wait for approval** before any code is written.
 2. **Build**: delegate to `luigi` with the change id.
 3. **Review**: delegate to `bowser` with the change id. If the verdict is `CHANGES REQUESTED`, send the findings back to `luigi`, then re-review. After two rounds without approval, stop and ask the user.
 4. **Finish**: report the results to the user. Commit, push, PR creation, and `/opsx:archive` happen only when the user asks.

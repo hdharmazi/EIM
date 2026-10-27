@@ -1,0 +1,61 @@
+{
+  "BusinessEventId": "",
+  "MessageName": "OnExternalUpdated",
+  "PrimaryEntityName": "mserp_wtc_custpostaladdressdeletedv2entity",
+  "OperationId": "00000000-0000-0000-0000-0000000000b1",
+  "OperationCreatedOn": "/Date(1792611120000+0000)/",
+  "InputParameters": [
+    {
+      "key": "Target",
+      "value": {
+        "Id": "00000000-0000-0000-0000-0000000000b2",
+        "LogicalName": "mserp_wtc_custpostaladdressdeletedv2entity",
+        "Attributes": [
+          { "key": "mserp_dataareaid", "value": "wtc" },
+          { "key": "mserp_customeraccount", "value": "100300" },
+          { "key": "mserp_addresslocationid", "value": "000311920" },
+          { "key": "mserp_isprimary", "value": { "__type": "OptionSetValue:http://schemas.microsoft.com/xrm/2011/Contracts", "Value": 200000000 } },
+          { "key": "mserp_addresslocationroles", "value": "Delivery" },
+          { "key": "mserp_addressdescription", "value": "Example yard" },
+          { "key": "mserp_addresscity", "value": "EXAMPLEVILLE" },
+          { "key": "mserp_addresszipcode", "value": "00000" },
+          { "key": "mserp_addressstreet", "value": "222 Main street No. 2" },
+          { "key": "mserp_addresscountryregionid", "value": "USA" },
+          { "key": "mserp_addressstate", "value": "UT" },
+          { "key": "mserp_addressvalidfrom", "value": "/Date(1792601588000+0000)/" },
+          { "key": "mserp_addressvalidto", "value": "/Date(1792601650000+0000)/" },
+          { "key": "mserp_formatteddeliveryaddress", "value": "222 Main street No. 2\nEXAMPLEVILLE, UT 00000\nUSA" },
+          { "key": "mserp_wtc_isdeleted", "value": { "__type": "OptionSetValue:http://schemas.microsoft.com/xrm/2011/Contracts", "Value": 200000001 } }
+        ]
+      }
+    },
+    {
+      "key": "PreImage",
+      "value": {
+        "Id": "00000000-0000-0000-0000-0000000000b2",
+        "LogicalName": "mserp_wtc_custpostaladdressdeletedv2entity",
+        "Attributes": [
+          { "key": "mserp_dataareaid", "value": "wtc" },
+          { "key": "mserp_customeraccount", "value": "100300" },
+          { "key": "mserp_addresslocationid", "value": "000311920" },
+          { "key": "mserp_isprimary", "value": { "__type": "OptionSetValue:http://schemas.microsoft.com/xrm/2011/Contracts", "Value": 200000000 } },
+          { "key": "mserp_addresslocationroles", "value": "Delivery" },
+          { "key": "mserp_addressdescription", "value": "Example yard" },
+          { "key": "mserp_addresscity", "value": "EXAMPLEVILLE" },
+          { "key": "mserp_addresszipcode", "value": "00000" },
+          { "key": "mserp_addressstreet", "value": "222 Main street" },
+          { "key": "mserp_addresscountryregionid", "value": "USA" },
+          { "key": "mserp_addressstate", "value": "UT" },
+          { "key": "mserp_addressvalidfrom", "value": "/Date(1792601469000+0000)/" },
+          { "key": "mserp_addressvalidto", "value": "/Date(1792601587000+0000)/" },
+          { "key": "mserp_formatteddeliveryaddress", "value": "222 Main street\nEXAMPLEVILLE, UT 00000\nUSA" },
+          { "key": "mserp_wtc_isdeleted", "value": { "__type": "OptionSetValue:http://schemas.microsoft.com/xrm/2011/Contracts", "Value": 200000001 } }
+        ]
+      }
+    },
+    {
+      "key": "ChangedFields",
+      "value": [ "mserp_addressstreet", "mserp_addressvalidfrom", "mserp_addressvalidto", "mserp_formatteddeliveryaddress" ]
+    }
+  ]
+}
