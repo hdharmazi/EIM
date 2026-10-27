@@ -7,6 +7,9 @@ namespace Wilson.Integration.Orchestrations
 {
     /// <summary>
     /// D365 FSC → Capture: Maps ContactPersonV2Entity data events to CaptureContactMessageContract.
+    /// Every mapped field is sent from the event's Target on both New and Update, so Capture always
+    /// receives the full record. dataAreaId and the name fields are sent as "" when empty or absent.
+    /// An update is still forwarded only when one of the mapped attributes is in ChangedFields.
     /// </summary>
     public class Contact_To_Capture : D365EventForwardOrchestration<CaptureContactMessageContract>
     {
@@ -45,11 +48,11 @@ namespace Wilson.Integration.Orchestrations
         {
             return new CaptureContactMessageContract
             {
-                DataAreaId = getField("mserp_dataareaid", false),
+                DataAreaId = getField("mserp_dataareaid", true) ?? "",
                 ContactPersonId = getField("mserp_contactpersonid", true),
-                FirstName = getField("mserp_firstname", false),
-                LastName = getField("mserp_lastname", false),
-                MiddleName = getField("mserp_middlename", false),
+                FirstName = getField("mserp_firstname", true) ?? "",
+                LastName = getField("mserp_lastname", true) ?? "",
+                MiddleName = getField("mserp_middlename", true) ?? "",
                 AssociatedCustomerAccount = getField("mserp_wtc_associatedcustomeraccount", true),
                 AssociatedPartyNumber = getField("mserp_associatedpartynumber", true),
                 ContactPersonPartyNumber = getField("mserp_contactpersonpartynumber", true)
