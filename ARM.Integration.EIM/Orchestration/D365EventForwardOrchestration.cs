@@ -32,8 +32,24 @@ public abstract class D365EventForwardOrchestration<TDest> : BaseForwardOrchestr
     /// <param name="action">The determined action string: "New", "Update", or "Delete".</param>
     protected abstract TDest MapFields(Func<string, bool, string?> getField, string action);
 
-    /// <summary>When non-null, replaces the action derived from <c>MessageName</c>.</summary>
+    /// <summary>
+    /// When non-null, replaces the action derived from <c>MessageName</c>.
+    /// Applied after <see cref="ResolveAction"/>, so a forced action always wins.
+    /// </summary>
     protected virtual string? ForcedAction => null;
+
+    /// <summary>
+    /// Lets a subclass refine the action derived from <c>MessageName</c> using the event itself.
+    /// Runs after the message-name mapping and before <see cref="ForcedAction"/>, which still wins.
+    /// The default returns <paramref name="derivedAction"/> unchanged.
+    /// </summary>
+    /// <param name="derivedAction">The action mapped from <c>MessageName</c>: "New", "Update", "Delete", or the raw message name.</param>
+    /// <param name="context">The parsed event.</param>
+    /// <param name="targetAttributes">The event's parsed Target attributes.</param>
+    /// <returns>The action to forward, before any <see cref="ForcedAction"/> is applied.</returns>
+    protected virtual string ResolveAction(
+        string derivedAction, EventContext context, IReadOnlyDictionary<string, object> targetAttributes)
+        => derivedAction;
 
     /// <summary>Returns a reason to withhold the forward (logged at Warning), or null to proceed.</summary>
     protected virtual string? GetSkipReason(EventContext context) => null;
@@ -84,6 +100,9 @@ public abstract class D365EventForwardOrchestration<TDest> : BaseForwardOrchestr
                 actionString = actiontype ?? "Unknown";
                 break;
         }
+
+        // Refinement first, forced action last: ForcedAction must stay authoritative.
+        actionString = ResolveAction(actionString, context, targetAttrs);
 
         if (ForcedAction is { } forced)
             actionString = forced;
