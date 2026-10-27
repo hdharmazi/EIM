@@ -56,7 +56,7 @@ Specs of current behaviour live in `openspec/specs/<capability>/spec.md`. Every 
 | `luigi` | Developer: implements `tasks.md` and keeps the build and tests green | Source, tests, SQL, `tasks.md` checkboxes |
 | `bowser` | Reviewer: checks the diff against the spec and runs the tests | Nothing (read-only) |
 
-Subagents cannot call each other. Start `claude --agent peach` and Peach orchestrates steps 2–4 herself after you approve the plan; in a plain `claude` session the main session orchestrates:
+Subagents cannot call each other, so Peach runs as the **main session agent**: `.claude/settings.json` sets `"agent": "peach"`, so a plain `claude` starts as Peach. She plans, then distributes the work to Luigi (one work package at a time) and Bowser, and loops on review findings by herself. Approval is **risk-based**. Low-risk changes (no SQL, no deployment, no new route or contract, no failure-classification change, small) proceed automatically. Anything else stops for your `approved`. Say "just go" or "ask me first" to override the gate for the session. Peach and Luigi run with `permissionMode: acceptEdits`; Bowser stays read-only. To use a different agent for a session, run `claude --agent <name>`. When Peach is not the main agent (for example she is run as a subagent), the main session orchestrates:
 
 1. **Plan**: delegate to `peach` with the request and ticket number. Show the user the proposal summary and any open questions, then **wait for approval** before any code is written.
 2. **Build**: delegate to `luigi` with the change id.
