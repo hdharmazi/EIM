@@ -1,6 +1,7 @@
 {
   "environment": "prd",
   "production": true,
+  "subscriptionId": "<production subscription id or name>",
   "names": {
     "resourceGroup": "d365fsc-integration-prod"
   },

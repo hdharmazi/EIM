@@ -207,6 +207,7 @@ public partial class DeploymentConfigTests
     // tenant); a value that is a placeholder in both is not yet known on either side and is not a leak.
     private static readonly string[] NonProductionIdentifyingPaths =
     [
+        "subscriptionId",
         "entra.tenantId", "entra.clientId", "entra.audience",
         "automation.excludedUsers",
         "dashboard.simulationEnabled", "dashboard.simulationQueuePrefix",
