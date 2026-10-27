@@ -37,7 +37,7 @@
   <Project Path="ARM.Integration.Core/ARM.Integration.Core.csproj" />
   <Project Path="ARM.Integration.D365FSC.Gateway/ARM.Integration.D365FSC.Gateway.csproj" />
   <Project Path="ARM.Integration.D365FSC.Gateway.Tests/ARM.Integration.D365FSC.Gateway.Tests.csproj" />
-  <Project Path="ARM.Integration.D365FSC.SampleClient/ARM.Integration.D365FSC.SampleClient.csproj" />
+  <Project Path="ARM.Integration.D365FSC.SampleEngApp/ARM.Integration.D365FSC.SampleEngApp.csproj" />
   <Project Path="ARM.Integration.Dashboard.API/ARM.Integration.Dashboard.API.csproj" />
   <Project Path="ARM.Integration.DbMigrator/ARM.Integration.DbMigrator.csproj" />
 

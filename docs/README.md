@@ -12,7 +12,8 @@
 ## Integration
 
 - [Sales order Excel import](integration/sales-order-excel-import.md)
-- [D365 F&SC sample client](../ARM.Integration.D365FSC.SampleClient/README.md)
+- [D365 F&SC sample client](../ARM.Integration.D365FSC.SampleEngApp/README.md)
+- [CRD 3874 Engineering status query](<CRD/CRD 3874 Enginering Status Query.docx>)
 
 ## Automation
 

@@ -386,3 +386,6 @@ __queuestorage__/
 
 # Claude Code personal settings
 .claude/settings.local.json
+
+# Sample client local secrets (function key)
+ARM.Integration.D365FSC.SampleEngApp/appsettings.Development.json
