@@ -3,7 +3,7 @@
   "workload": "eim",
   "production": false,
   "location": "centralus",
-  "subscriptionId": "<subscription id or name>",
+  "subscriptionId": "84abae0f-07f1-4df8-aacd-197d2e7f1cac",
   "appServicePlan": {
     "sku": "P0v3"
   },
