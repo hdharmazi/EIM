@@ -251,6 +251,17 @@ skip is logged at **Warning** when the parameter itself was absent. Trade-off: a
 For each of them, an `OnExternalUpdated` without a usable `ChangedFields` array used to throw, retry
 and dead-letter. It is now completed with a warning instead.
 
+The parser is also used by the orchestration step (`D365EventForwardOrchestration.ParseAndMap`), for
+every entity, including those without a tracked set such as `mserp_dirpartycontactv3entity`. There, an
+`OnExternalUpdated` without `ChangedFields` used to throw a `NullReferenceException`. It is now completed
+as "not tracked fields", and the same applies when the dashboard reprocesses such a message. This is
+intended: a missing list is an anomaly to log, not a reason to retry (found in review, Bowser round 1).
+
+Interaction with the existing anomaly check (*Only events flagged as deleted are forwarded*): that check
+only sees events that pass this ingress filter. A soft-delete update whose `ChangedFields` lacks
+`mserp_wtc_isdeleted` is now withheld at Information as a routine skip, even if its flag is not yes. The
+anomaly warning still fires whenever the flag itself changes.
+
 ### D8. Failure behaviour, idempotency, ordering
 
 - A dropped re-emission is completed on Service Bus. No message row, no retry, no dead-letter.
@@ -303,8 +314,15 @@ Dropped (re-emission, 78833, abbreviated):
 - [Conflict with #5236 (`fix-customer-address-update-action`)] → It edits `WTC_CustPostalAddressV2Entity.xml`,
   and this change edits `WTC_CustPostalAddressDeletedV2Entity.xml`, `LogisticsLocation.WTC.xml`, and the
   `deactivate` extension, so the files don't overlap. Its spec delta modifies a different requirement of
-  `customer-address-delete-forwarding`. The D365 work goes on its own branch from `development`, not on
-  `bug/5236/...` (the current `C:\Custom` checkout).
+  `customer-address-delete-forwarding`. The D365 work shares the `C:\Custom` branch
+  `bug/5236/customer-address-update-action` (open question 1).
+- [The backfill makes a hidden deleted location reappear in the entity as a new row] → After D2 is
+  deployed, a flagged location whose pointer is still `0` has no entity row. The backfill's `update()`
+  makes the row appear, which is the same shape as the genuine delete 78800 (PreImage null, every field in
+  `ChangedFields`, including `mserp_wtc_isdeleted`). The integration filter would pass it and forward one
+  `Delete` per already-deleted location. In TEST and PRD these would be held behind the disabled delete
+  route and released when it is enabled. D3 assumes Dataverse still holds the old image, but this is
+  unconfirmed. **Open question 5; decide before task 4.5** (found in review, Bowser round 1).
 
 ## Migration Plan
 
@@ -328,3 +346,8 @@ multiple rows, which the integration filter covers. For the integration, redeplo
 4. **Backfill invocation.** Assumed a runnable class run from the browser URL (`?mi=SysClassRunner&cls=…`),
    without a menu item or security. Change this if the D365 team requires a menu item or a data-upgrade
    script.
+5. **Backfill event shape.** Can the backfill produce real duplicate `Delete`s (see Risks)? Options:
+   (a) **two packages**: ship the field, `deactivate` and the backfill first, then the relation change
+   (D2) in a second package, so rows stay visible throughout; (b) add the user who runs the backfill to
+   `ExcludedUsers` in `DataEventProcessor` for the duration of the run; (c) first check in DEV what event a
+   backfilled location raises. Recommended: (c), then (a) if a creation-shaped event appears.
