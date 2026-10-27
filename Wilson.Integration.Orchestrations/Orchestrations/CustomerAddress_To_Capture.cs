@@ -8,9 +8,19 @@ namespace Wilson.Integration.Orchestrations
     /// <summary>
     /// D365 FSC → Capture: Maps customer address data events to CaptureCustomerAddressMessageContract.
     /// Source entity: mserp_wtc_custpostaladdressv2entity
+    /// <para>
+    /// D365 versions postal addresses: editing one creates a new date-effective
+    /// <c>LogisticsPostalAddress</c> row (new RecId, new ValidFrom) for the same location id, so
+    /// Dataverse raises <c>OnExternalCreated</c> for an edit. The entity's computed
+    /// <c>mserp_wtc_haspriorversion</c> marker is Yes when an earlier version of the location's
+    /// address exists; such a creation is forwarded as <c>Update</c> with the full address. When the
+    /// marker is absent or not Yes the action stays <c>New</c>.
+    /// </para>
     /// </summary>
     public class CustomerAddress_To_Capture : D365EventForwardOrchestration<CaptureCustomerAddressMessageContract>
     {
+        internal const string PriorVersionField = "mserp_wtc_haspriorversion";
+
         protected override string EntityName => "CustomerAddress";
 
         private static readonly Dictionary<int, string> YesNoMap = new()
@@ -38,6 +48,18 @@ namespace Wilson.Integration.Orchestrations
             catch { }
 
             return rawValue;
+        }
+
+        /// <summary>
+        /// A creation event for an address that supersedes a prior version is an update for Capture.
+        /// Other actions are unchanged; a forced action (the delete subclass) is applied afterwards.
+        /// </summary>
+        protected override string ResolveAction(string derivedAction, EventContext context,
+            IReadOnlyDictionary<string, object> targetAttributes)
+        {
+            if (derivedAction != "New") return derivedAction;
+            targetAttributes.TryGetValue(PriorVersionField, out var raw);
+            return ResolveYesNo(raw?.ToString()) == "Yes" ? "Update" : derivedAction;
         }
 
 

@@ -14,4 +14,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- CustomerAddressUpdateActionTests pins CustomerAddress_To_Capture.PriorVersionField to the Dataverse attribute name. -->
+    <InternalsVisibleTo Include="Wilson.Integration.Tests" />
+  </ItemGroup>
+
 </Project>
