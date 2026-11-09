@@ -72,5 +72,5 @@ ordinary root columns when you have used-trailer data.
 ## dataAreaId
 
 `dataAreaId` is **not** read from the workbook. Enter it on the simulation page (default
-`WTC`); it is injected into the order before sending and lifted to `_companyId` by the
+`WTC`); it is injected into the order before sending and lifted to `CompanyId` by the
 `SalesOrder_To_D365FSC` integration.

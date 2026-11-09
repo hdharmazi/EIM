@@ -194,6 +194,53 @@ public class FailureClassifierTests
         Assert.False(outcome.LogAsError);
     }
 
+    // Spec capture-salesorder-submit, "Rejection is not retried".
+    [Fact]
+    public void A_d365_service_rejection_is_terminal_and_positively_matched()
+    {
+        var exception = new D365ServiceRejectedException(
+            "api/services/WTC_Integration/WTC_CaptureSalesOrderService/CreateSalesOrder",
+            "PBL-1",
+            "Customer account C999 does not exist.");
+
+        var verdict = Classifier().ClassifyVerdict(exception);
+        var outcome = FailureOutcomeSelector.Select(verdict, exception.Message, attempt: 1, attemptsRemain: true);
+
+        Assert.Equal(FailureDisposition.Terminal, verdict.Disposition);
+        Assert.True(verdict.IsTerminal);
+        Assert.Equal(TerminalReason.Rejected, verdict.Reason);
+        Assert.Equal(MessageStatus.Failed, outcome.Status);
+        Assert.Equal("Customer account C999 does not exist.", outcome.Message);
+    }
+
+    [Fact]
+    public void A_wrapped_d365_service_rejection_is_terminal()
+    {
+        var wrapped = new InvalidOperationException(
+            "orchestration failed",
+            new D365ServiceRejectedException("CreateSalesOrder", "PBL-1", "Route R1 is not valid."));
+
+        var verdict = Classifier().ClassifyVerdict(wrapped);
+
+        Assert.True(verdict.IsTerminal);
+        Assert.Equal(TerminalReason.Rejected, verdict.Reason);
+    }
+
+    [Fact]
+    public void A_d365_service_rejection_outranks_a_retryable_inner_exception()
+    {
+        var aggregate = new AggregateException(
+            D365(HttpStatusCode.ServiceUnavailable),
+            new D365ServiceRejectedException("CreateSalesOrder", "PBL-1", "Route R1 is not valid."));
+
+        Assert.Equal(FailureDisposition.Terminal, Classifier().Classify(aggregate));
+    }
+
+    [Fact]
+    public void A_d365_service_rejection_without_text_has_a_default_message()
+        => Assert.Equal("D365 rejected the request.",
+            new D365ServiceRejectedException("CreateSalesOrder", null, " ").Message);
+
     [Fact]
     public void Wrapping_does_not_lose_a_positively_matched_rejection()
     {

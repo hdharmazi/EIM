@@ -181,10 +181,52 @@ foreach ($queue in 'prd-d365fsc-dataevent', 'prd-d365fsc-businessevents', 'prd-d
 $api = az webapp show -g $rg -n app-eim-dashboard-api-wtc-prd --query id -o tsv
 az monitor metrics alert create -g $rg -n app-eim-dashboard-api-wtc-prd-5xx --scopes $api `
     --condition "total Http5xx > 0" --window-size 15m --evaluation-frequency 5m --action $actionGroup
+
+# D365 setup failure on the Capture sales-order submit (HTTP 401, 403, 404): the reply to Capture is held.
+# A log search alert on the Automation app's Application Insights, found through the app's connection string.
+# Needs the az extensions: az extension add -n application-insights; az extension add -n scheduled-query
+$insightsKey = (az functionapp config appsettings list -g $rg -n azf-eim-automation-wtc-prd `
+    --query "[?name=='APPLICATIONINSIGHTS_CONNECTION_STRING'].value | [0]" -o tsv) -split ';' |
+    Where-Object { $_ -like 'InstrumentationKey=*' } | ForEach-Object { $_.Split('=', 2)[1] }
+$insights = az monitor app-insights component show -g $rg `
+    --query "[?instrumentationKey=='$insightsKey'].id | [0]" -o tsv
+az monitor scheduled-query create -g $rg -n azf-eim-automation-wtc-prd-setup-failure --scopes $insights `
+    --condition "count 'SetupFailure' > 0" `
+    --condition-query "SetupFailure=traces | where message startswith '[SetupFailure] '" `
+    --window-size 15m --evaluation-frequency 5m --action-groups $actionGroup `
+    --description "D365 refused the Capture sales-order call (401/403/404); replies to Capture are held"
 ```
 
 If the plan alert fires, change the plan's SKU to `P1v3`. The plan was created by the script, so set
 `appServicePlan.sku` in `deploy.prd.json` as well, so the configuration matches.
+
+### Sales-order setup failure
+
+`SalesOrder_To_D365FSC` writes the error step `[SetupFailure] D365 returned <status> for PBLId <id>; reply held
+until reprocess` when D365 answers 401, 403 or 404. The message goes to status 3, and Capture waits with no reply
+until the message is reprocessed. Transient failures and retries do not write this step, so the alert does not
+fire on them.
+
+The query matches the message prefix, not a `customDimensions` key. In bat, the Automation step traces reach
+Application Insights through the Functions host with the formatted message only: they have neither `StepName` nor
+`prop__StepName` in `customDimensions`. Confirm the query against the first real event: after a test 401 in bat,
+run `traces | where message startswith '[SetupFailure] '` in the Automation app's Logs. `host.json` samples traces
+adaptively (only requests are excluded); each held message writes its own step, but if an outage ever goes
+unalerted, add `Trace` to `excludedTypes`.
+
+When it fires, find the status in the step text (`D365 returned <status>`), also in the message log on the
+dashboard, then:
+
+- **401**: D365 refused Wilson's credentials. Check the secret of the D365 app registration in the `D365FSC` /
+  `PRD` profile (Environments page) and whether it has expired.
+- **403**: the D365 integration user lacks the privilege. Grant `WTC_CaptureSalesOrderServiceMaintain`.
+- **404**: the D365 service `WTC_CaptureSalesOrderService` is not deployed (or not reachable) in D365 production.
+  Deploy it; D365 goes before Wilson in every environment.
+
+Then reprocess the status-3 `SalesOrderQueue` messages from the dashboard's Message Queue. D365 is idempotent on
+`PBLId`, so each reprocess sends Capture exactly one reply. A Dashboard reprocess that fails again is logged in
+the Dashboard API's telemetry and the message log, not the Automation app's Application Insights, so the alert does
+not fire a second time: check the message log after reprocessing.
 
 ## Reverting
 
