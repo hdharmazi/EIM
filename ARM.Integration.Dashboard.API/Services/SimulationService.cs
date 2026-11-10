@@ -661,7 +661,7 @@ public class SimulationService(IConfiguration config, ConfigurationRepository co
 
         if (parseError is not null) { yield return Err(parseError); yield break; }
 
-        // dataAreaId is supplied at send time and lifted to _companyId by SalesOrder_To_D365FSC
+        // dataAreaId is supplied at send time and lifted to CompanyId by SalesOrder_To_D365FSC
         data!["dataAreaId"] = dataAreaId;
 
         var envelope = new JsonObject
