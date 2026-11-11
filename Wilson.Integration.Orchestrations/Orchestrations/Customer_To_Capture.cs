@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace Wilson.Integration.Orchestrations
 {
     /// <summary>
-    /// D365 FSC -> Capture: Maps CustomersV3 data events to CaptureCustomerMessageContract.
+    /// D365 FSC -> Capture: Maps WTC customer data events to CaptureCustomerMessageContract.
     /// </summary>
     public class Customer_To_Capture : D365EventForwardOrchestration<CaptureCustomerMessageContract>
     {
@@ -54,14 +54,8 @@ namespace Wilson.Integration.Orchestrations
                 EmployeeResponsibleNumber = getField("mserp_employeeresponsiblenumber", true),
                 Blocked = ResolveOnHoldStatus(getField("mserp_onholdstatus", true)),
                 PartyNumber = getField("mserp_partynumber", true),
-
-                //DepositRequired = getField("mserp_depositrequired", true),
-                //DotNumber = getField("mserp_dotnumber", true),
-                //TaxStatus = getField("mserp_taxstatus", true)
-
-                DepositRequired = "No",
-                DotNumber = "X1234",
-                TaxStatus = "30CHARSTATUS"
+                DotNumber = getField("mserp_dotnumber", true),
+                TaxStatus = getField("mserp_taxstatus", true)
             };
         }
 

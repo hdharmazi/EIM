@@ -31,7 +31,7 @@ internal sealed class DataEventProcessor(
     /// </summary>
     internal static readonly Dictionary<string, (string Type, string QueueSetting)> EntityRoutes = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["mserp_custcustomerv3entity"]      = ("Customer_To_Capture","D365ToCaptureQueue"),
+        ["mserp_wtc_custcustomerentity"]     = ("Customer_To_Capture", "D365ToCaptureQueue"),
         ["mserp_smmcontactpersonv2entity"]   = ("Contact_To_Capture","D365ToCaptureQueue"),
         ["mserp_wtc_custpostaladdressv2entity"]  = ("CustomerAddress_To_Capture","D365ToCaptureQueue"),
         ["mserp_wtc_custpostaladdressdeletedv2entity"] = ("CustomerAddressDelete_To_Capture", "D365ToCaptureQueue"),
@@ -46,7 +46,7 @@ internal sealed class DataEventProcessor(
     /// </summary>
     private static readonly Dictionary<string, HashSet<string>> TrackedFieldsByEntity = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["mserp_custcustomerv3entity"] = new(StringComparer.OrdinalIgnoreCase)
+        ["mserp_wtc_custcustomerentity"] = new(StringComparer.OrdinalIgnoreCase)
         {
             "mserp_organizationname",
             "mserp_namealias",
@@ -54,8 +54,7 @@ internal sealed class DataEventProcessor(
             "mserp_customeraccount",
             "mserp_customergroupid",
             "mserp_employeeresponsiblenumber",
-            "mserp_blocked",
-            "mserp_depositrequired",
+            "mserp_onholdstatus",
             "mserp_dotnumber",
             "mserp_taxstatus",
             "mserp_partynumber"

@@ -8,7 +8,7 @@ public static class BusinessKeyResolver
 {
     internal static readonly Dictionary<string, string> EntityKeyFields = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["mserp_custcustomerv3entity"]     = "mserp_customeraccount",
+        ["mserp_wtc_custcustomerentity"]  = "mserp_customeraccount",
         ["mserp_smmcontactpersonv2entity"]  = "mserp_contactpersonid",
         ["mserp_wtc_custpostaladdressv2entity"] = "mserp_addresslocationid",
         ["mserp_wtc_custpostaladdressdeletedv2entity"] = "mserp_addresslocationid",
@@ -18,7 +18,7 @@ public static class BusinessKeyResolver
     /// <summary>
     /// Extracts the business key value from D365 target attributes for the given entity.
     /// </summary>
-    /// <param name="entityName">The D365 primary entity name (e.g., "mserp_custcustomerv3entity").</param>
+    /// <param name="entityName">The D365 primary entity name (e.g., "mserp_wtc_custcustomerentity").</param>
     /// <param name="targetAttributes">Parsed target attributes from the data event, or null when the event has none.</param>
     /// <returns>
     /// The trimmed business key value, or null if the attributes are null, the entity is not registered,
