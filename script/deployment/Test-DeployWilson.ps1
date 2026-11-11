@@ -352,9 +352,13 @@ try {
         Assert-True ($prdSettings -match [regex]::Escape("'$path'")) "an owner's settings need $path"
     }
     Assert-True ($prdSettings -notmatch 'sql\.entraAdmin') 'the SQL admin placeholders are not needed for settings'
-    $testSettings = @(Get-PlaceholderProblems $configs.test @('preflight', 'settings') $false) -join ' '
+    $testPlaceholderConfig = & $testWith '{ "entra": { "tenantId": "<tenant-id>", "clientId": "<client-id>", "audience": "<audience>" }, "automation": { "excludedUsers": "<excluded-users>" } }'
+    $testSettings = @(Get-PlaceholderProblems $testPlaceholderConfig @('preflight', 'settings') $false) -join ' '
     Assert-True ($testSettings -notmatch 'entra\.') 'a configuration with uses writes no dashboard settings, so needs no entra values'
     Assert-True ($testSettings -match "'automation.excludedUsers'") 'a configuration with uses still needs its Automation values'
+    $testPopulatedConfig = & $testWith '{ "automation": { "excludedUsers": "00000000-0000-0000-0000-000000000001;00000000-0000-0000-0000-000000000002" } }'
+    $testPopulatedSettings = @(Get-PlaceholderProblems $testPopulatedConfig @('preflight', 'settings') $false) -join ' '
+    Assert-True ($testPopulatedSettings -notmatch "'automation.excludedUsers'") 'a configuration with uses accepts populated semicolon-separated Automation excluded users'
     $offline = @(Get-OfflinePreflightProblems $configs.prd @('preflight', 'settings', 'frontend') $allConfigs $true) -join ' '
     Assert-True ($offline -match "'entra.tenantId' is still a placeholder") 'offline preflight reports placeholders'
     Assert-True ($offline -match 'no package at') 'offline preflight reports a missing package for code components'
