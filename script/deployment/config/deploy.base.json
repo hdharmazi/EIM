@@ -29,9 +29,9 @@
     "entraAdminType": "Group"
   },
   "entra": {
-    "tenantId": "<dashboard entra tenant id>",
-    "clientId": "<dashboard entra client id>",
-    "audience": "<api://... or client id>",
+    "tenantId": "446b6761-0bd4-4dad-821a-cbdbe4b7b4de",
+    "clientId": "5d1e26b3-6d06-4d54-b6ae-9387bca0bcc6",
+    "audience": "api://5d1e26b3-6d06-4d54-b6ae-9387bca0bcc6",
     "scope": "user_impersonation"
   },
   "gateway": {
@@ -41,7 +41,7 @@
     "idempotencyPurgeSchedule": "0 15 * * * *"
   },
   "automation": {
-    "excludedUsers": "<semicolon separated user guids>",
+    "excludedUsers": "51E452DB-CF29-4EDA-951C-50332FBB11AA;991452DB-CF29-4EDA-951C-50332FBB1322",
     "awaitingD365SweepSchedule": "0 */15 * * * *",
     "awaitingD365StuckTimeoutHours": "4",
     "releaseSweepSchedule": "0 */1 * * * *",
