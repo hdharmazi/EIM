@@ -118,7 +118,7 @@ public class SimulationService(IConfiguration config, ConfigurationRepository co
     private async IAsyncEnumerable<SimulationEvent> D365CustomerCreate(
         Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
-        var payload = BuildD365Event("OnExternalCreated", "mserp_custcustomerv3entity",
+        var payload = BuildD365Event("OnExternalCreated", "mserp_wtc_custcustomerentity",
             new()
             {
                 ["mserp_partynumber"]               = Get(f, "mserp_partynumber",               "000001234"),
@@ -128,8 +128,9 @@ public class SimulationService(IConfiguration config, ConfigurationRepository co
                 ["mserp_namealias"]                 = Get(f, "mserp_namealias",                 "SimTest"),
                 ["mserp_customergroupid"]           = Get(f, "mserp_customergroupid",           "RETAIL"),
                 ["mserp_employeeresponsiblenumber"] = Get(f, "mserp_employeeresponsiblenumber", "ARM001"),
-                ["mserp_blocked"]                   = Get(f, "mserp_blocked",                   "No"),
-                ["mserp_depositrequired"]           = Get(f, "mserp_depositrequired",           "No"),
+                ["mserp_onholdstatus"]              = Get(f, "mserp_onholdstatus",              "No"),
+                ["mserp_dotnumber"]                 = Get(f, "mserp_dotnumber",                 "DOT987"),
+                ["mserp_taxstatus"]                 = Get(f, "mserp_taxstatus",                 "Exempt"),
             });
 
         await foreach (var e in Send(D365Queue, payload, "D365 Customer Create Event", ct)) yield return e;
@@ -140,7 +141,7 @@ public class SimulationService(IConfiguration config, ConfigurationRepository co
         Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
         var changedFields = new List<string> { "mserp_organizationname", "mserp_namealias" };
-        var payload = BuildD365Event("OnExternalUpdated", "mserp_custcustomerv3entity",
+        var payload = BuildD365Event("OnExternalUpdated", "mserp_wtc_custcustomerentity",
             new()
             {
                 ["mserp_partynumber"]               = Get(f, "mserp_partynumber",               "000001234"),
@@ -159,7 +160,7 @@ public class SimulationService(IConfiguration config, ConfigurationRepository co
     private async IAsyncEnumerable<SimulationEvent> D365CustomerDelete(
         Dictionary<string, string> f, [EnumeratorCancellation] CancellationToken ct, DateTimeOffset startedAt = default)
     {
-        var payload = BuildD365Event("OnExternalDeleted", "mserp_custcustomerv3entity",
+        var payload = BuildD365Event("OnExternalDeleted", "mserp_wtc_custcustomerentity",
             new()
             {
                 ["mserp_partynumber"]     = Get(f, "mserp_partynumber",     "000001234"),

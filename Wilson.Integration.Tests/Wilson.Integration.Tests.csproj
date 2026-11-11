@@ -24,6 +24,7 @@
   <ItemGroup>
     <Content Include="TestData\**\*.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\script\SQL\Migrations\014_seed_customer_address_delete_route.sql" Link="TestData\Migrations\014_seed_customer_address_delete_route.sql" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\script\SQL\Migrations\016_replace_customer_route.sql" Link="TestData\Migrations\016_replace_customer_route.sql" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

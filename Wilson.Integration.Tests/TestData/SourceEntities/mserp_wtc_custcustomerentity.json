@@ -19,13 +19,15 @@
           { "key": "mserp_employeeresponsiblenumber", "value": "E000001" },
           { "key": "mserp_onholdstatus", "value": { "__type": "OptionSetValue:http://schemas.microsoft.com/xrm/2011/Contracts", "Value": 200000000 } },
           { "key": "mserp_partynumber", "value": "000000101" },
-          { "key": "mserp_custcustomerv3entityid", "value": "00000000-0000-0000-0000-000000000016" }
+          { "key": "mserp_dotnumber", "value": "DOT987" },
+          { "key": "mserp_taxstatus", "value": "Exempt" },
+          { "key": "mserp_wtc_custcustomerentityid", "value": "00000000-0000-0000-0000-000000000016" }
         ],
         "EntityState": null,
         "FormattedValues": [],
         "Id": "00000000-0000-0000-0000-000000000016",
         "KeyAttributes": [],
-        "LogicalName": "mserp_custcustomerv3entity",
+        "LogicalName": "mserp_wtc_custcustomerentity",
         "RelatedEntities": [],
         "RowVersion": null
       }
@@ -53,7 +55,7 @@
   "PostEntityImages": [],
   "PreEntityImages": [],
   "PrimaryEntityId": "00000000-0000-0000-0000-000000000000",
-  "PrimaryEntityName": "mserp_custcustomerv3entity",
+  "PrimaryEntityName": "mserp_wtc_custcustomerentity",
   "RequestId": "00000000-0000-0000-0000-00000000001a",
   "SecondaryEntityName": "none",
   "SharedVariables": [

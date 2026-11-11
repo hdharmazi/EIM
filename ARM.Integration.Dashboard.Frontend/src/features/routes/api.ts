@@ -106,7 +106,7 @@ function entityStem(entity: string): string | null {
     contact: "contact",
     customeraddress: "address",
     partycontact: "partycontact",
-    mserp_custcustomerv3entity: "customer",
+    mserp_wtc_custcustomerentity: "customer",
     mserp_smmcontactpersonv2entity: "contact",
     mserp_wtc_custpostaladdressv2entity: "address",
     mserp_wtc_custpostaladdressdeletedv2entity: "address",
