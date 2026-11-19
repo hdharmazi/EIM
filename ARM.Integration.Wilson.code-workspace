@@ -1,10 +1,11 @@
 {
 	"folders": [
 		{
+			"name": "ARM.Integration.Wilson",
 			"path": "."
 		},
 		{
-			"path": "../../../../../Custom"
+			"path": "../D365FO"
 		}
 	],
 	"settings": {

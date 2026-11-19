@@ -10,7 +10,7 @@ context: |
   React 18 + Vite + TypeScript + Tailwind/Radix dashboard frontend, xUnit tests.
   Orchestrations are named <Entity>_To_<Target> and registered in OrchestrationRegistry.
   Environments: local (local SQL eimdb, Azurite, dev-* queues), bat (owns the non-production resources), test (uses bat), and prd (isolated production environment, no simulation).
-  See CLAUDE.md for conventions and pitfalls.
+  See AGENTS.md for conventions and pitfalls.
 
 # Per-artifact rules
 rules:

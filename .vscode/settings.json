@@ -5,5 +5,25 @@
     "azureFunctions.projectRuntime": "~4",
     "debug.internalConsoleOptions": "neverOpen",
     "azureFunctions.preDeployTask": "publish (functions)",
-    "python.terminal.useEnvFile": true
+    "python.terminal.useEnvFile": true,
+    "chat.tools.terminal.autoApprove": {
+        "dotnet restore": true,
+        "dotnet build": true,
+        "dotnet test": true,
+        "npm --prefix ARM.Integration.Dashboard.Frontend run lint": true,
+        "npm --prefix ARM.Integration.Dashboard.Frontend run build": true,
+        "pwsh -NoProfile -File script/deployment/Test-DeployWilson.ps1": true,
+        "openspec list": true,
+        "openspec show": true,
+        "openspec status": true,
+        "openspec instructions": true,
+        "openspec validate": true,
+        "openspec new change": true,
+        "git branch --show-current": true,
+        "git rev-parse": true,
+        "git status": true,
+        "git diff": true,
+        "git log": true,
+        "git show": true
+    }
 }

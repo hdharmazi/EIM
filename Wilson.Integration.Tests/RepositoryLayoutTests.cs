@@ -18,11 +18,13 @@ public class RepositoryLayoutTests
 
     // Historical records keep the old name: archived changes, the #5425 change that predates the rename,
     // and this change's own artifacts, which describe the rename itself. All three end up under archive/.
+    // Main specs name it on purpose, in the requirement that it no longer exists.
     private static readonly string[] ExcludedPrefixes =
     [
         "openspec/changes/archive/",
         "openspec/changes/fix-address-source-business-key/",
         "openspec/changes/align-structure-and-deployment/",
+        "openspec/specs/",
     ];
 
     private static readonly string Root = RepositoryPaths.Root();
@@ -86,7 +88,7 @@ public class RepositoryLayoutTests
 
     // Built by concatenation, like OldProjectName, so this file does not match its own search. The names of the
     // earlier gateway, Automation and plan resources, and the nonprod-suffixed names of the shared layout that
-    // bat now owns under its own names (spec resource-naming-cutover).
+    // bat now owns under its own names (spec resource-naming).
     private static readonly string[] RetiredDeploymentNames =
     [
         string.Join("-", "azf", "d365fsc", "gateway", "wtc"),
@@ -103,11 +105,12 @@ public class RepositoryLayoutTests
         "Deploy-ZipWith" + "PublishProfile.ps1",
     ];
 
-    // Places that name the retired resources and scripts on purpose: change records, the superseded scripts, and
-    // the gateway tests' fixed sample host names.
+    // Places that name the retired resources and scripts on purpose: change records, the main specs that require
+    // them to be absent, the superseded scripts, and the gateway tests' fixed sample host names.
     private static readonly string[] RetiredNameExclusions =
     [
         "openspec/changes/",
+        "openspec/specs/",
         "script/Superseded/",
         "ARM.Integration.D365FSC.Gateway.Tests/",
     ];
@@ -129,7 +132,7 @@ public class RepositoryLayoutTests
             "Files still referencing a retired resource name or deployment script:\n" + string.Join("\n", offenders));
     }
 
-    // Spec resource-naming-cutover: the deployment describes only the current layout, with no move, overlap or
+    // Spec resource-naming: the deployment describes only the current layout, with no move, overlap or
     // reversal procedure, no retired configuration keys or stages, and no secret variables. Built by
     // concatenation, like OldProjectName, so this file does not match its own search.
     private static readonly string[] RollbackTerms = ["roll" + "back", "roll " + "back"];
@@ -152,7 +155,7 @@ public class RepositoryLayoutTests
     private static readonly string[] DeploymentFolders = ["script/deployment/", "pipelines/", "docs/deployment/"];
 
     private static readonly string[] DeploymentFiles =
-        ["README.md", "docs/README.md", "script/README.md", "CLAUDE.md", RepositoryPaths.SolutionFile];
+        ["README.md", "docs/README.md", "script/README.md", "AGENTS.md", RepositoryPaths.SolutionFile];
 
     // The migration guide explains why the schema only moves forward, which needs the word.
     private const string RollbackExemptFile = "docs/deployment/database-migrations.md";
@@ -186,7 +189,7 @@ public class RepositoryLayoutTests
             + string.Join("\n", offenders));
     }
 
-    // Spec resource-naming-cutover, "No dev Automation resources": development runs locally, so nothing names a dev
+    // Spec resource-naming, "No dev Automation resources": development runs locally, so nothing names a dev
     // stage, DevOps environment, configuration or new dev Automation resource. Built by concatenation, like
     // OldProjectName, so this file does not match its own search.
     private static readonly string[] DevDeploymentNames =
@@ -199,10 +202,12 @@ public class RepositoryLayoutTests
         "appins-eim-automation-wtc-" + "dev",
     ];
 
-    // Change records, the tests that assert these names are absent, and the self-test that asserts the same.
+    // Change records, the main specs and tests that require these names to be absent, and the self-test that
+    // asserts the same.
     private static readonly string[] DevNameExclusions =
     [
         "openspec/changes/",
+        "openspec/specs/",
         "Wilson.Integration.Tests/",
         "script/deployment/Test-DeployWilson.ps1",
     ];

@@ -387,5 +387,8 @@ __queuestorage__/
 # Claude Code personal settings
 .claude/settings.local.json
 
+# Azure Developer CLI / Azure extension local state
+.azure/
+
 # Sample client local secrets (function key)
 ARM.Integration.D365FSC.SampleEngApp/appsettings.Development.json
