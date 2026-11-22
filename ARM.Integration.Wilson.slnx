@@ -46,5 +46,7 @@
   <Project Path="Wilson.Integration.Automation/Wilson.Integration.Automation.csproj" Id="6a04bee9-4029-41b2-b713-247362e7dd14" />
   <Project Path="Wilson.Integration.Orchestrations/Wilson.Integration.Orchestrations.csproj" />
   <Project Path="Wilson.Integration.Tests/Wilson.Integration.Tests.csproj" />
+
+  <Project Path="Loen.Integration.SageSF/Loen.Integration.SageSF.csproj" />
 </Solution>
 

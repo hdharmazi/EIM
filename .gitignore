@@ -389,3 +389,7 @@ __queuestorage__/
 
 # Sample client local secrets (function key)
 ARM.Integration.D365FSC.SampleEngApp/appsettings.Development.json
+
+# Sage↔SF integration secrets
+Loen.Integration.SageSF/certs/*.key
+Loen.Integration.SageSF/appsettings.json
