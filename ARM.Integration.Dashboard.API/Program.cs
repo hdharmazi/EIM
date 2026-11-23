@@ -4,6 +4,7 @@ using ARM.Integration.Dashboard.API.Services;
 using ARM.Integration.EIM.Routing;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Identity.Web;
 
@@ -56,10 +57,22 @@ builder.Services.AddSingleton<IRouteResolver>(sp => new CachingRouteResolver(
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
-// Entra JWT bearer is the only authentication mechanism. Every caller is resolved to a
-// dashboard user; there is no credential that bypasses Entra.
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApi(builder.Configuration, "AzureAd");
+// Authentication: Windows (Negotiate) is the default for on-premises access on LOEN-TS.
+// Entra JWT bearer remains available for future remote access outside VPN.
+var authMode = builder.Configuration.GetValue("Auth:Mode", "Negotiate");
+
+var authBuilder = builder.Services.AddAuthentication(authMode switch
+{
+    "Negotiate" => NegotiateDefaults.AuthenticationScheme,
+    _ => JwtBearerDefaults.AuthenticationScheme,
+});
+
+authBuilder.AddNegotiate();
+
+if (builder.Configuration.GetSection("AzureAd").Exists())
+{
+    authBuilder.AddMicrosoftIdentityWebApi(builder.Configuration, "AzureAd");
+}
 
 // Resolves the bearer caller to a dashboard user (role + DbUserValidated).
 builder.Services.AddScoped<IClaimsTransformation, DbUserClaimsTransformation>();

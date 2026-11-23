@@ -1,6 +1,9 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Tokens;
 
 namespace Loen.Integration.SageSF.Salesforce;
 
@@ -22,8 +25,6 @@ public sealed class SalesforceClient : IDisposable
 
     public async Task AuthenticateAsync(CancellationToken ct = default)
     {
-        // JWT bearer flow — no interactive login
-        // TODO M1: implement JWT assertion signing with the connected app's certificate/key
         var form = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["grant_type"] = "urn:ietf:params:oauth:grant-type:jwt-bearer",
@@ -41,18 +42,18 @@ public sealed class SalesforceClient : IDisposable
             new AuthenticationHeaderValue("Bearer", _accessToken);
     }
 
-    /// <summary>Runs a SOQL query and returns the records.</summary>
     public async Task<JsonElement> QueryAsync(string soql, CancellationToken ct = default)
     {
+        EnsureAuthenticated();
         var url = $"{_instanceUrl}/services/data/v62.0/query?q={Uri.EscapeDataString(soql)}";
         var response = await _http.GetAsync(url, ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<JsonElement>(ct);
     }
 
-    /// <summary>Runs queryAll (includes deleted records) for detecting SF deletes.</summary>
     public async Task<JsonElement> QueryAllAsync(string soql, CancellationToken ct = default)
     {
+        EnsureAuthenticated();
         var url = $"{_instanceUrl}/services/data/v62.0/queryAll?q={Uri.EscapeDataString(soql)}";
         var response = await _http.GetAsync(url, ct);
         response.EnsureSuccessStatusCode();
@@ -61,13 +62,13 @@ public sealed class SalesforceClient : IDisposable
 
     /// <summary>
     /// sObject Collections UPSERT — up to 200 records per call.
-    /// Uses external ID field for matching.
     /// </summary>
     public async Task<JsonElement> CompositeUpsertAsync(
         string objectName, string externalIdField,
         IReadOnlyList<Dictionary<string, object?>> records,
         CancellationToken ct = default)
     {
+        EnsureAuthenticated();
         var url = $"{_instanceUrl}/services/data/v62.0/composite/sobjects/{objectName}/{externalIdField}";
 
         var payload = new { allOrNone = false, records };
@@ -78,10 +79,34 @@ public sealed class SalesforceClient : IDisposable
 
     private string BuildJwtAssertion()
     {
-        // TODO M1: sign a JWT with the connected app's private key
-        throw new NotImplementedException(
-            "JWT assertion signing not yet implemented. " +
-            "Requires the connected app's private key (see SF dev org setup).");
+        var rsa = RSA.Create();
+        var keyPem = File.ReadAllText(_authConfig.PrivateKeyPath);
+        rsa.ImportFromPem(keyPem);
+
+        var signingCredentials = new SigningCredentials(
+            new RsaSecurityKey(rsa), SecurityAlgorithms.RsaSha256);
+
+        var now = DateTime.UtcNow;
+        var descriptor = new SecurityTokenDescriptor
+        {
+            Issuer = _authConfig.ClientId,
+            Subject = new System.Security.Claims.ClaimsIdentity(
+            [
+                new("sub", _authConfig.Username),
+            ]),
+            Audience = _authConfig.TokenUrl.Replace("/services/oauth2/token", ""),
+            Expires = now.AddMinutes(3),
+            SigningCredentials = signingCredentials,
+        };
+
+        var handler = new JsonWebTokenHandler();
+        return handler.CreateToken(descriptor);
+    }
+
+    private void EnsureAuthenticated()
+    {
+        if (_accessToken is null || _instanceUrl is null)
+            throw new InvalidOperationException("Call AuthenticateAsync before making API requests.");
     }
 
     public void Dispose() => _http.Dispose();

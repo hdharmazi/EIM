@@ -8,17 +8,13 @@ namespace Loen.Integration.SageSF.Sage;
 /// </summary>
 public sealed class SageReader : IDisposable
 {
-    private readonly SqlConnection _connection;
+    private readonly string _connectionString;
 
     public SageReader(string connectionString)
     {
-        _connection = new SqlConnection(connectionString);
+        _connectionString = connectionString;
     }
 
-    /// <summary>
-    /// Reads customer records modified after the given watermark.
-    /// TimeUpdated is varchar(8) decimal hours — cast to decimal before comparing.
-    /// </summary>
     public async Task<IReadOnlyList<Dictionary<string, object?>>> ReadCustomerDeltaAsync(
         DateTime watermarkDate, decimal watermarkTime, CancellationToken ct = default)
     {
@@ -38,9 +34,6 @@ public sealed class SageReader : IDisposable
         return await ExecuteDeltaQueryAsync(sql, watermarkDate, watermarkTime, ct);
     }
 
-    /// <summary>
-    /// Reads item records modified after the given watermark.
-    /// </summary>
     public async Task<IReadOnlyList<Dictionary<string, object?>>> ReadItemDeltaAsync(
         DateTime watermarkDate, decimal watermarkTime, CancellationToken ct = default)
     {
@@ -59,9 +52,6 @@ public sealed class SageReader : IDisposable
         return await ExecuteDeltaQueryAsync(sql, watermarkDate, watermarkTime, ct);
     }
 
-    /// <summary>
-    /// Reads contact records modified after the given watermark.
-    /// </summary>
     public async Task<IReadOnlyList<Dictionary<string, object?>>> ReadContactDeltaAsync(
         DateTime watermarkDate, decimal watermarkTime, CancellationToken ct = default)
     {
@@ -82,9 +72,10 @@ public sealed class SageReader : IDisposable
     private async Task<IReadOnlyList<Dictionary<string, object?>>> ExecuteDeltaQueryAsync(
         string sql, DateTime watermarkDate, decimal watermarkTime, CancellationToken ct)
     {
-        await _connection.OpenAsync(ct);
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync(ct);
 
-        await using var cmd = new SqlCommand(sql, _connection);
+        await using var cmd = new SqlCommand(sql, connection);
         cmd.Parameters.AddWithValue("@d", watermarkDate.Date);
         cmd.Parameters.AddWithValue("@h", watermarkTime);
 
@@ -104,7 +95,7 @@ public sealed class SageReader : IDisposable
         return results;
     }
 
-    public void Dispose() => _connection.Dispose();
+    public void Dispose() { }
 }
 
 public sealed class SageReaderFactory

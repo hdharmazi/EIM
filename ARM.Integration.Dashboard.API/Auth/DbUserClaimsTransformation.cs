@@ -23,16 +23,26 @@ public class DbUserClaimsTransformation(UserRepository users) : IClaimsTransform
                  ?? identity.FindFirst("email")?.Value
                  ?? identity.FindFirst("preferred_username")?.Value
                  ?? identity.FindFirst(ClaimTypes.Upn)?.Value
-                 ?? identity.FindFirst("upn")?.Value
-                 ?? identity.FindFirst(ClaimTypes.Name)?.Value;
+                 ?? identity.FindFirst("upn")?.Value;
 
-        if (string.IsNullOrEmpty(email))
+        // Windows Auth (Negotiate) provides DOMAIN\username as ClaimTypes.Name.
+        // Try email first, then fall back to the Windows identity name.
+        var windowsName = identity.FindFirst(ClaimTypes.Name)?.Value;
+
+        if (string.IsNullOrEmpty(email) && string.IsNullOrEmpty(windowsName))
         {
             identity.AddClaim(new Claim("DbUserValidated", "false"));
             return principal;
         }
 
-        var user = await users.GetByEmailAsync(email.ToLowerInvariant());
+        var user = !string.IsNullOrEmpty(email)
+            ? await users.GetByEmailAsync(email.ToLowerInvariant())
+            : null;
+
+        // Fall back to Windows username lookup (stored as EMAIL in USERTABLE).
+        user ??= !string.IsNullOrEmpty(windowsName)
+            ? await users.GetByEmailAsync(windowsName.ToLowerInvariant())
+            : null;
 
         if (user is not null && user.IsActive)
         {
